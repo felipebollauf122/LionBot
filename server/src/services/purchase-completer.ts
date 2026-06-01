@@ -6,6 +6,7 @@ import { buildGateway } from "./gateway-factory.js";
 import { FacebookCapi } from "./facebook-capi.js";
 import { UtmifyService } from "./utmify.js";
 import { TrackingService } from "./tracking-service.js";
+import { productLabelForExternal } from "./external-product-label.js";
 import { addDelayedJob } from "../queue.js";
 import { config } from "../config.js";
 import { flowByIdCache } from "../cache.js";
@@ -154,7 +155,11 @@ export async function completePurchase(
         },
         customerDocument: String(lead.state.document ?? ""),
         productId: product?.id ?? transaction.product_id,
-        productName: (product as { ghost_name?: string | null } | null)?.ghost_name || product?.name || "Produto",
+        // NUNCA expor nome real pra fora — ghost se houver, senão "Product N"
+        productName: productLabelForExternal({
+          id: product?.id ?? transaction.product_id,
+          ghost_name: (product as { ghost_name?: string | null } | null)?.ghost_name ?? null,
+        }),
       })
       .catch((e) => console.error("[purchase-completer] Tracking error:", e));
   } catch (err) {

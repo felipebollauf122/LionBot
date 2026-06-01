@@ -249,7 +249,11 @@ export class TrackingService {
       products: [
         {
           id: params.productId ?? params.transactionId,
-          name: params.productName ?? "Produto",
+          // Defesa em profundidade: caller já deve ter passado ghost ou
+          // "Product N" via productLabelForExternal. Se mesmo assim chegar
+          // vazio, NUNCA usar nome real (que nem está aqui) — só fallback
+          // genérico.
+          name: params.productName?.trim() || "Product",
           priceInCents: String(params.amount),
           quantity: 1,
         },

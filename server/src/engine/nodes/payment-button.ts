@@ -145,7 +145,10 @@ export async function handlePaymentBundleNode(
         utmContent: ctx.lead.utm_content ?? undefined,
         utmTerm: ctx.lead.utm_term ?? undefined,
       },
-      contentName: typedBundle.ghost_name || typedBundle.name,
+      // Bundle external label: ghost OU "Offer N" hash do id. NUNCA o nome real.
+      contentName:
+        typedBundle.ghost_name?.trim() ||
+        `Offer ${(parseInt(typedBundle.id.replace(/-/g, "").slice(-1), 16) || 0) + 1}`,
     }).catch((e) => console.error("[tracking] Failed to track view_offer:", e));
   }
 
@@ -186,14 +189,17 @@ export async function handleProductPaymentCallback(
   }
 
   const typedProduct = product as BundleProduct;
-  // Cliente no chat sempre vê o nome REAL. Ghost (name/description) só vai
-  // pra GATEWAY (fallback pro real se vazio) — é o que aparece na fatura
-  // PIX e no painel da gateway. Tracking interno também usa nome real.
+  // Cliente no chat vê nome real. TUDO QUE SAI PRA FORA (gateway, FB,
+  // Utmify) usa ghost_name OU "Product N" — nunca o nome real. Mesmo
+  // quando ghost vazio.
+  const { productLabelForExternal, productDescriptionForExternal } = await import(
+    "../../services/external-product-label.js"
+  );
   const displayName = typedProduct.name;
-  const gatewayName = typedProduct.ghost_name || typedProduct.name;
-  const gatewayDescription = typedProduct.ghost_description ?? typedProduct.description ?? undefined;
+  const gatewayName = productLabelForExternal(typedProduct);
+  const gatewayDescription = productDescriptionForExternal(typedProduct);
   console.log(
-    `[payment] gatewayName="${gatewayName}" gatewayDescription="${gatewayDescription ?? ""}"`,
+    `[payment] gatewayName="${gatewayName}" gatewayDescription="${gatewayDescription ?? ""}" (ghost_name set=${!!typedProduct.ghost_name})`,
   );
   const identifier = `eaglebot_${ctx.lead.id}_${Date.now()}`;
   const amountInReais = typedProduct.price / 100;

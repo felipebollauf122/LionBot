@@ -13,13 +13,13 @@ export default async function BundlesPage({
 
   const { data: bundles } = await supabase
     .from("product_bundles")
-    .select("*, product_bundle_items(*, products(id, name, price, currency, is_active))")
+    .select("*, product_bundle_items(*, products(id, name, ghost_name, price, currency, is_active))")
     .eq("bot_id", botId)
     .order("created_at", { ascending: false });
 
   const { data: products } = await supabase
     .from("products")
-    .select("id, name, price, currency, is_active")
+    .select("id, name, ghost_name, price, currency, is_active")
     .eq("bot_id", botId)
     .eq("is_active", true)
     .order("name");

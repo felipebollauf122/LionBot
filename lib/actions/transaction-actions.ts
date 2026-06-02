@@ -19,7 +19,7 @@ export async function getTransactions(botId: string, page: number = 1, statusFil
 
   let query = supabase
     .from("transactions")
-    .select("*, products(name)", { count: "exact" })
+    .select("*, products(name, ghost_name)", { count: "exact" })
     .eq("bot_id", botId)
     .order("created_at", { ascending: false })
     .range(offset, offset + pageSize - 1);

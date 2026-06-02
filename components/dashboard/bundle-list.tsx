@@ -6,6 +6,7 @@ import { createBundle, deleteBundle, addProductToBundle, removeProductFromBundle
 interface Product {
   id: string;
   name: string;
+  ghost_name?: string | null;
   price: number;
   currency: string;
   is_active: boolean;
@@ -299,7 +300,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
                                 <span className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--purple) 12%, transparent)", color: "var(--purple)" }}>
                                   {item.sort_order + 1}
                                 </span>
-                                <span className="text-foreground text-sm font-medium">{item.products.name}</span>
+                                <span className="text-foreground text-sm font-medium">{item.products.ghost_name || item.products.name}</span>
                                 <span className="text-(--accent) text-xs stat-value">
                                   {(item.products.price / 100).toLocaleString("pt-BR", { style: "currency", currency: item.products.currency })}
                                 </span>
@@ -333,7 +334,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
                                 className="w-full text-left px-4 py-3 rounded-xl text-sm text-foreground transition-all flex items-center justify-between group/item"
                                 style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border-subtle)" }}
                               >
-                                <span className="group-hover/item:text-(--accent) transition-colors">{p.name}</span>
+                                <span className="group-hover/item:text-(--accent) transition-colors">{p.ghost_name || p.name}</span>
                                 <span className="text-(--accent) text-xs stat-value">
                                   {(p.price / 100).toLocaleString("pt-BR", { style: "currency", currency: p.currency })}
                                 </span>

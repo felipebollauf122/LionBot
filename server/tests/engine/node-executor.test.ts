@@ -1,4 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
+
+// Mock the queue module to avoid pulling in config (env vars), BullMQ and a
+// real Redis connection at import time. The node-executor → payment-button
+// node → queue.js chain would otherwise fail to load under the test env.
+vi.mock("../../src/queue.js", () => ({
+  addPaymentTimeoutJob: vi.fn(),
+  addDelayedJob: vi.fn(),
+}));
+
 import { executeNode } from "../../src/engine/node-executor.js";
 import type { NodeContext } from "../../src/engine/types.js";
 
@@ -7,9 +16,9 @@ function makeContext(type: string, data: Record<string, unknown> = {}): NodeCont
     node: { id: "n-1", type: type as any, data, position: { x: 0, y: 0 } },
     lead: {
       id: "l-1", tenant_id: "t-1", bot_id: "b-1", telegram_user_id: 123,
-      first_name: "Test", username: null, tid: null, fbclid: null,
+      first_name: "Test", last_name: null, username: null, tid: null, fbclid: null,
       utm_source: null, utm_medium: null, utm_campaign: null, utm_content: null, utm_term: null,
-      current_flow_id: "f-1", current_node_id: "n-1", state: {},
+      current_flow_id: "f-1", current_node_id: "n-1", active_flow_name: null, state: {},
       created_at: "", updated_at: "",
     },
     edges: [{ id: "e1", source: "n-1", target: "n-2" }],

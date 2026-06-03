@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Mock the queue module to avoid pulling in config (env vars), BullMQ and a
+// real Redis connection at import time. The flow-processor → payment-button
+// node → queue.js chain would otherwise fail to load under the test env.
+vi.mock("../../src/queue.js", () => ({
+  addPaymentTimeoutJob: vi.fn(),
+  addDelayedJob: vi.fn(),
+}));
+
 import { FlowProcessor } from "../../src/engine/flow-processor.js";
 
 const mockTelegram = {
@@ -10,6 +19,7 @@ const mockLeadService = {
   findOrCreateLead: vi.fn(),
   updatePosition: vi.fn(),
   updateState: vi.fn(),
+  updatePositionAndState: vi.fn(),
   getById: vi.fn(),
 };
 
@@ -54,6 +64,7 @@ function makeLead() {
     bot_id: "bot-1",
     telegram_user_id: 12345,
     first_name: "João",
+    last_name: null,
     username: "joao",
     tid: null, fbclid: null,
     utm_source: null, utm_medium: null, utm_campaign: null, utm_content: null, utm_term: null,

@@ -40,6 +40,7 @@ function makeDeps(
     markTargetFailed: vi.fn(async () => {}),
     incrementCounters: vi.fn(async () => {}),
     setCampaignStatus: vi.fn(async () => {}),
+    getCampaignStatus: vi.fn(async () => "running"),
     delay: async () => {},
     ...overrides,
   };

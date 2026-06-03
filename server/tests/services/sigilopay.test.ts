@@ -4,6 +4,14 @@ import { SigiloPay } from "../../src/services/sigilopay.js";
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// Headers stub que imita o que o código de produção consome no caminho de
+// erro: response.headers.get("server") / get("cf-ray").
+function makeHeaders(map: Record<string, string> = {}): Pick<Headers, "get"> {
+  return {
+    get: (name: string) => map[name.toLowerCase()] ?? null,
+  };
+}
+
 describe("SigiloPay", () => {
   let service: SigiloPay;
 
@@ -15,12 +23,13 @@ describe("SigiloPay", () => {
   it("should create a Pix payment", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers: makeHeaders(),
       json: async () => ({
         transactionId: "clwuwmn4i0007emp9lgn66u1h",
         status: "OK",
         order: {
           id: "order_abc123",
-          url: "https://app.sigilopay.com.br/order/order_abc123",
+          url: "https://app.poseidonpay.site/order/order_abc123",
         },
         pix: {
           code: "00020101021126530014BR.GOV.BCB.PIX...",
@@ -28,6 +37,11 @@ describe("SigiloPay", () => {
           image: "https://api.gateway.com/pix/qr/...",
         },
       }),
+      text: async () =>
+        JSON.stringify({
+          transactionId: "clwuwmn4i0007emp9lgn66u1h",
+          status: "OK",
+        }),
     });
 
     const result = await service.createPixPayment({
@@ -52,7 +66,9 @@ describe("SigiloPay", () => {
     });
 
     const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("https://app.sigilopay.com.br/api/v1/gateway/pix/receive");
+    expect(url).toBe(
+      "https://app.poseidonpay.site/api/v1/gateway/pix/receive",
+    );
     expect(options.method).toBe("POST");
     expect(options.headers["x-public-key"]).toBe("pub_test_123");
     expect(options.headers["x-secret-key"]).toBe("sec_test_456");
@@ -66,42 +82,54 @@ describe("SigiloPay", () => {
     expect(body.client.document).toBe("123.456.789-00");
   });
 
-  it("should return null when keys are not configured", async () => {
+  it("should throw when keys are not configured", async () => {
     const emptyService = new SigiloPay("", "");
-    const result = await emptyService.createPixPayment({
-      identifier: "test_123",
-      amount: 97.0,
-      clientName: "João",
-      clientEmail: "joao@gmail.com",
-      clientPhone: "(11) 99999-9999",
-      clientDocument: "123.456.789-00",
-      callbackUrl: "https://example.com/webhook",
-    });
+    await expect(
+      emptyService.createPixPayment({
+        identifier: "test_123",
+        amount: 97.0,
+        clientName: "João",
+        clientEmail: "joao@gmail.com",
+        clientPhone: "(11) 99999-9999",
+        clientDocument: "123.456.789-00",
+        callbackUrl: "https://example.com/webhook",
+      }),
+    ).rejects.toThrow(/não configuradas/);
 
-    expect(result).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("should return null on API error", async () => {
+  it("should throw on API error", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      headers: makeHeaders({ server: "nginx", "cf-ray": "abc123" }),
       json: async () => ({
         statusCode: 400,
         errorCode: "INVALID_INPUT",
         message: "O valor fornecido para o campo 'amount' é inválido.",
       }),
+      text: async () =>
+        JSON.stringify({
+          statusCode: 400,
+          errorCode: "INVALID_INPUT",
+          message: "O valor fornecido para o campo 'amount' é inválido.",
+        }),
     });
 
-    const result = await service.createPixPayment({
-      identifier: "test_456",
-      amount: -20,
-      clientName: "João",
-      clientEmail: "joao@gmail.com",
-      clientPhone: "(11) 99999-9999",
-      clientDocument: "123.456.789-00",
-      callbackUrl: "https://example.com/webhook",
-    });
-
-    expect(result).toBeNull();
+    await expect(
+      service.createPixPayment({
+        identifier: "test_456",
+        amount: -20,
+        clientName: "João",
+        clientEmail: "joao@gmail.com",
+        clientPhone: "(11) 99999-9999",
+        clientDocument: "123.456.789-00",
+        callbackUrl: "https://example.com/webhook",
+      }),
+    ).rejects.toThrow(
+      /Poseidon Pay API erro \(400\): O valor fornecido para o campo 'amount' é inválido\./,
+    );
   });
 });

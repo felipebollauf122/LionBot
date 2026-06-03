@@ -37,6 +37,8 @@ interface Transaction {
   product_id: string;
   amount: number;
   currency: string;
+  paid_at?: string | null;
+  sent_to_facebook?: boolean | null;
 }
 
 /**
@@ -121,47 +123,73 @@ export async function completePurchase(
 
   // Tracking (fire-and-forget, nunca bloqueia entrega)
   try {
-    const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "");
-    const utmify = new UtmifyService(bot.utmify_api_key ?? "");
-    const trackingService = new TrackingService(db, facebookCapi, utmify);
-    const { data: product } = await db
-      .from("products")
-      .select("id, name, ghost_name")
-      .eq("id", transaction.product_id)
-      .single();
-    trackingService
-      .trackPurchase({
-        tenantId: transaction.tenant_id,
-        leadId: transaction.lead_id,
-        botId: transaction.bot_id,
-        transactionId: transaction.id,
-        amount: transaction.amount,
-        currency: transaction.currency,
-        lead: {
-          id: lead.id,
-          tid: lead.tid,
-          fbclid: lead.fbclid,
-          firstName: lead.first_name,
-          lastName: lead.last_name ?? undefined,
-          email: String(lead.state.email ?? ""),
-          phone: String(lead.state.phone ?? ""),
-          utmSource: lead.utm_source ?? undefined,
-          utmMedium: lead.utm_medium ?? undefined,
-          utmCampaign: lead.utm_campaign ?? undefined,
-          utmContent: lead.utm_content ?? undefined,
-          utmTerm: lead.utm_term ?? undefined,
-          telegramUserId: lead.telegram_user_id,
-          botId: lead.bot_id,
-        },
-        customerDocument: String(lead.state.document ?? ""),
-        productId: product?.id ?? transaction.product_id,
-        // NUNCA expor nome real pra fora — ghost se houver, senão "Product N"
-        productName: productLabelForExternal({
-          id: product?.id ?? transaction.product_id,
-          ghost_name: (product as { ghost_name?: string | null } | null)?.ghost_name ?? null,
-        }),
-      })
-      .catch((e) => console.error("[purchase-completer] Tracking error:", e));
+    // Dedup (#6): se essa transação já foi enviada ao Facebook, não dispara
+    // de novo (evita Purchase duplicado que derruba EMQ). Lê o flag fresco
+    // do DB pra cobrir reentradas (webhook duplicado, retry de worker).
+    const { data: txFlag } = await db
+      .from("transactions")
+      .select("sent_to_facebook, paid_at")
+      .eq("id", transaction.id)
+      .maybeSingle();
+    const alreadySent = (txFlag as { sent_to_facebook?: boolean } | null)?.sent_to_facebook === true;
+    const paidAtIso = (txFlag as { paid_at?: string | null } | null)?.paid_at ?? transaction.paid_at ?? undefined;
+
+    if (alreadySent) {
+      console.log(`[purchase-completer] tx ${transaction.id} já enviada ao Facebook — pulando CAPI (entrega segue normal)`);
+    } else {
+      const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "");
+      const utmify = new UtmifyService(bot.utmify_api_key ?? "");
+      const trackingService = new TrackingService(db, facebookCapi, utmify);
+      const { data: product } = await db
+        .from("products")
+        .select("id, name, ghost_name")
+        .eq("id", transaction.product_id)
+        .single();
+      trackingService
+        .trackPurchase({
+          tenantId: transaction.tenant_id,
+          leadId: transaction.lead_id,
+          botId: transaction.bot_id,
+          transactionId: transaction.id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          paidAtIso,
+          lead: {
+            id: lead.id,
+            tid: lead.tid,
+            fbclid: lead.fbclid,
+            firstName: lead.first_name,
+            lastName: lead.last_name ?? undefined,
+            email: String(lead.state.email ?? ""),
+            phone: String(lead.state.phone ?? ""),
+            document: String(lead.state.document ?? ""),
+            utmSource: lead.utm_source ?? undefined,
+            utmMedium: lead.utm_medium ?? undefined,
+            utmCampaign: lead.utm_campaign ?? undefined,
+            utmContent: lead.utm_content ?? undefined,
+            utmTerm: lead.utm_term ?? undefined,
+            telegramUserId: lead.telegram_user_id,
+            botId: lead.bot_id,
+          },
+          customerDocument: String(lead.state.document ?? ""),
+          productId: product?.id ?? transaction.product_id,
+          // NUNCA expor nome real pra fora — ghost se houver, senão "Product N"
+          productName: productLabelForExternal({
+            id: product?.id ?? transaction.product_id,
+            ghost_name: (product as { ghost_name?: string | null } | null)?.ghost_name ?? null,
+          }),
+        })
+        .then(async (res) => {
+          // Marca flag só se o Facebook confirmou recebimento (#6)
+          if (res?.fbSent) {
+            await db
+              .from("transactions")
+              .update({ sent_to_facebook: true })
+              .eq("id", transaction.id);
+          }
+        })
+        .catch((e) => console.error("[purchase-completer] Tracking error:", e));
+    }
   } catch (err) {
     console.error("[purchase-completer] tracking setup falhou (segue entrega):", err);
   }

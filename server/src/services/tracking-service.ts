@@ -10,6 +10,7 @@ interface LeadInfo {
   lastName?: string | null;
   email?: string;
   phone?: string;
+  document?: string;
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
@@ -30,6 +31,7 @@ interface TrackPurchaseParams {
   customerDocument?: string;
   productId?: string;
   productName?: string;
+  paidAtIso?: string; // transaction.paid_at — usado como event_time (#5)
 }
 
 interface TrackCheckoutParams {
@@ -85,6 +87,7 @@ interface ClickContext {
   sourceUrl?: string;
   acceptLanguage?: string;
   referer?: string;
+  country?: string;
 }
 
 /**
@@ -115,6 +118,7 @@ async function loadClickContext(
     sourceUrl: typeof ed.source_url === "string" ? ed.source_url : undefined,
     acceptLanguage: typeof ed.accept_language === "string" ? ed.accept_language : undefined,
     referer: typeof ed.referer === "string" ? ed.referer : undefined,
+    country: typeof ed.country === "string" ? ed.country : undefined,
   };
 }
 
@@ -133,6 +137,17 @@ function buildExternalIds(lead: LeadInfo): string[] {
     ids.add(String(lead.telegramUserId));
   }
   if (lead.id) ids.add(lead.id);
+  // CPF como external_id extra (mais vetores de match no Meta) (#10)
+  if (lead.document) {
+    const cpf = lead.document.replace(/\D/g, "");
+    if (cpf.length === 11) ids.add(`cpf_${cpf}`);
+  }
+  // Telefone E.164 como external_id extra (#10)
+  if (lead.phone) {
+    const digits = lead.phone.replace(/\D/g, "");
+    const e164 = digits.startsWith("55") ? digits : `55${digits}`;
+    if (e164.length >= 12 && e164.length <= 15) ids.add(`phone_${e164}`);
+  }
   return Array.from(ids);
 }
 
@@ -151,6 +166,7 @@ function buildFbUserData(lead: LeadInfo, ctx: ClickContext) {
     phone: lead.phone || undefined,
     clientIp: ctx.clientIp,
     clientUserAgent: ctx.userAgent,
+    country: ctx.country || undefined, // geo-IP da tracking page (#14)
   };
 }
 
@@ -180,9 +196,14 @@ export class TrackingService {
    * data (email, phone, CPF, fbc with real click timestamp, fbp) is attached
    * here to maximize Event Match Quality.
    */
-  async trackPurchase(params: TrackPurchaseParams): Promise<void> {
+  async trackPurchase(params: TrackPurchaseParams): Promise<{ fbSent: boolean }> {
     const eventId = `purchase_${params.transactionId}`;
-    const eventTime = Math.floor(Date.now() / 1000);
+    // event_time = hora real do pagamento confirmado (paid_at), não a hora
+    // de processamento. Fallback pra agora se paid_at não vier (#5).
+    const paidMs = params.paidAtIso ? new Date(params.paidAtIso).getTime() : NaN;
+    const eventTime = Number.isFinite(paidMs)
+      ? Math.floor(paidMs / 1000)
+      : Math.floor(Date.now() / 1000);
     const { lead } = params;
     const amountInCurrency = params.amount / 100;
 
@@ -213,8 +234,10 @@ export class TrackingService {
     // Facebook CAPI — Purchase event (with full user data for max EMQ).
     // subscriptionId = transaction_id reaproveitado num campo extra
     // do user_data → conta como sinal adicional no EMQ.
+    // Injeta o CPF (customerDocument) no lead pra virar external_id extra (#10)
+    const leadWithDoc: LeadInfo = { ...lead, document: lead.document || params.customerDocument };
     const userData = {
-      ...buildFbUserData(lead, clickCtx),
+      ...buildFbUserData(leadWithDoc, clickCtx),
       subscriptionId: params.transactionId,
     };
     const fbSent = await this.facebookCapi.sendPurchaseEvent({
@@ -276,13 +299,22 @@ export class TrackingService {
         .update({ sent_to_facebook: fbSent, sent_to_utmify: utmifySent })
         .eq("id", dbEventId);
     }
+    return { fbSent };
+  }
+
+  /**
+   * Contexto "forte" = veio do anúncio (passou pela tracking page) com os
+   * identificadores de maior peso pro Meta: fbp + fbc + IP + UA. Eventos de
+   * funil (Lead/ViewContent/Checkout) SÓ disparam pro Facebook quando têm
+   * isso — evento "pelado" (sem dado) rebaixa o EMQ médio (#2).
+   */
+  private hasStrongContext(ctx: ClickContext): boolean {
+    return Boolean(ctx.fbp && ctx.fbc && ctx.clientIp && ctx.userAgent);
   }
 
   /**
    * InitiateCheckout — fires when Pix code is generated.
-   * Apenas persiste no DB; CAPI desligado por decisão de produto
-   * (estratégia "Purchase-only" para concentrar todo o sinal no
-   * único evento que importa pra otimização da campanha).
+   * Sempre grava no DB. Dispara CAPI só com contexto forte (#2).
    */
   async trackCheckout(params: TrackCheckoutParams): Promise<void> {
     const { lead } = params;
@@ -300,12 +332,27 @@ export class TrackingService {
         product_id: params.productId,
       },
     });
+
+    const ctx = await loadClickContext(this.db, lead.tid);
+    if (this.hasStrongContext(ctx)) {
+      await this.facebookCapi
+        .sendInitiateCheckoutEvent({
+          eventTime: Math.floor(Date.now() / 1000),
+          eventId: `checkout_${params.leadId}_${params.productId ?? "x"}`,
+          userData: buildFbUserData(lead, ctx),
+          value: params.amount / 100,
+          currency: params.currency,
+          contentIds: params.productId ? [params.productId] : undefined,
+          contentName: params.productName,
+        })
+        .catch((e) => console.error("[tracking] InitiateCheckout CAPI falhou:", e));
+    }
   }
 
   /**
    * Lead — fires when a new lead enters the bot via tracking link.
-   * Facebook CAPI disabled: bot_start has no contact data and was lowering EMQ.
-   * Only the DB row is persisted so dashboards keep their counters.
+   * Sempre grava no DB (o /start no bot nunca muda). Dispara CAPI só com
+   * contexto forte (#2) — Lead "pelado" sem dado de contato rebaixa EMQ.
    */
   async trackLead(params: TrackLeadParams): Promise<void> {
     const { lead } = params;
@@ -318,11 +365,22 @@ export class TrackingService {
       tid: lead.tid,
       utmParams: buildUtmRecord(lead),
     });
+
+    const ctx = await loadClickContext(this.db, lead.tid);
+    if (this.hasStrongContext(ctx)) {
+      await this.facebookCapi
+        .sendLeadEvent({
+          eventTime: Math.floor(Date.now() / 1000),
+          eventId: `lead_${params.leadId}`,
+          userData: buildFbUserData(lead, ctx),
+        })
+        .catch((e) => console.error("[tracking] Lead CAPI falhou:", e));
+    }
   }
 
   /**
    * ViewContent — fires when a lead sees the offer (view_offer event).
-   * Facebook CAPI disabled — same reason as trackLead/trackCheckout.
+   * Sempre grava no DB. Dispara CAPI só com contexto forte (#2).
    */
   async trackViewOffer(params: TrackViewOfferParams): Promise<void> {
     const { lead } = params;
@@ -335,6 +393,18 @@ export class TrackingService {
       tid: lead.tid,
       utmParams: buildUtmRecord(lead),
     });
+
+    const ctx = await loadClickContext(this.db, lead.tid);
+    if (this.hasStrongContext(ctx)) {
+      await this.facebookCapi
+        .sendViewContentEvent({
+          eventTime: Math.floor(Date.now() / 1000),
+          eventId: `viewcontent_${params.leadId}`,
+          userData: buildFbUserData(lead, ctx),
+          contentName: params.contentName,
+        })
+        .catch((e) => console.error("[tracking] ViewContent CAPI falhou:", e));
+    }
   }
 
   async trackCustomEvent(params: TrackEventParams): Promise<void> {

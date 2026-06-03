@@ -363,10 +363,34 @@ app.post("/api/bots/:botId/deactivate", async (req, res) => {
 });
 
 // Start server
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`EagleBot Engine running on port ${config.port}`);
   startWorkers();
   startMtprotoWorker();
 });
+
+// Graceful shutdown (#46): no SIGTERM/SIGINT (deploy, restart do Docker),
+// desconecta as conexões MTProto vivas e fecha o HTTP server antes de sair,
+// evitando conexões zumbi pro Telegram.
+let shuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] recebido ${signal} — encerrando graciosamente`);
+  try {
+    const { shutdownMtprotoClients } = await import("./workers/mtproto-worker.js");
+    await shutdownMtprotoClients();
+  } catch (e) {
+    console.error("[shutdown] erro ao desconectar MTProto:", e);
+  }
+  server.close(() => {
+    console.log("[shutdown] HTTP server fechado");
+    process.exit(0);
+  });
+  // Força saída se demorar demais
+  setTimeout(() => process.exit(0), 10_000).unref();
+}
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
 
 export { app };

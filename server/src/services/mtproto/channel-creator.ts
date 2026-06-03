@@ -101,6 +101,15 @@ export async function createChannelInstance(
       console.log(`[channel-creator] canal criado ${created.channelId} pela conta ${accountId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // FLOOD_WAIT (#48): a conta criou canais demais recentemente. Extrai
+      // os segundos pra erro legível e sinaliza pra o caller tentar mais
+      // tarde ou usar outra conta, em vez de só falhar genérico.
+      const floodMatch = msg.match(/FLOOD_WAIT_(\d+)/i) || msg.match(/A wait of (\d+) seconds/i);
+      if (floodMatch) {
+        const secs = floodMatch[1];
+        console.warn(`[channel-creator] createChannel FLOOD_WAIT: conta ${accountId} bloqueada por ${secs}s`);
+        return { ok: false, error: `flood_wait_${secs}s: conta precisa esperar antes de criar outro canal` };
+      }
       console.error(`[channel-creator] createChannel falhou:`, msg);
       return { ok: false, error: `createChannel: ${msg}` };
     }

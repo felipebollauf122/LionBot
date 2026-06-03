@@ -32,6 +32,12 @@ export interface RunnerDeps {
   ) => Promise<void>;
   markTargetSent: (targetId: string, accountId: string) => Promise<void>;
   markTargetFailed: (targetId: string, accountId: string | null, error: string) => Promise<void>;
+  /**
+   * Marca um target pinned pra retry depois de FLOOD_WAIT (#47): mantém
+   * status='pending' mas seta retry_after, pra não perder o lead. Se a dep
+   * não for fornecida, cai no markTargetFailed (comportamento antigo).
+   */
+  markTargetRetryAfter?: (targetId: string, retryAfterIso: string) => Promise<void>;
   incrementCounters: (campaignId: string, kind: "sent" | "failed") => Promise<void>;
   setCampaignStatus: (
     campaignId: string,
@@ -179,14 +185,20 @@ export class CampaignRunner {
         if (floodSeconds !== null) {
           this.pool.markFloodWait(account.id, floodSeconds);
           // Em targets pinned não dá pra trocar de conta (access_hash
-          // não bate). Marca como falha e segue.
+          // não bate). Em vez de marcar falha permanente (perdendo o lead),
+          // marca retry_after pra reprocessar depois do flood (#47).
           if (isPinned) {
-            await this.deps.markTargetFailed(
-              target.id,
-              account.id,
-              `flood_wait_${floodSeconds}s`,
-            );
-            await this.deps.incrementCounters(this.cfg.campaignId, "failed");
+            if (this.deps.markTargetRetryAfter) {
+              const retryAfter = new Date(Date.now() + (floodSeconds + 5) * 1000).toISOString();
+              await this.deps.markTargetRetryAfter(target.id, retryAfter);
+            } else {
+              await this.deps.markTargetFailed(
+                target.id,
+                account.id,
+                `flood_wait_${floodSeconds}s`,
+              );
+              await this.deps.incrementCounters(this.cfg.campaignId, "failed");
+            }
           } else {
             const nextAccount = this.pool.next();
             if (!nextAccount) {
@@ -224,8 +236,10 @@ export class CampaignRunner {
 
       const min = this.cfg.delayMinSeconds * 1000;
       const max = this.cfg.delayMaxSeconds * 1000;
-      const wait = min + Math.floor(Math.random() * Math.max(1, max - min + 1));
-      if (wait > 0) await this.deps.delay(wait);
+      // Delay mínimo de 1s entre envios (#50) — protege contra config 0/0
+      // que dispararia mensagens em rajada e queimaria a conta por spam.
+      const wait = Math.max(1000, min + Math.floor(Math.random() * Math.max(1, max - min + 1)));
+      await this.deps.delay(wait);
     }
   }
 }

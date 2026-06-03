@@ -20,7 +20,7 @@ describe("FacebookCapi", () => {
 
     await capi.sendPurchaseEvent({
       eventTime: 1700000000,
-      fbc: "fb.1.123.fbclid_abc",
+      userData: { fbc: "fb.1.123.fbclid_abc" },
       value: 97.0,
       currency: "BRL",
       eventId: "evt_123",
@@ -28,7 +28,7 @@ describe("FacebookCapi", () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, options] = mockFetch.mock.calls[0];
-    expect(url).toBe("https://graph.facebook.com/v18.0/pixel_123/events");
+    expect(url).toBe("https://graph.facebook.com/v21.0/pixel_123/events");
     expect(options.method).toBe("POST");
 
     const body = JSON.parse(options.body);
@@ -47,7 +47,7 @@ describe("FacebookCapi", () => {
 
     await capi.sendLeadEvent({
       eventTime: 1700000000,
-      fbc: "fb.1.123.fbclid_abc",
+      userData: { fbc: "fb.1.123.fbclid_abc" },
       eventId: "evt_456",
     });
 
@@ -60,7 +60,7 @@ describe("FacebookCapi", () => {
 
     await emptyCapi.sendPurchaseEvent({
       eventTime: 1700000000,
-      fbc: "",
+      userData: { fbc: "" },
       value: 97.0,
       currency: "BRL",
       eventId: "evt_789",

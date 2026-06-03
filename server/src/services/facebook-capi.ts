@@ -83,6 +83,49 @@ export class FacebookCapi {
     return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
   }
 
+  /**
+   * Normaliza nome pro hash do Facebook: remove acentos (NFD), espaços
+   * duplos e dígitos, rejeita placeholders genéricos. Retorna null se o
+   * nome não tem valor de matching (não setar o campo é melhor que setar lixo).
+   */
+  private normalizeNameForHash(value: string | undefined): string | null {
+    if (!value) return null;
+    let normalized = value
+      .trim()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "") // remove combining marks (acentos)
+      .replace(/\d/g, "") // remove dígitos
+      .replace(/\s+/g, " ") // colapsa espaços
+      .trim();
+    const lower = normalized.toLowerCase();
+    const placeholders = ["na", "n/a", "anonimo", "anônimo", "unknown", "user", "cliente", "test", "teste"];
+    if (placeholders.includes(lower)) return null;
+    return normalized.length > 1 ? normalized : null;
+  }
+
+  /**
+   * Valida e normaliza telefone pro padrão E.164 brasileiro. Retorna só
+   * dígitos com country code, ou null se inválido/placeholder (e loga).
+   */
+  private validatePhoneE164(input: string | undefined): string | null {
+    if (!input) return null;
+    const digits = input.replace(/\D/g, "");
+    if (digits.length === 0) return null;
+    const e164 = digits.startsWith("55") ? digits : `55${digits}`;
+    // E.164 BR: 55 + DDD(2) + número(8-9) = 12-13 dígitos. Aceita faixa
+    // mais ampla (10-15) pra não rejeitar formatos legítimos.
+    if (e164.length < 12 || e164.length > 15) {
+      console.warn(`[facebook-capi] phone "${input}" rejeitado: comprimento E.164 inválido (${e164.length})`);
+      return null;
+    }
+    // Placeholders comuns (1199999..., todos 9, etc)
+    if (/^55(11)?9{8,}$/.test(e164) || /^(\d)\1+$/.test(e164.slice(2))) {
+      console.warn(`[facebook-capi] phone "${input}" rejeitado: placeholder`);
+      return null;
+    }
+    return e164;
+  }
+
   /** Build user_data object with proper hashing per Facebook spec */
   private buildUserData(params: UserData): Record<string, unknown> {
     const ud: Record<string, unknown> = {};
@@ -94,19 +137,21 @@ export class FacebookCapi {
       ud.external_id = params.externalIds.map((id) => this.hash(id));
     }
     if (params.subscriptionId) ud.subscription_id = params.subscriptionId;
-    if (params.firstName) ud.fn = this.hash(params.firstName);
-    if (params.lastName) ud.ln = this.hash(params.lastName);
-    // Only hash email/phone if they contain real data (not empty/placeholder)
-    if (params.email && params.email.length > 0 && !params.email.endsWith("@eaglebot.temp")) {
-      ud.em = this.hash(params.email);
-    }
-    if (params.phone && params.phone.length > 0 && params.phone !== "11999999999") {
-      const cleaned = params.phone.replace(/\D/g, "");
-      if (cleaned.length >= 10) {
-        const withCountry = cleaned.startsWith("55") ? cleaned : `55${cleaned}`;
-        ud.ph = this.hash(withCountry);
+    // Nomes: normaliza (remove acento/dígito/placeholder) antes do hash (#8)
+    const fn = this.normalizeNameForHash(params.firstName);
+    if (fn) ud.fn = this.hash(fn);
+    const ln = this.normalizeNameForHash(params.lastName);
+    if (ln) ud.ln = this.hash(ln);
+    // Email: só hasheia se tem valor real após trim (#7)
+    if (params.email) {
+      const trimmed = params.email.trim();
+      if (trimmed.length > 0 && !trimmed.endsWith("@eaglebot.temp")) {
+        ud.em = this.hash(trimmed);
       }
     }
+    // Telefone: valida E.164 forte + rejeita placeholder (#9)
+    const validPhone = this.validatePhoneE164(params.phone);
+    if (validPhone) ud.ph = this.hash(validPhone);
     ud.country = this.hash(params.country ?? "br");
 
     // IP and User-Agent are NOT hashed — sent as-is per Meta spec

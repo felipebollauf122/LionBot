@@ -220,14 +220,31 @@ export class FlowProcessor {
         }
       }
 
+      // Combina state + posição num único write quando há delay node com
+      // persistPosition (#33) — evita 2 roundtrips. Nos demais casos,
+      // mantém os updates separados como antes.
+      const isDelayPersist =
+        !!result.delaySeconds && result.delaySeconds > 0 && !!result.nextNodeId && persistPosition;
+
       if (result.stateUpdates) {
         lead.state = { ...lead.state, ...result.stateUpdates };
-        await this.leadService.updateState(lead.id, lead.state);
+        if (!isDelayPersist) {
+          await this.leadService.updateState(lead.id, lead.state);
+        }
       }
 
       if (result.delaySeconds && result.delaySeconds > 0 && result.nextNodeId) {
         if (persistPosition) {
-          await this.leadService.updatePosition(lead.id, flow.id, result.nextNodeId);
+          if (result.stateUpdates) {
+            await this.leadService.updatePositionAndState(
+              lead.id,
+              flow.id,
+              result.nextNodeId,
+              lead.state,
+            );
+          } else {
+            await this.leadService.updatePosition(lead.id, flow.id, result.nextNodeId);
+          }
           await this.delayQueue.addDelayedJob(
             {
               leadId: lead.id,

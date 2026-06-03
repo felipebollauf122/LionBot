@@ -200,17 +200,23 @@ export async function processPaymentCallback(botId: string | null, body: Record<
   // Only process approved payments further
   if (newStatus !== "approved") return;
 
-  // Fetch bot config (cached)
-  let bot = botCache.get(transaction.bot_id) as Bot | undefined;
+  // Fetch bot config (cached) + lead em PARALELO (#35) — leituras
+  // independentes. Não toca em nenhuma lógica de status/segurança.
+  const cachedBot = botCache.get(transaction.bot_id) as Bot | undefined;
+  const [botData, lead] = await Promise.all([
+    cachedBot
+      ? Promise.resolve(null) // já temos do cache, não busca
+      : supabase.from("bots").select("*").eq("id", transaction.bot_id).single().then((r) => r.data),
+    leadService.getById(transaction.lead_id),
+  ]);
+
+  let bot = cachedBot;
   if (!bot) {
-    const { data } = await supabase.from("bots").select("*").eq("id", transaction.bot_id).single();
-    if (!data) return;
-    bot = data as Bot;
-    botCache.set(transaction.bot_id, data);
+    if (!botData) return;
+    bot = botData as Bot;
+    botCache.set(transaction.bot_id, botData as Record<string, unknown>);
   }
 
-  // Fetch lead
-  const lead = await leadService.getById(transaction.lead_id);
   if (!lead) return;
 
   const typedLead = lead as Lead;

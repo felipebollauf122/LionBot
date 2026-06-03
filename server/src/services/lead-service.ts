@@ -148,6 +148,33 @@ export class LeadService {
     }
   }
 
+  /**
+   * Atualiza posição + state numa única query (#33) — evita 2 roundtrips
+   * quando o flow precisa persistir os dois ao mesmo tempo (ex: delay node).
+   */
+  async updatePositionAndState(
+    leadId: string,
+    flowId: string | null,
+    nodeId: string | null,
+    state: Record<string, unknown>,
+    activeFlowName?: string,
+  ): Promise<void> {
+    const update: Record<string, unknown> = {
+      current_flow_id: flowId,
+      current_node_id: nodeId,
+      state,
+    };
+    if (activeFlowName !== undefined) {
+      update.active_flow_name = activeFlowName;
+    } else if (flowId === null) {
+      update.active_flow_name = null;
+    }
+    const { error } = await this.db.from("leads").update(update).eq("id", leadId);
+    if (error) {
+      throw new Error(`Failed to update lead position+state: ${error.message}`);
+    }
+  }
+
   async getById(leadId: string): Promise<Lead | null> {
     const { data } = await this.db
       .from("leads")

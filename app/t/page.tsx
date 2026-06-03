@@ -77,6 +77,8 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   const userAgent = hdrs.get("user-agent") ?? null;
   const acceptLanguage = hdrs.get("accept-language") ?? null;
   const referer = hdrs.get("referer") ?? hdrs.get("referrer") ?? null;
+  // geo-IP do Cloudflare (#14) — código ISO 2 letras, lowercase. Fallback br.
+  const country = (hdrs.get("cf-ipcountry") ?? "br").toLowerCase();
 
   // _fbc real do browser — se já tem cookie do Meta, prevalece;
   // senão, deriva de fbclid+timestamp atual no formato oficial Meta.
@@ -93,6 +95,9 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
 
   const clickTime = Date.now();
   const tid = `tid_${nanoid(16)}`;
+  // event_id do PageView — o Pixel JS no browser (#12) dispara PageView com
+  // ESSE id, e o server pode reusar pra dedup browser+server.
+  const pageViewEventId = `pv_${tid}`;
 
   await supabase.from("tracking_events").insert({
     tenant_id: typedBot.tenant_id,
@@ -117,6 +122,8 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
       accept_language: acceptLanguage,
       referer,
       source_url: sourceUrl,
+      country,
+      event_id: pageViewEventId,
     },
     sent_to_facebook: false,
     sent_to_utmify: false,
@@ -391,6 +398,21 @@ ${fbcCookie ? `var f=document.cookie.split('; ').find(function(c){return c.index
 }catch(e){}`,
         }}
       />
+
+      {/* Meta Pixel JS (#12) — dispara PageView no browser com o MESMO
+          event_id (pageViewEventId) que o server usa, permitindo dedup
+          browser+server na Meta. Só carrega se o bot tem pixel configurado. */}
+      {typedBot.facebook_pixel_id ? (
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{
+!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+fbq('init','${typedBot.facebook_pixel_id}');
+fbq('track','PageView',{},{eventID:'${pageViewEventId}'});
+}catch(e){}`,
+          }}
+        />
+      ) : null}
     </div>
   );
 }

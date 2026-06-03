@@ -23,17 +23,52 @@ const GLOBAL_DIALOG_KINDS = [
   "channel_subscriber",
 ] as const;
 
-const liveClients = new Map<string, MtprotoClient>();
+// liveClients com TTL (#45): rastreia último uso pra evitar crescimento
+// ilimitado de conexões MTProto. Um sweep periódico desconecta e remove
+// clients ociosos há mais de IDLE_TTL_MS.
+interface LiveClientEntry {
+  client: MtprotoClient;
+  lastUsed: number;
+}
+const liveClients = new Map<string, LiveClientEntry>();
+const LIVE_CLIENT_IDLE_TTL_MS = 30 * 60 * 1000; // 30 min ocioso → desconecta
+
+// Set de syncs em andamento (#51) — evita múltiplos handleSyncDialogs
+// paralelos pra mesma conta (que floodariam a API do Telegram).
+const inProgressSyncs = new Set<string>();
 
 async function getOrCreateClient(accountId: string, sessionString: string): Promise<MtprotoClient> {
-  let client = liveClients.get(accountId);
-  if (!client) {
-    client = new MtprotoClient(config.telegramApiId, config.telegramApiHash, sessionString);
-    await client.connect();
-    liveClients.set(accountId, client);
+  const entry = liveClients.get(accountId);
+  if (entry) {
+    entry.lastUsed = Date.now();
+    return entry.client;
   }
+  const client = new MtprotoClient(config.telegramApiId, config.telegramApiHash, sessionString);
+  await client.connect();
+  liveClients.set(accountId, { client, lastUsed: Date.now() });
   return client;
 }
+
+/** Remove e desconecta clients ociosos (#45). Chamado por sweep + shutdown. */
+async function sweepIdleClients(force = false): Promise<void> {
+  const now = Date.now();
+  for (const [accountId, entry] of liveClients) {
+    if (force || now - entry.lastUsed > LIVE_CLIENT_IDLE_TTL_MS) {
+      liveClients.delete(accountId);
+      await entry.client.disconnect().catch(() => {});
+    }
+  }
+}
+
+/** Graceful shutdown (#46): desconecta todos os clients MTProto vivos. */
+export async function shutdownMtprotoClients(): Promise<void> {
+  console.log(`[mtproto] graceful shutdown — desconectando ${liveClients.size} clients`);
+  await sweepIdleClients(true);
+}
+
+setInterval(() => {
+  sweepIdleClients().catch((e) => console.error("[mtproto] sweep idle clients erro:", e));
+}, 10 * 60 * 1000).unref?.();
 
 async function updateAccount(accountId: string, patch: Record<string, unknown>): Promise<void> {
   await supabase
@@ -72,7 +107,7 @@ async function handleRequestCode(accountId: string, phoneNumber: string): Promis
       needs_password: false,
     });
     await updateAccount(accountId, { status: "code_sent", last_error: null });
-    liveClients.set(accountId, client);
+    liveClients.set(accountId, { client, lastUsed: Date.now() });
     await notifyLoginBot(accountId, "code_sent");
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -90,7 +125,7 @@ async function handleSignIn(accountId: string, phoneNumber: string, code: string
     .eq("account_id", accountId)
     .single();
   if (!session) throw new Error("auth session not found");
-  const client = liveClients.get(accountId);
+  const client = liveClients.get(accountId)?.client;
   if (!client) throw new Error("client not live — re-solicite o código");
 
   try {
@@ -137,7 +172,7 @@ async function handleSignIn(accountId: string, phoneNumber: string, code: string
 }
 
 async function handleSubmitPassword(accountId: string, password: string): Promise<void> {
-  const client = liveClients.get(accountId);
+  const client = liveClients.get(accountId)?.client;
   if (!client) throw new Error("client not live — re-solicite o código");
   try {
     const result = await client.signInWithPassword(password);
@@ -162,6 +197,21 @@ async function handleSubmitPassword(accountId: string, password: string): Promis
 }
 
 async function handleSyncDialogs(accountId: string): Promise<void> {
+  // Dedup (#51): se já tem um sync rodando pra essa conta, não inicia outro.
+  // listDialogs é caro (30s+) e múltiplos em paralelo floodariam o Telegram.
+  if (inProgressSyncs.has(accountId)) {
+    console.log(`[mtproto.sync] account ${accountId} já está sincronizando — pulando`);
+    return;
+  }
+  inProgressSyncs.add(accountId);
+  try {
+    await doSyncDialogs(accountId);
+  } finally {
+    inProgressSyncs.delete(accountId);
+  }
+}
+
+async function doSyncDialogs(accountId: string): Promise<void> {
   const { data: account } = await supabase
     .from("mtproto_accounts")
     .select("*")
@@ -509,11 +559,15 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
   await loadAccountsAndPool(pool);
 
   async function fetchPendingTargets(): Promise<CampaignTargetRow[]> {
+    const nowIso = new Date().toISOString();
+    // Pula targets com retry_after no futuro (#47) — aguardando fim do
+    // FLOOD_WAIT da conta pinned. Inclui retry_after null OU já vencido.
     const { data: targets } = await supabase
       .from("mtproto_targets")
       .select("*, mtproto_dialogs(peer_id, peer_type, peer_access_hash)")
       .eq("campaign_id", campaignId)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .or(`retry_after.is.null,retry_after.lte.${nowIso}`);
     return (targets ?? []).map((t) => {
       const row: CampaignTargetRow = {
         id: t.id,
@@ -578,6 +632,13 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         await supabase
           .from("mtproto_targets")
           .update({ status: "failed", account_id: accountId, error_message: error })
+          .eq("id", targetId);
+      },
+      markTargetRetryAfter: async (targetId, retryAfterIso) => {
+        // Mantém pending + seta retry_after (#47) — reprocessa depois do flood.
+        await supabase
+          .from("mtproto_targets")
+          .update({ status: "pending", retry_after: retryAfterIso })
           .eq("id", targetId);
       },
       incrementCounters: async (id, kind) => {
@@ -649,7 +710,7 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         // não fica segurando objeto vivo apontando pra sessão morta)
         const live = liveClients.get(accountId);
         if (live) {
-          await live.disconnect().catch(() => {});
+          await live.client.disconnect().catch(() => {});
           liveClients.delete(accountId);
         }
       },

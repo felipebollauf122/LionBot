@@ -5,24 +5,19 @@ import type { Bot } from "@/lib/types/database";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data: bots, error } = await supabase
-    .from("bots")
-    .select("*")
-    .order("created_at", { ascending: false });
+  // 3 queries independentes em paralelo (#36) — antes eram seriais.
+  const [botsRes, leadsRes, txRes] = await Promise.all([
+    supabase.from("bots").select("*").order("created_at", { ascending: false }),
+    supabase.from("leads").select("*", { count: "exact", head: true }),
+    supabase.from("transactions").select("amount").eq("status", "approved"),
+  ]);
 
+  const { data: bots, error } = botsRes;
   const botList = (bots ?? []) as Bot[];
-
   const activeBots = botList.filter((b) => b.is_active).length;
 
-  const { count: totalLeads } = await supabase
-    .from("leads")
-    .select("*", { count: "exact", head: true });
-
-  const { data: approvedTx } = await supabase
-    .from("transactions")
-    .select("amount")
-    .eq("status", "approved");
-
+  const totalLeads = leadsRes.count;
+  const approvedTx = txRes.data;
   const totalRevenue = (approvedTx ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
   const totalSales = (approvedTx ?? []).length;
 

@@ -2,7 +2,17 @@ import { TelegramClient, Api } from "telegram";
 import { NewMessage, type NewMessageEvent } from "telegram/events/index.js";
 import { StringSession } from "telegram/sessions/index.js";
 import { CustomFile } from "telegram/client/uploads.js";
+import { randomBytes } from "crypto";
 import bigInt from "big-integer";
+
+/**
+ * random_id criptograficamente forte pro Telegram (#53). Math.random()
+ * pode colidir ao longo de milhões de mensagens → Telegram detecta como
+ * duplicata e descarta. randomBytes(8) é 64 bits de entropia real.
+ */
+function randomMessageId(): ReturnType<typeof bigInt> {
+  return bigInt(randomBytes(8).readBigInt64BE().toString());
+}
 
 // User ID oficial do Telegram (manda códigos de login, alertas de segurança).
 const TELEGRAM_OFFICIAL_USER_ID = "777000";
@@ -48,6 +58,9 @@ export interface MtprotoDialog {
 export class MtprotoClient {
   private client: TelegramClient;
   private inboxHandler: ((event: NewMessageEvent) => Promise<void>) | null = null;
+  // Cache phone → user resolvido (#54): evita ImportContacts repetido na
+  // mesma sessão, que incha a agenda da conta e aumenta risco de ban.
+  private phoneUserCache = new Map<string, Api.TypeUser>();
 
   constructor(
     private apiId: number,
@@ -139,20 +152,26 @@ export class MtprotoClient {
       return;
     }
 
-    const imported = await this.client.invoke(
-      new Api.contacts.ImportContacts({
-        contacts: [
-          new Api.InputPhoneContact({
-            clientId: bigInt(Date.now()),
-            phone: target,
-            firstName: "lead",
-            lastName: "",
-          }),
-        ],
-      }),
-    );
-    const user = imported.users[0];
-    if (!user) throw new Error("PHONE_NOT_ON_TELEGRAM");
+    // Cache de contato (#54): se já importamos esse phone nesta sessão,
+    // reusa o user resolvido em vez de ImportContacts de novo.
+    let user = this.phoneUserCache.get(target);
+    if (!user) {
+      const imported = await this.client.invoke(
+        new Api.contacts.ImportContacts({
+          contacts: [
+            new Api.InputPhoneContact({
+              clientId: bigInt(Date.now()),
+              phone: target,
+              firstName: "lead",
+              lastName: "",
+            }),
+          ],
+        }),
+      );
+      user = imported.users[0];
+      if (!user) throw new Error("PHONE_NOT_ON_TELEGRAM");
+      this.phoneUserCache.set(target, user);
+    }
     await this.client.sendMessage(user as never, { message: text });
   }
 
@@ -647,7 +666,7 @@ export class MtprotoClient {
           peer,
           media: new Api.InputMediaUploadedPhoto({ file }),
           message: caption ?? "",
-          randomId: bigInt(Math.floor(Math.random() * 1e15)),
+          randomId: randomMessageId(),
         }),
       );
     } else {
@@ -668,7 +687,7 @@ export class MtprotoClient {
             ],
           }),
           message: caption ?? "",
-          randomId: bigInt(Math.floor(Math.random() * 1e15)),
+          randomId: randomMessageId(),
         }),
       );
     }
@@ -691,7 +710,7 @@ export class MtprotoClient {
       new Api.messages.SendMessage({
         peer,
         message: text,
-        randomId: bigInt(Math.floor(Math.random() * 1e15)),
+        randomId: randomMessageId(),
       }),
     );
   }
@@ -710,5 +729,82 @@ export class MtprotoClient {
     );
     if (result instanceof Api.ChatInviteExported) return result.link;
     throw new Error(`exportChatInvite: unexpected return ${result.className}`);
+  }
+
+  /**
+   * Define a foto de perfil de um canal. O caller passa o Buffer já
+   * baixado (vamos sempre baixar via fetch primeiro, do Supabase Storage).
+   */
+  async setChannelPhoto(
+    channelId: string,
+    accessHash: string,
+    photoBuffer: Buffer,
+    fileName: string = "channel_photo.jpg",
+  ): Promise<void> {
+    await this.connect();
+    const uploaded = await this.client.uploadFile({
+      file: new CustomFile(fileName, photoBuffer.length, fileName, photoBuffer),
+      workers: 1,
+    });
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    await this.client.invoke(
+      new Api.channels.EditPhoto({
+        channel,
+        photo: new Api.InputChatUploadedPhoto({ file: uploaded }),
+      }),
+    );
+  }
+
+  /**
+   * Liga ou desliga reações no canal.
+   *   enabled=true  → todas as reações permitidas (ChatReactionsAll)
+   *   enabled=false → nenhuma reação (ChatReactionsNone)
+   */
+  async setChannelReactions(
+    channelId: string,
+    accessHash: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.connect();
+    const peer = new Api.InputPeerChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    await this.client.invoke(
+      new Api.messages.SetChatAvailableReactions({
+        peer,
+        availableReactions: enabled
+          ? new Api.ChatReactionsAll({ allowCustom: true })
+          : new Api.ChatReactionsNone(),
+      }),
+    );
+  }
+
+  /**
+   * Toggle "proteger conteúdo": quando ligado, ninguém consegue
+   * encaminhar/salvar mídias do canal.
+   */
+  async setChannelProtectContent(
+    channelId: string,
+    accessHash: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.connect();
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    await this.client.invoke(
+      new Api.messages.ToggleNoForwards({
+        peer: new Api.InputPeerChannel({
+          channelId: channel.channelId,
+          accessHash: channel.accessHash,
+        }),
+        enabled,
+      }),
+    );
   }
 }

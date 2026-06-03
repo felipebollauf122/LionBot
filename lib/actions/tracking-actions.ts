@@ -40,17 +40,22 @@ export async function getTrackingFunnel(botId: string) {
   if (!bot) throw new Error("Bot not found");
 
   const eventTypes = ["page_view", "bot_start", "view_offer", "checkout", "purchase"] as const;
+
+  // 5 counts em paralelo (#38) — antes era waterfall (5 roundtrips seriais).
+  const results = await Promise.all(
+    eventTypes.map((eventType) =>
+      supabase
+        .from("tracking_events")
+        .select("*", { count: "exact", head: true })
+        .eq("bot_id", botId)
+        .eq("event_type", eventType),
+    ),
+  );
+
   const counts: Record<string, number> = {};
-
-  for (const eventType of eventTypes) {
-    const { count } = await supabase
-      .from("tracking_events")
-      .select("*", { count: "exact", head: true })
-      .eq("bot_id", botId)
-      .eq("event_type", eventType);
-
-    counts[eventType] = count ?? 0;
-  }
+  eventTypes.forEach((et, i) => {
+    counts[et] = results[i].count ?? 0;
+  });
 
   return counts;
 }

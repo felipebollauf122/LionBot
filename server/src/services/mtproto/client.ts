@@ -711,4 +711,81 @@ export class MtprotoClient {
     if (result instanceof Api.ChatInviteExported) return result.link;
     throw new Error(`exportChatInvite: unexpected return ${result.className}`);
   }
+
+  /**
+   * Define a foto de perfil de um canal. O caller passa o Buffer já
+   * baixado (vamos sempre baixar via fetch primeiro, do Supabase Storage).
+   */
+  async setChannelPhoto(
+    channelId: string,
+    accessHash: string,
+    photoBuffer: Buffer,
+    fileName: string = "channel_photo.jpg",
+  ): Promise<void> {
+    await this.connect();
+    const uploaded = await this.client.uploadFile({
+      file: new CustomFile(fileName, photoBuffer.length, fileName, photoBuffer),
+      workers: 1,
+    });
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    await this.client.invoke(
+      new Api.channels.EditPhoto({
+        channel,
+        photo: new Api.InputChatUploadedPhoto({ file: uploaded }),
+      }),
+    );
+  }
+
+  /**
+   * Liga ou desliga reações no canal.
+   *   enabled=true  → todas as reações permitidas (ChatReactionsAll)
+   *   enabled=false → nenhuma reação (ChatReactionsNone)
+   */
+  async setChannelReactions(
+    channelId: string,
+    accessHash: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.connect();
+    const peer = new Api.InputPeerChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    await this.client.invoke(
+      new Api.messages.SetChatAvailableReactions({
+        peer,
+        availableReactions: enabled
+          ? new Api.ChatReactionsAll({ allowCustom: true })
+          : new Api.ChatReactionsNone(),
+      }),
+    );
+  }
+
+  /**
+   * Toggle "proteger conteúdo": quando ligado, ninguém consegue
+   * encaminhar/salvar mídias do canal.
+   */
+  async setChannelProtectContent(
+    channelId: string,
+    accessHash: string,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.connect();
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    await this.client.invoke(
+      new Api.messages.ToggleNoForwards({
+        peer: new Api.InputPeerChannel({
+          channelId: channel.channelId,
+          accessHash: channel.accessHash,
+        }),
+        enabled,
+      }),
+    );
+  }
 }

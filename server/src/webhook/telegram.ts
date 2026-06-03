@@ -54,9 +54,17 @@ function extractTidFromPayload(text: string): string | undefined {
 /**
  * Lookup tracking event by TID with retries to handle race conditions.
  * The tracking page inserts the event and immediately redirects — the /start
- * can arrive before the DB commit is visible. Retries up to 3 times with delay.
+ * can arrive before the DB commit is visible.
+ *
+ * (#25) Calibrado pra cortar latência no hot path do /start: era 3 tentativas
+ * com 1s de sleep cada (até 3s travando a resposta ao usuário). Agora são 3
+ * tentativas com backoff curto (300ms, 500ms = 0.8s no pior caso). Pega a
+ * mesma janela de race — o insert da tracking page acontece imediatamente
+ * antes do redirect, então a defasagem real é de centenas de ms, não segundos.
+ * A lógica black_flow/visual_flow fica idêntica (só o timing muda).
  */
 async function findTrackingEvent(tid: string, maxRetries = 3): Promise<Record<string, unknown> | null> {
+  const backoffsMs = [300, 500]; // entre tentativas 1→2 e 2→3
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const { data } = await supabase
       .from("tracking_events")
@@ -73,8 +81,9 @@ async function findTrackingEvent(tid: string, maxRetries = 3): Promise<Record<st
     }
 
     if (attempt < maxRetries) {
-      console.log(`[black] TID ${tid} not found yet (attempt ${attempt}/${maxRetries}), retrying in 1s...`);
-      await new Promise((r) => setTimeout(r, 1000));
+      const waitMs = backoffsMs[attempt - 1] ?? 500;
+      console.log(`[black] TID ${tid} not found yet (attempt ${attempt}/${maxRetries}), retrying in ${waitMs}ms...`);
+      await new Promise((r) => setTimeout(r, waitMs));
     }
   }
   return null;
@@ -114,22 +123,10 @@ async function resolveFlowName(
     return { flowName: "_visual_flow", tid, trackingData };
   }
 
-  // Check blacklist — blacklisted users always get the visual (white) flow
-  const { data: blacklisted } = await supabase
-    .from("blacklist_users")
-    .select("id")
-    .eq("bot_id", bot.id)
-    .eq("telegram_user_id", telegramUserId)
-    .maybeSingle();
-
-  if (blacklisted) {
-    console.log(`[black] User ${telegramUserId} is BLACKLISTED → forcing _visual_flow`);
-    let trackingData: Record<string, string | undefined> = {};
-    if (tid) {
-      trackingData = await resolveTrackingData(tid);
-    }
-    return { flowName: "_visual_flow", tid, trackingData };
-  }
+  // NOTA (#26): a checagem de blacklist que existia aqui foi removida —
+  // era query morta. O handler (handleTelegramWebhook) já chama
+  // isBlacklisted ANTES de resolveFlowName e retorna cedo (silêncio total)
+  // se o user está na blacklist. Logo, quem chega aqui nunca é blacklisted.
 
   // BLACK FLOW DECISION
   if (!messageText.startsWith("/start")) {

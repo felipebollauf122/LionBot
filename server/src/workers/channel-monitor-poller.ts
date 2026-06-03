@@ -1,75 +1,69 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MtprotoClient } from "../services/mtproto/client.js";
-import { replaceChannel } from "../services/mtproto/channel-replacer.js";
+import { createChannelInstance, pickReplacementAccount } from "../services/mtproto/channel-creator.js";
 import { config } from "../config.js";
 
-interface MonitorRow {
+interface InstanceRow {
   id: string;
   tenant_id: string;
-  account_id: string;
   template_id: string;
-  peer_channel_id: string;
-  peer_access_hash: string | null;
+  account_id: string;
+  channel_id: string;
+  access_hash: string;
+  status: string;
   account: { id: string; session_string: string | null; status: string };
+  template: { id: string; auto_recreate_on_ban: boolean };
 }
 
 /**
- * Poller dos channel_monitors. A cada chamada:
- * 1. Pega todos os monitors com status='active'.
- * 2. Pra cada um, abre client MTProto da conta dona e chama
- *    getChannelStatus no peer.
- * 3. Se conta tá morta (auth_failed) OU canal tá inválido/forbidden,
- *    marca detected_dead_at e dispara replaceChannel.
- * 4. Em qualquer outro erro (rede, flood), guarda last_check_error e
- *    tenta de novo na próxima rodada.
+ * Poller dos channel_instances ativos. A cada chamada:
+ * 1. Pega instances ativas onde o template tem auto_recreate_on_ban=true.
+ * 2. Pra cada, faz health check do canal pela conta dona (channels.GetChannels).
+ * 3. Se conta morta (auth_failed) OU canal inválido/forbidden, marca
+ *    status='dead' e dispara recriação em conta substituta.
  *
- * Rate: chamado pelo queue.ts a cada 10min. Cada conta consome ~1 req
- * por canal monitorado por ciclo — leve.
+ * Instâncias com template auto_recreate=false são ignoradas — owner não
+ * pediu recriação automática.
  */
 export async function pollChannelMonitors(db: SupabaseClient): Promise<void> {
   if (!config.telegramApiId || !config.telegramApiHash) return;
 
-  const { data: monitors } = await db
-    .from("channel_monitors")
+  const { data: instances } = await db
+    .from("channel_instances")
     .select(`
-      id, tenant_id, account_id, template_id, peer_channel_id, peer_access_hash,
-      account:mtproto_accounts!inner(id, session_string, status)
+      id, tenant_id, template_id, account_id, channel_id, access_hash, status,
+      account:mtproto_accounts!inner(id, session_string, status),
+      template:channel_templates!inner(id, auto_recreate_on_ban)
     `)
     .eq("status", "active")
     .limit(200);
 
-  if (!monitors || monitors.length === 0) return;
+  if (!instances || instances.length === 0) return;
 
-  for (const m of monitors as unknown as MonitorRow[]) {
-    const account = m.account;
+  for (const inst of instances as unknown as InstanceRow[]) {
+    // Pula instâncias cujo template não pede auto-recriação
+    if (!inst.template?.auto_recreate_on_ban) continue;
+
     const checkedAt = new Date().toISOString();
+    const account = inst.account;
 
-    // Conta sem session (não logada ainda) ou ja banida no DB → marca como
-    // detected_dead direto, sem precisar bater na API.
-    if (!account.session_string || account.status === "banned") {
-      console.log(`[channel-monitor] monitor ${m.id}: conta dona ${account.id} sem sessão ou banida → replace`);
+    // Conta sem session OU já banida → trata como dead direto
+    if (!account?.session_string || account.status === "banned") {
+      console.log(`[channel-monitor] instance ${inst.id}: conta dona ${inst.account_id} sem sessão/banida → recreate`);
       await db
-        .from("channel_monitors")
+        .from("channel_instances")
         .update({
           last_checked_at: checkedAt,
-          last_check_error: `account ${account.status}`,
+          last_check_error: `account ${account?.status ?? "no_session"}`,
           detected_dead_at: checkedAt,
+          status: "dead",
         })
-        .eq("id", m.id);
-      // Dispara replacement (mesma logic do canal caído)
-      await replaceChannel({
-        id: m.id,
-        tenant_id: m.tenant_id,
-        account_id: m.account_id,
-        template_id: m.template_id,
-        peer_channel_id: m.peer_channel_id,
-      }).catch((err) =>
-        console.error(`[channel-monitor] replaceChannel falhou:`, err),
-      );
+        .eq("id", inst.id);
+      await tryRecreate(db, inst);
       continue;
     }
 
-    // Health check do canal pela conta dona
+    // Health check do canal
     const client = new MtprotoClient(
       config.telegramApiId,
       config.telegramApiHash,
@@ -77,39 +71,35 @@ export async function pollChannelMonitors(db: SupabaseClient): Promise<void> {
     );
     let result: Awaited<ReturnType<MtprotoClient["getChannelStatus"]>>;
     try {
-      result = await client.getChannelStatus(m.peer_channel_id, m.peer_access_hash);
+      result = await client.getChannelStatus(inst.channel_id, inst.access_hash);
     } catch (err) {
-      console.error(`[channel-monitor] erro inesperado no monitor ${m.id}:`, err);
+      console.error(`[channel-monitor] erro inesperado na instance ${inst.id}:`, err);
       await client.disconnect().catch(() => {});
       await db
-        .from("channel_monitors")
+        .from("channel_instances")
         .update({
           last_checked_at: checkedAt,
           last_check_error: err instanceof Error ? err.message : String(err),
         })
-        .eq("id", m.id);
+        .eq("id", inst.id);
       continue;
     } finally {
       await client.disconnect().catch(() => {});
     }
 
     if (result.ok) {
-      // Canal ainda vivo. Atualiza último check OK.
       await db
-        .from("channel_monitors")
+        .from("channel_instances")
         .update({
           last_checked_at: checkedAt,
           last_check_error: null,
-          channel_title: result.title,
-          channel_username: result.username,
+          title: result.title,
         })
-        .eq("id", m.id);
+        .eq("id", inst.id);
       continue;
     }
 
-    // Conta auth falhou → outro caminho pra detectar conta morta
-    // (além do health-check geral de mtproto-health). Marca o canal
-    // como morto e tenta replace.
+    // auth_failed → conta dona caiu (efeito colateral: marca a conta como banned)
     if (result.reason === "auth_failed") {
       console.warn(`[channel-monitor] conta ${account.id} auth falhou: ${result.detail}`);
       await db
@@ -122,37 +112,61 @@ export async function pollChannelMonitors(db: SupabaseClient): Promise<void> {
         .eq("id", account.id);
     }
 
-    // Canal banido / inválido / privado
     if (result.reason === "channel_invalid" || result.reason === "channel_private" || result.reason === "auth_failed") {
-      console.log(`[channel-monitor] monitor ${m.id} DETECTOU CANAL CAÍDO: ${result.reason}`);
+      console.log(`[channel-monitor] instance ${inst.id} DETECTOU CANAL CAÍDO: ${result.reason}`);
       await db
-        .from("channel_monitors")
+        .from("channel_instances")
         .update({
           last_checked_at: checkedAt,
           last_check_error: result.detail,
           detected_dead_at: checkedAt,
+          status: "dead",
         })
-        .eq("id", m.id);
-      // Dispara replacement
-      await replaceChannel({
-        id: m.id,
-        tenant_id: m.tenant_id,
-        account_id: m.account_id,
-        template_id: m.template_id,
-        peer_channel_id: m.peer_channel_id,
-      }).catch((err) =>
-        console.error(`[channel-monitor] replaceChannel falhou:`, err),
-      );
+        .eq("id", inst.id);
+      await tryRecreate(db, inst);
       continue;
     }
 
-    // 'other' → erro transiente. Só registra e tenta próxima rodada.
+    // 'other' = erro transiente
     await db
-      .from("channel_monitors")
+      .from("channel_instances")
       .update({
         last_checked_at: checkedAt,
         last_check_error: result.detail,
       })
-      .eq("id", m.id);
+      .eq("id", inst.id);
   }
+}
+
+async function tryRecreate(db: SupabaseClient, inst: InstanceRow): Promise<void> {
+  const replacementAccountId = await pickReplacementAccount(inst.tenant_id, inst.account_id);
+  if (!replacementAccountId) {
+    await db
+      .from("channel_instances")
+      .update({ recreation_error: "nenhuma conta substituta disponível" })
+      .eq("id", inst.id);
+    return;
+  }
+
+  console.log(`[channel-monitor] recriando instance ${inst.id} via conta ${replacementAccountId}`);
+  const result = await createChannelInstance(inst.tenant_id, inst.template_id, replacementAccountId);
+
+  if (!result.ok) {
+    await db
+      .from("channel_instances")
+      .update({ recreation_error: result.error })
+      .eq("id", inst.id);
+    return;
+  }
+
+  await db
+    .from("channel_instances")
+    .update({
+      status: "replaced",
+      recreated_as_instance_id: result.instanceId,
+      recreated_at: new Date().toISOString(),
+      recreation_error: null,
+    })
+    .eq("id", inst.id);
+  console.log(`[channel-monitor] instance ${inst.id} recriada como ${result.instanceId} (invite: ${result.inviteLink})`);
 }

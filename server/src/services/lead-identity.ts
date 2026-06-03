@@ -112,8 +112,10 @@ export async function resolveTenantIdentity(
       })
       .eq("tenant_id", tenantId)
       .eq("telegram_user_id", telegramUserId);
-  } else {
-    // Sem campanha nova — só atualiza last_bot_id/last_updated_at
+  } else if ((ex as { last_bot_id?: string }).last_bot_id !== botId) {
+    // Sem campanha nova — só atualiza last_bot_id/last_updated_at, e SÓ
+    // quando o bot mudou (#27). Lead voltando no mesmo bot (caso comum)
+    // não gera write desnecessário. A atribuição de tracking não muda.
     await db
       .from("tenant_lead_identity")
       .update({ last_bot_id: botId, last_updated_at: nowIso })

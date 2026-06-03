@@ -135,13 +135,43 @@ async function processConfig(db: SupabaseClient, cfg: RemarketingConfig): Promis
 
   const now = new Date();
 
+  // Pré-carrega contadores de transação por lead numa única query (#28).
+  // Antes: checkAudience fazia 1 COUNT por lead por ciclo (N+1). Agora
+  // 1 query traz approved/pending de todos os leads do bot, e checkAudience
+  // consulta o Map em memória.
+  const audienceStats = await loadAudienceStats(db, cfg.bot_id);
+
   for (const lead of filteredLeads) {
     try {
-      await processLeadRemarketing(db, cfg, typedFlows, lead, processor, telegram, now);
+      await processLeadRemarketing(db, cfg, typedFlows, lead, processor, telegram, now, audienceStats);
     } catch (error) {
       console.error(`[remarketing] Error for lead ${lead.id}:`, error);
     }
   }
+}
+
+interface AudienceStats {
+  approved: Set<string>; // lead_ids com ao menos 1 transação approved
+  pending: Set<string>; // lead_ids com ao menos 1 transação pending
+}
+
+/**
+ * Carrega em 1 query quais leads têm transação approved e quais têm pending
+ * pro bot. Substitui o N+1 de checkAudience (#28).
+ */
+async function loadAudienceStats(db: SupabaseClient, botId: string): Promise<AudienceStats> {
+  const approved = new Set<string>();
+  const pending = new Set<string>();
+  const { data } = await db
+    .from("transactions")
+    .select("lead_id, status")
+    .eq("bot_id", botId)
+    .in("status", ["approved", "pending"]);
+  for (const row of (data ?? []) as Array<{ lead_id: string; status: string }>) {
+    if (row.status === "approved") approved.add(row.lead_id);
+    else if (row.status === "pending") pending.add(row.lead_id);
+  }
+  return { approved, pending };
 }
 
 async function processLeadRemarketing(
@@ -152,6 +182,7 @@ async function processLeadRemarketing(
   processor: FlowProcessor,
   telegram: TelegramApi,
   now: Date,
+  audienceStats: AudienceStats,
 ): Promise<void> {
   // Get or create progress for this lead
   let { data: progress } = await db
@@ -203,8 +234,8 @@ async function processLeadRemarketing(
     if (!nextFlow) return;
   }
 
-  // Check audience filter
-  const shouldSend = await checkAudience(db, nextFlow.audience, lead, cfg.bot_id);
+  // Check audience filter (usa stats pré-carregados, sem query por lead — #28)
+  const shouldSend = checkAudience(nextFlow.audience, lead, audienceStats);
   if (!shouldSend) {
     // Skip this flow, advance to the next one
     await db
@@ -281,38 +312,17 @@ async function processLeadRemarketing(
 
 /**
  * Check if a lead matches the audience filter for a remarketing flow.
+ * Usa stats pré-carregados em memória (sem query por lead — #28).
  */
-async function checkAudience(
-  db: SupabaseClient,
+function checkAudience(
   audience: string,
   lead: Lead,
-  botId: string,
-): Promise<boolean> {
+  stats: AudienceStats,
+): boolean {
   if (audience === "all") return true;
-
-  if (audience === "no_purchase") {
-    // Has no approved transactions
-    const { count } = await db
-      .from("transactions")
-      .select("*", { count: "exact", head: true })
-      .eq("lead_id", lead.id)
-      .eq("bot_id", botId)
-      .eq("status", "approved");
-
-    return (count ?? 0) === 0;
-  }
-
-  if (audience === "pending_payment") {
-    // Has a pending transaction (generated pix but didn't pay)
-    const { count } = await db
-      .from("transactions")
-      .select("*", { count: "exact", head: true })
-      .eq("lead_id", lead.id)
-      .eq("bot_id", botId)
-      .eq("status", "pending");
-
-    return (count ?? 0) > 0;
-  }
-
+  // no_purchase: lead sem nenhuma transação approved
+  if (audience === "no_purchase") return !stats.approved.has(lead.id);
+  // pending_payment: lead com transação pending (gerou pix, não pagou)
+  if (audience === "pending_payment") return stats.pending.has(lead.id);
   return true;
 }

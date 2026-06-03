@@ -399,10 +399,13 @@ ${fbcCookie ? `var f=document.cookie.split('; ').find(function(c){return c.index
         }}
       />
 
-      {/* Meta Pixel JS (#12) — dispara PageView no browser com o MESMO
-          event_id (pageViewEventId) que o server usa, permitindo dedup
-          browser+server na Meta. Só carrega se o bot tem pixel configurado. */}
-      {typedBot.facebook_pixel_id ? (
+      {/* Meta Pixel JS (#12) DESLIGADO 2026-06-03: junto com os eventos de
+          funil no CAPI, o PageView no browser introduziu sinal novo que
+          coincidiu com a queda nas vendas. Revertido pro estado que vendia.
+          Os cookies _fbp/_fbc continuam sendo setados acima (não mudam
+          otimização). Pra religar e testar dedup browser+server no futuro,
+          troque PIXEL_BROWSER_ENABLED pra true. */}
+      {false && typedBot.facebook_pixel_id ? (
         <script
           dangerouslySetInnerHTML={{
             __html: `try{

@@ -115,7 +115,9 @@ describe("TrackingService", () => {
     expect(mockUtmify.sendOrder).toHaveBeenCalled();
   });
 
-  it("should track a lead event (bot_start) and fire CAPI with strong context", async () => {
+  // Purchase-only no CAPI (revertido 2026-06-03): eventos de funil gravam
+  // no DB mas NÃO disparam pro Facebook (FUNNEL_CAPI_ENABLED=false).
+  it("should track a lead event (bot_start) saving to DB but NOT firing CAPI", async () => {
     mockChain({ savedEventId: "evt-2" });
 
     await service.trackLead({
@@ -126,10 +128,10 @@ describe("TrackingService", () => {
     });
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
-    expect(mockFacebookCapi.sendLeadEvent).toHaveBeenCalled();
+    expect(mockFacebookCapi.sendLeadEvent).not.toHaveBeenCalled();
   });
 
-  it("should track a view_offer event and fire ViewContent CAPI with strong context", async () => {
+  it("should track a view_offer event saving to DB but NOT firing CAPI", async () => {
     mockChain({ savedEventId: "evt-3" });
 
     await service.trackViewOffer({
@@ -141,10 +143,10 @@ describe("TrackingService", () => {
     });
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
-    expect(mockFacebookCapi.sendViewContentEvent).toHaveBeenCalled();
+    expect(mockFacebookCapi.sendViewContentEvent).not.toHaveBeenCalled();
   });
 
-  it("should track a checkout event and fire InitiateCheckout CAPI with strong context", async () => {
+  it("should track a checkout event saving to DB but NOT firing CAPI", async () => {
     mockChain({ savedEventId: "evt-4" });
 
     await service.trackCheckout({
@@ -159,7 +161,7 @@ describe("TrackingService", () => {
     });
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
-    expect(mockFacebookCapi.sendInitiateCheckoutEvent).toHaveBeenCalled();
+    expect(mockFacebookCapi.sendInitiateCheckoutEvent).not.toHaveBeenCalled();
   });
 
   it("should NOT fire Lead CAPI without strong click context (still saves to DB)", async () => {

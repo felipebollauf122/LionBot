@@ -304,13 +304,22 @@ export class TrackingService {
 
   /**
    * Contexto "forte" = veio do anúncio (passou pela tracking page) com os
-   * identificadores de maior peso pro Meta: fbp + fbc + IP + UA. Eventos de
-   * funil (Lead/ViewContent/Checkout) SÓ disparam pro Facebook quando têm
-   * isso — evento "pelado" (sem dado) rebaixa o EMQ médio (#2).
+   * identificadores de maior peso pro Meta: fbp + fbc + IP + UA.
    */
   private hasStrongContext(ctx: ClickContext): boolean {
     return Boolean(ctx.fbp && ctx.fbc && ctx.clientIp && ctx.userAgent);
   }
+
+  /**
+   * REVERTIDO 2026-06-03: o disparo de Lead/ViewContent/InitiateCheckout
+   * pro Facebook (reativado na Onda 1 EMQ) coincidiu com o bot parar de
+   * vender — a campanha estava otimizada pra Purchase e os eventos de
+   * funil novos bagunçaram a otimização/entrega (mais lead, menos venda).
+   * Voltamos pra estratégia Purchase-ONLY no CAPI, que era o estado que
+   * vendia. Os eventos continuam gravando no DB (contadores do dashboard).
+   * Pra religar e testar de novo no futuro, mude pra true.
+   */
+  private static FUNNEL_CAPI_ENABLED = false;
 
   /**
    * InitiateCheckout — fires when Pix code is generated.
@@ -333,6 +342,7 @@ export class TrackingService {
       },
     });
 
+    if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);
     if (this.hasStrongContext(ctx)) {
       await this.facebookCapi
@@ -366,6 +376,7 @@ export class TrackingService {
       utmParams: buildUtmRecord(lead),
     });
 
+    if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);
     if (this.hasStrongContext(ctx)) {
       await this.facebookCapi
@@ -394,6 +405,7 @@ export class TrackingService {
       utmParams: buildUtmRecord(lead),
     });
 
+    if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);
     if (this.hasStrongContext(ctx)) {
       await this.facebookCapi

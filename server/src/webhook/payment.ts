@@ -398,3 +398,55 @@ export async function handleEvPayWebhook(
     console.error(`[evpay-webhook] Error:`, error);
   }
 }
+
+/**
+ * Reentrega manual de uma transação (botão "Reenviar acesso" no painel).
+ * Reexecuta o fluxo de pós-pagamento (edge "paid") pra reentregar produto/
+ * mensagens ao cliente. O tracking (Facebook/Utmify) NÃO duplica — o
+ * completePurchase respeita o flag sent_to_facebook.
+ *
+ * force=true ignora o guard delivered_tx pra realmente reentregar.
+ * Respeita blacklist (silêncio total). Retorna o resultado pra o painel.
+ */
+export async function redeliverTransaction(
+  transactionId: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  const { data: txRow } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", transactionId)
+    .maybeSingle();
+  if (!txRow) return { ok: false, reason: "transaction_not_found" };
+  const transaction = txRow as Transaction;
+
+  if (transaction.status !== "approved") {
+    return { ok: false, reason: `status_not_approved (${transaction.status})` };
+  }
+
+  // Bot (cache → DB)
+  let bot = botCache.get(transaction.bot_id) as Bot | undefined;
+  if (!bot) {
+    const { data } = await supabase.from("bots").select("*").eq("id", transaction.bot_id).single();
+    if (!data) return { ok: false, reason: "bot_not_found" };
+    bot = data as Bot;
+    botCache.set(transaction.bot_id, data);
+  }
+
+  const lead = await leadService.getById(transaction.lead_id);
+  if (!lead) return { ok: false, reason: "lead_not_found" };
+  const typedLead = lead as Lead;
+
+  // Blacklist: silêncio total
+  if (await isBlacklisted(supabase, transaction.bot_id, typedLead.telegram_user_id)) {
+    return { ok: false, reason: "blacklisted" };
+  }
+
+  try {
+    await completePurchase(supabase, bot, typedLead, transaction, { force: true });
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[redeliver] tx ${transactionId} falhou:`, msg);
+    return { ok: false, reason: msg };
+  }
+}

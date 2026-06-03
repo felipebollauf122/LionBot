@@ -268,6 +268,38 @@ app.post("/api/mtproto/enqueue", async (req, res) => {
   }
 });
 
+// Reenvio manual de acesso — chamado pelo painel ("Pagou e não recebeu").
+// Reentrega o produto/mensagens de uma transação aprovada. Tracking não
+// duplica (sent_to_facebook protege). Processa em lote com espaçamento.
+app.post("/api/transactions/redeliver", async (req, res) => {
+  try {
+    const { transactionIds } = req.body as { transactionIds?: string[] };
+    if (!Array.isArray(transactionIds) || transactionIds.length === 0) {
+      res.status(400).json({ error: "transactionIds vazio" });
+      return;
+    }
+    // Responde já e processa em background (lote grande pode demorar).
+    res.json({ success: true, queued: transactionIds.length });
+
+    const { redeliverTransaction } = await import("./webhook/payment.js");
+    let ok = 0;
+    let fail = 0;
+    for (const txId of transactionIds.slice(0, 1000)) {
+      const r = await redeliverTransaction(txId);
+      if (r.ok) ok++;
+      else {
+        fail++;
+        console.warn(`[redeliver] tx ${txId}: ${r.reason}`);
+      }
+      // Espaça pra não floodar o Telegram (rate limit por bot)
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    console.log(`[redeliver] lote concluído: ${ok} ok, ${fail} falhas`);
+  } catch (error) {
+    console.error("[redeliver] erro:", error);
+  }
+});
+
 // Cache invalidation — called from dashboard when bot settings or flows are saved
 app.post("/api/bots/:botId/invalidate-cache", async (_req, res) => {
   const { botId } = _req.params;

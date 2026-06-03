@@ -79,3 +79,31 @@ export async function getOrphanedTransactions(botId: string) {
 
   return { transactions: orphaned, total: orphaned.length };
 }
+
+/**
+ * Reenvia o acesso (produto/mensagens) pra uma lista de transações órfãs.
+ * Delega pro engine, que reexecuta o fluxo "paid" de cada uma. Tracking
+ * (Facebook/Utmify) não duplica. Verifica que o bot é do tenant.
+ */
+export async function redeliverAccess(botId: string, transactionIds: string[]): Promise<{ ok: boolean; queued: number }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const admin = await isAdmin();
+  let botQuery = supabase.from("bots").select("id").eq("id", botId);
+  if (!admin) botQuery = botQuery.eq("tenant_id", user.id);
+  const { data: bot } = await botQuery.single();
+  if (!bot) throw new Error("Bot not found");
+
+  if (!transactionIds.length) return { ok: true, queued: 0 };
+
+  const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(/\/+$/, "");
+  const res = await fetch(`${serverUrl}/api/transactions/redeliver`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transactionIds }),
+  });
+  if (!res.ok) throw new Error(`Falha ao reenviar (${res.status})`);
+  return { ok: true, queued: transactionIds.length };
+}

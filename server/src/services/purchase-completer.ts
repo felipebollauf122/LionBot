@@ -100,11 +100,15 @@ export async function completePurchase(
   bot: Bot,
   lead: Lead,
   transaction: Transaction,
+  opts?: { force?: boolean },
 ): Promise<void> {
   // Idempotência intra-processo: se já entregou esse tx pra esse lead,
   // não faz de novo. Persiste no lead.state.
+  // force=true (reenvio manual pelo painel) ignora o guard pra reentregar
+  // o produto/mensagens. O tracking (Facebook/Utmify) continua protegido
+  // pelo flag sent_to_facebook (não duplica Purchase).
   const deliveredKey = `delivered_tx_${transaction.id}`;
-  if (lead.state[deliveredKey] === true) {
+  if (!opts?.force && lead.state[deliveredKey] === true) {
     console.log(
       `[purchase-completer] tx ${transaction.id} já foi entregue pra lead ${lead.id} — skip`,
     );

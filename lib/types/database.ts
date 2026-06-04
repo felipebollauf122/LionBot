@@ -54,6 +54,7 @@ export interface Bot {
   evpay_api_key: string | null;
   evpay_project_id: string | null;
   collect_email_after_payment: boolean;
+  email_request_message: string | null;
   tracking_mode: TrackingMode;
   prelander_headline: string | null;
   prelander_description: string | null;

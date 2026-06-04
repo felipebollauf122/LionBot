@@ -53,6 +53,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
   const [evpayApiKey, setEvpayApiKey] = useState(bot.evpay_api_key ?? "");
   const [evpayProjectId, setEvpayProjectId] = useState(bot.evpay_project_id ?? "");
   const [collectEmail, setCollectEmail] = useState(bot.collect_email_after_payment ?? false);
+  const [emailRequestMessage, setEmailRequestMessage] = useState(bot.email_request_message ?? "");
   const [trackingMode, setTrackingMode] = useState<"redirect" | "prelander">(bot.tracking_mode ?? "redirect");
   const [headline, setHeadline] = useState(bot.prelander_headline ?? "");
   const [description, setDescription] = useState(bot.prelander_description ?? "");
@@ -74,6 +75,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
         evpay_api_key: evpayApiKey,
         evpay_project_id: evpayProjectId,
         collect_email_after_payment: collectEmail,
+        email_request_message: emailRequestMessage,
         tracking_mode: trackingMode,
         prelander_headline: headline,
         prelander_description: description,
@@ -472,6 +474,25 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                 </div>
               </div>
             </label>
+
+            {collectEmail && (
+              <div className="mt-4 pl-7">
+                <label className="input-label">Mensagem pedindo o e-mail</label>
+                <textarea
+                  value={emailRequestMessage}
+                  onChange={(e) => setEmailRequestMessage(e.target.value)}
+                  placeholder={"✅ Pagamento confirmado!\n\nAntes de liberar seu acesso, preciso do seu e-mail válido para registrar sua compra.\n\n📩 Manda seu e-mail aí:"}
+                  rows={6}
+                  className="input text-sm w-full resize-y font-mono"
+                />
+                <p className="text-white/50 text-xs mt-1.5 leading-relaxed">
+                  Essa é a mensagem que o cliente recebe no Telegram pedindo o e-mail.
+                  Deixe <b>vazio</b> para usar o texto padrão. Aceita HTML do Telegram:
+                  <code>&lt;b&gt;negrito&lt;/b&gt;</code>, <code>&lt;i&gt;itálico&lt;/i&gt;</code>,
+                  <code>&lt;code&gt;mono&lt;/code&gt;</code>. Use quebras de linha normalmente.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

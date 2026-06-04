@@ -23,7 +23,17 @@ interface Bot {
   evpay_project_id: string | null;
   payment_gateway: string | null;
   collect_email_after_payment: boolean | null;
+  email_request_message: string | null;
 }
+
+/** Texto padrão pedindo o e-mail (usado quando o bot não customiza). */
+const DEFAULT_EMAIL_REQUEST_MESSAGE =
+  "✅ <b>Pagamento confirmado!</b>\n\n" +
+  "Antes de liberar seu acesso, preciso do seu <b>e-mail válido</b> para registrar sua compra.\n\n" +
+  "⚠️ Use um e-mail que você acessa de verdade — em caso de qualquer problema com o produto " +
+  "(não receber link, suporte, atualizações), é por ele que você vai ser atendido. " +
+  "E-mail errado significa ficar sem suporte.\n\n" +
+  "📩 <b>Manda seu e-mail aí:</b>";
 
 interface Transaction {
   id: string;
@@ -246,15 +256,14 @@ export async function processPaymentCallback(botId: string | null, body: Record<
     typedLead.state = stateWithPending;
 
     const telegram = new TelegramApi(bot.telegram_token, { protectContent: bot.protect_content });
+    // Mensagem customizável pelo owner; cai no padrão se vazia.
+    const emailMessage =
+      bot.email_request_message && bot.email_request_message.trim().length > 0
+        ? bot.email_request_message
+        : DEFAULT_EMAIL_REQUEST_MESSAGE;
     await telegram.sendMessage({
       chatId: typedLead.telegram_user_id,
-      text:
-        "✅ <b>Pagamento confirmado!</b>\n\n" +
-        "Antes de liberar seu acesso, preciso do seu <b>e-mail válido</b> para registrar sua compra.\n\n" +
-        "⚠️ Use um e-mail que você acessa de verdade — em caso de qualquer problema com o produto " +
-        "(não receber link, suporte, atualizações), é por ele que você vai ser atendido. " +
-        "E-mail errado significa ficar sem suporte.\n\n" +
-        "📩 <b>Manda seu e-mail aí:</b>",
+      text: emailMessage,
     });
 
     console.log(`[payment-webhook] Asked email from lead ${typedLead.id} (tx ${transaction.id})`);

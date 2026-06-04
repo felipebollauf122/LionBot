@@ -46,6 +46,8 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
   const [addingProduct, setAddingProduct] = useState<string | null>(null);
   const [editGhostBundle, setEditGhostBundle] = useState<string | null>(null);
   const [editGhostValue, setEditGhostValue] = useState("");
+  const [editMsgBundle, setEditMsgBundle] = useState<string | null>(null);
+  const [editMsgValue, setEditMsgValue] = useState("");
 
   const handleSaveGhost = (bundleId: string) => {
     const value = editGhostValue.trim() || null;
@@ -54,6 +56,19 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
         await updateBundle(bundleId, { ghost_name: value });
         setBundles((prev) => prev.map((b) => (b.id === bundleId ? { ...b, ghost_name: value } : b)));
         setEditGhostBundle(null);
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  };
+
+  const handleSaveMessage = (bundleId: string) => {
+    const value = editMsgValue.trim() || "Escolha um produto para comprar:";
+    startTransition(async () => {
+      try {
+        await updateBundle(bundleId, { message_text: value });
+        setBundles((prev) => prev.map((b) => (b.id === bundleId ? { ...b, message_text: value } : b)));
+        setEditMsgBundle(null);
       } catch (e) {
         console.error(e);
       }
@@ -234,9 +249,50 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
 
                 {isExpanded && (
                   <div className="border-t border-(--border-subtle) p-5 animate-in relative">
-                    <p className="text-(--text-muted) text-xs mb-4">
-                      Mensagem: <span className="text-(--text-secondary) font-medium">{bundle.message_text}</span>
-                    </p>
+                    <div className="mb-4">
+                      {editMsgBundle === bundle.id ? (
+                        <div className="space-y-2">
+                          <label className="input-label">Mensagem no Telegram (aparece antes dos produtos)</label>
+                          <textarea
+                            value={editMsgValue}
+                            onChange={(e) => setEditMsgValue(e.target.value)}
+                            placeholder="Escolha um produto para comprar:"
+                            rows={3}
+                            className="input text-sm w-full resize-y"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleSaveMessage(bundle.id)}
+                              disabled={isPending}
+                              className="btn-primary py-1.5! px-3 text-xs"
+                            >
+                              Salvar
+                            </button>
+                            <button
+                              onClick={() => setEditMsgBundle(null)}
+                              className="text-(--text-muted) hover:text-foreground text-xs px-2"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-(--text-muted) text-xs flex-1">
+                            Mensagem: <span className="text-(--text-secondary) font-medium whitespace-pre-wrap">{bundle.message_text}</span>
+                          </p>
+                          <button
+                            onClick={() => {
+                              setEditMsgValue(bundle.message_text ?? "");
+                              setEditMsgBundle(bundle.id);
+                            }}
+                            className="text-(--accent) hover:underline text-xs shrink-0"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     {isAdmin && (
                       <div className="mb-4 p-3 rounded-lg border border-red-500/20 bg-red-500/5">

@@ -486,10 +486,19 @@ export function startWorkers(): void {
   // não dispare. Roda a cada 5s, mas só consulta cada transação no
   // intervalo apropriado por idade (5s pra recém-criadas, 30s/2min
   // pras mais antigas) — ver workers/evpay-poller.ts.
+  // Trava anti-sobreposição: se uma rodada demora mais que o intervalo
+  // (ex: Yvepay lenta), a próxima NÃO empilha em cima — senão os fetches
+  // pendurados se acumulam e saturam o pool do undici ("fetch failed" em
+  // loop). Mesmo padrão do remarketing e do channel-monitor.
+  let evpayPollerRunning = false;
   setInterval(() => {
-    pollEvpayPendingTransactions(supabase).catch((err) =>
-      console.error("[evpay-poller] Error:", err)
-    );
+    if (evpayPollerRunning) return;
+    evpayPollerRunning = true;
+    pollEvpayPendingTransactions(supabase)
+      .catch((err) => console.error("[evpay-poller] Error:", err))
+      .finally(() => {
+        evpayPollerRunning = false;
+      });
   }, 5_000);
 
   // Poseidon Pay status poller — DESLIGADO por enquanto.

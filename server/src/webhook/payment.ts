@@ -145,16 +145,18 @@ export async function processPaymentCallback(botId: string | null, body: Record<
     return;
   }
 
-  // Map SigiloPay status to our status (case-insensitive)
+  // Map gateway status to our status (case-insensitive).
+  // PAID_OUT é o status de "pago" do Yvepay; os demais cobrem SigiloPay e
+  // variações comuns.
   const normalizedStatus = String(status).toUpperCase();
   let newStatus: string;
-  if (["OK", "COMPLETED", "APPROVED", "SUCCESS", "PAID"].includes(normalizedStatus)) {
+  if (["OK", "COMPLETED", "APPROVED", "SUCCESS", "PAID", "PAID_OUT", "PAIDOUT"].includes(normalizedStatus)) {
     newStatus = "approved";
-  } else if (["FAILED", "REJECTED", "ERROR", "EXPIRED"].includes(normalizedStatus)) {
+  } else if (["FAILED", "REJECTED", "ERROR", "EXPIRED", "REFUSED"].includes(normalizedStatus)) {
     newStatus = "refused";
-  } else if (["CANCELED", "REFUNDED", "CANCELLED"].includes(normalizedStatus)) {
+  } else if (["CANCELED", "REFUNDED", "CANCELLED", "REVERSAL", "REVERSED", "CHARGEBACK"].includes(normalizedStatus)) {
     newStatus = "refunded";
-  } else if (["PENDING", "PROCESSING", "WAITING", "CREATED"].includes(normalizedStatus)) {
+  } else if (["PENDING", "PROCESSING", "WAITING", "CREATED", "PROCESSING_PAYMENT"].includes(normalizedStatus)) {
     console.log(`[payment-webhook] Status is ${status}, no action needed`);
     return;
   } else {
@@ -320,11 +322,28 @@ export async function handleEvPayWebhook(
 
     console.log(`[evpay-webhook] Received (sig=${signature ? "present" : "MISSING"}):`, rawBody);
 
-    // Extrai transactionId do payload pra localizar a transação
+    // Extrai transactionId do payload pra localizar a transação.
+    //
+    // FORMATO REAL do webhook Yvepay (confirmado em prod 2026-06-04):
+    //   { idTransaction, typeTransaction:"QR_CODE_PAYMENT",
+    //     statusTransaction:"PAID_OUT", value, key:"cmpy...",
+    //     gatewayTransactionId:"cmpy...", endToEnd, ... }
+    //
+    // O nosso external_id é salvo a partir de payment.transactionId (o id que
+    // o Yvepay devolveu na CRIAÇÃO do PIX) e bate com `key` /
+    // `gatewayTransactionId` do webhook — NÃO com `idTransaction` (esse é o
+    // id interno do PROCESSAMENTO, que não temos salvo). Por isso testamos
+    // key/gatewayTransactionId PRIMEIRO. Mantemos os campos antigos
+    // (transactionId/id/data.id) como fallback pra retrocompatibilidade.
     const data = (body.data ?? {}) as Record<string, unknown>;
     const transactionId = String(
+      body.key ??
+      body.gatewayTransactionId ??
       body.transactionId ??
       body.id ??
+      body.idTransaction ??
+      data.key ??
+      data.gatewayTransactionId ??
       data.id ??
       data.transactionId ??
       "",
@@ -377,14 +396,19 @@ export async function handleEvPayWebhook(
       console.log(`[evpay-webhook] Signature OK for tx ${transactionId}`);
     }
 
-    // Mapeamento de eventos PIX → status:
-    //   pix.in.processing            → ignora (ainda não confirmado)
-    //   pix.in.confirmation          → APPROVED
-    //   pix.in.expired               → EXPIRED
-    //   pix.in.failed                → FAILED
-    //   pix.in.reversal.confirmation → REFUNDED
-    const eventType = String(body.type ?? body.event ?? "");
-    let status = String(data.status ?? body.status ?? "");
+    // Status do pagamento. A Yvepay manda em `statusTransaction` (ex:
+    // "PAID_OUT" = pago). Mantemos os formatos antigos (data.status,
+    // body.status, type de evento pix.in.*) como fallback.
+    //   PAID_OUT / PAID / APPROVED → aprovado (processPaymentCallback mapeia)
+    //   EXPIRED / FAILED / REVERSAL → recusado/estornado
+    const eventType = String(body.typeTransaction ?? body.type ?? body.event ?? "");
+    let status = String(
+      body.statusTransaction ??
+      data.statusTransaction ??
+      data.status ??
+      body.status ??
+      "",
+    );
     if (!status) {
       if (eventType === "pix.in.confirmation") status = "APPROVED";
       else if (eventType === "pix.in.expired") status = "EXPIRED";

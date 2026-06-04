@@ -84,6 +84,9 @@ export class EvPay implements PaymentGateway {
           "X-API-Key": this.apiKey,
         },
         body: JSON.stringify(payload),
+        // Timeout pra não pendurar a geração do PIX (e o cliente no Telegram)
+        // caso o Yvepay esteja lento/rate-limitado.
+        signal: AbortSignal.timeout(15_000),
       },
     );
 
@@ -210,6 +213,11 @@ export class EvPay implements PaymentGateway {
       {
         method: "GET",
         headers: { "X-API-Key": this.apiKey },
+        // Timeout obrigatório: sem ele, uma conexão pendurada (rate-limit do
+        // Yvepay) fica presa ~300s no pool do undici e envenena as próximas
+        // chamadas com "fetch failed". Estoura como TimeoutError, que o
+        // caller já captura no try/catch.
+        signal: AbortSignal.timeout(10_000),
       },
     );
     if (response.status === 404) return null;

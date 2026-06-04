@@ -209,6 +209,100 @@ app.post("/api/bots/:botId/evpay-webhook-repair", async (req, res) => {
   }
 });
 
+// Reconcilia transações EvPay presas em "pending": consulta o status atual
+// de cada uma na API do Yvepay e, se já está paga (PAID_OUT/APPROVED),
+// dispara o pipeline de confirmação (marca approved + entrega o produto).
+// Usado pra recuperar vendas que ficaram órfãs quando o webhook/poller falhou.
+// Query param opcional ?hours=72 controla a janela (padrão 72h, máx 168h).
+app.post("/api/bots/:botId/evpay-reconcile", async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const hours = Math.min(
+      168,
+      Math.max(1, Number(req.query.hours ?? 72) || 72),
+    );
+
+    const { data: bot } = await supabase
+      .from("bots")
+      .select("id, tenant_id, evpay_api_key, evpay_project_id")
+      .eq("id", botId)
+      .single();
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+    const typedBot = bot as {
+      id: string;
+      tenant_id: string;
+      evpay_api_key: string | null;
+      evpay_project_id: string | null;
+    };
+    if (!typedBot.evpay_api_key || !typedBot.evpay_project_id) {
+      res.status(400).json({ error: "EvPay credentials missing" });
+      return;
+    }
+
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const { data: pending } = await supabase
+      .from("transactions")
+      .select("id, external_id, created_at")
+      .eq("bot_id", botId)
+      .eq("gateway", "evpay")
+      .eq("status", "pending")
+      .gte("created_at", since)
+      .limit(500);
+
+    const txs = (pending ?? []) as Array<{ id: string; external_id: string; created_at: string }>;
+
+    const { EvPay } = await import("./services/evpay.js");
+    const evpay = new EvPay(typedBot.evpay_api_key, typedBot.evpay_project_id);
+    const { processPaymentCallback } = await import("./webhook/payment.js");
+
+    let approved = 0;
+    let stillPending = 0;
+    let notFound = 0;
+    let errors = 0;
+    const recovered: string[] = [];
+
+    for (const tx of txs) {
+      try {
+        const r = await evpay.getPaymentStatus(tx.external_id);
+        if (!r) {
+          notFound++;
+          continue;
+        }
+        const status = String(r.status).toUpperCase();
+        if (["APPROVED", "PAID", "PAID_OUT", "PAIDOUT", "COMPLETED", "SUCCESS"].includes(status)) {
+          await processPaymentCallback(botId, { transactionId: tx.external_id, status });
+          approved++;
+          recovered.push(tx.external_id);
+        } else {
+          stillPending++;
+        }
+      } catch (err) {
+        errors++;
+        console.error(`[evpay-reconcile] erro tx ${tx.external_id}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    console.log(`[evpay-reconcile] bot=${botId} janela=${hours}h total=${txs.length} aprovadas=${approved} pendentes=${stillPending} naoEncontradas=${notFound} erros=${errors}`);
+    res.json({
+      success: true,
+      windowHours: hours,
+      scanned: txs.length,
+      approvedNow: approved,
+      stillPending,
+      notFound,
+      errors,
+      recovered,
+    });
+  } catch (error) {
+    console.error("Failed to reconcile EvPay transactions:", error);
+    const msg = error instanceof Error ? error.message : "unknown";
+    res.status(500).json({ error: msg });
+  }
+});
+
 // Setup EvPay webhook for a bot (called from dashboard when EvPay credentials are saved)
 app.post("/api/bots/:botId/setup-evpay-webhook", async (req, res) => {
   try {

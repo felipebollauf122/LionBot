@@ -144,6 +144,71 @@ app.get("/api/bots/:botId/evpay-webhook-status", async (req, res) => {
   }
 });
 
+// Conserta o webhook EvPay: apaga TODOS os webhooks cadastrados no projeto
+// (que podem estar com URL antiga/errada) e re-registra a URL correta atual.
+// Use quando o webhook "não chega" — geralmente é URL velha cadastrada que
+// o 409 mascarava no setup normal.
+app.post("/api/bots/:botId/evpay-webhook-repair", async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { data: bot } = await supabase
+      .from("bots")
+      .select("id, evpay_api_key, evpay_project_id, evpay_webhook_secret")
+      .eq("id", botId)
+      .single();
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+    const typedBot = bot as {
+      id: string;
+      evpay_api_key: string | null;
+      evpay_project_id: string | null;
+      evpay_webhook_secret: string | null;
+    };
+    if (!typedBot.evpay_api_key || !typedBot.evpay_project_id) {
+      res.status(400).json({ error: "EvPay credentials missing" });
+      return;
+    }
+
+    const { EvPay } = await import("./services/evpay.js");
+    const evpay = new EvPay(typedBot.evpay_api_key, typedBot.evpay_project_id);
+    const expectedUrl = `${config.baseWebhookUrl}/webhook/evpay`;
+
+    // 1) Lista o que tá cadastrado e apaga TUDO (limpa URLs erradas/duplicadas)
+    const existing = await evpay.listWebhooks();
+    const deleted: string[] = [];
+    for (const w of existing) {
+      const ok = await evpay.deleteWebhook(w.id);
+      if (ok) deleted.push(`${w.id} (${w.url})`);
+    }
+
+    // 2) Gera secret novo se não tiver e re-registra a URL CORRETA
+    let secret = typedBot.evpay_webhook_secret;
+    if (!secret || secret.length < 16) {
+      const { randomBytes } = await import("crypto");
+      secret = `whsec_${randomBytes(24).toString("hex")}`;
+    }
+    const { webhookId } = await evpay.registerWebhook(expectedUrl, secret);
+    await supabase
+      .from("bots")
+      .update({ evpay_webhook_secret: secret, evpay_webhook_id: webhookId })
+      .eq("id", botId);
+    botCache.invalidate(botId);
+
+    res.json({
+      success: true,
+      registeredUrl: expectedUrl,
+      newWebhookId: webhookId,
+      deletedOld: deleted,
+    });
+  } catch (error) {
+    console.error("Failed to repair EvPay webhook:", error);
+    const msg = error instanceof Error ? error.message : "unknown";
+    res.status(500).json({ error: msg });
+  }
+});
+
 // Setup EvPay webhook for a bot (called from dashboard when EvPay credentials are saved)
 app.post("/api/bots/:botId/setup-evpay-webhook", async (req, res) => {
   try {

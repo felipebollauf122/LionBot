@@ -250,6 +250,22 @@ export class EvPay implements PaymentGateway {
   }
 
   /**
+   * Apaga um webhook do projeto pelo id. Usado quando a URL cadastrada está
+   * errada (ex: domínio antigo) e precisamos re-registrar com a URL correta.
+   */
+  async deleteWebhook(webhookId: string): Promise<boolean> {
+    if (!this.isConfigured()) throw new Error("EvPay não configurado");
+    const response = await fetch(
+      `${this.baseUrl}/projects/${this.projectId}/webhooks/${webhookId}`,
+      {
+        method: "DELETE",
+        headers: { "X-API-Key": this.apiKey },
+      },
+    );
+    return response.ok || response.status === 404;
+  }
+
+  /**
    * Valida o header X-Webhook-Signature (HMAC-SHA256 hex do raw body com o secret).
    */
   static verifySignature(rawBody: string, signature: string, secret: string): boolean {

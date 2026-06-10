@@ -27,17 +27,18 @@ export function WeekdayChart({ data }: { data: WeekdayPoint[] }) {
             <div className="w-full flex items-end justify-center gap-1 h-full">
               {/* previous week (ghost) */}
               <div
-                className="w-1/3 rounded-t"
-                style={{ height: `${(d.previous / max) * 100}%`, background: "rgba(255,255,255,0.08)" }}
+                className="w-1/3 rounded-t bar-grow"
+                style={{ height: `${(d.previous / max) * 100}%`, background: "rgba(255,255,255,0.08)", animationDelay: `${i * 0.06}s` }}
                 title={`Semana passada: ${d.previous}`}
               />
               {/* this week (neon) */}
               <div
-                className="w-1/3 rounded-t"
+                className="w-1/3 rounded-t bar-grow transition-[filter] hover:brightness-125"
                 style={{
                   height: `${Math.max(2, (d.current / max) * 100)}%`,
                   background: i === todayIdx ? "linear-gradient(180deg, var(--accent), var(--purple))" : "linear-gradient(180deg, var(--cyan), color-mix(in srgb,var(--cyan) 40%, transparent))",
                   boxShadow: i === todayIdx ? "0 0 14px -4px var(--accent-glow)" : "0 0 10px -6px var(--cyan-glow)",
+                  animationDelay: `${i * 0.06 + 0.05}s`,
                 }}
                 title={`Esta semana: ${d.current}`}
               />

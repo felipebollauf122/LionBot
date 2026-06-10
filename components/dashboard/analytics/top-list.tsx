@@ -29,7 +29,8 @@ export function TopList({ title, subtitle, icon, accent = "magenta", rows, empty
           {rows.map((r, i) => (
             <div
               key={r.id}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
+              className="row-hover reveal flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
+              style={{ animationDelay: `${i * 0.05}s` }}
             >
               <span
                 className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold stat-value"

@@ -33,6 +33,12 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
       accent="cyan"
       icon={icons.activity}
       className="h-full"
+      right={
+        <span className="flex items-center gap-1.5">
+          <span className="status-dot active glow-pulse" style={{ width: 7, height: 7 }} />
+          <span className="text-[10px] uppercase tracking-wider text-(--cyan) stat-value">live</span>
+        </span>
+      }
     >
       {items.length === 0 ? (
         <div className="py-10 text-center text-(--text-ghost) text-xs">Nenhuma atividade ainda</div>
@@ -41,7 +47,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
           {items.map((it, i) => {
             const k = KIND[it.kind];
             return (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
+              <div key={i} className="row-hover reveal flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] border border-(--border-subtle)" style={{ animationDelay: `${Math.min(i, 8) * 0.04}s` }}>
                 <div
                   className="section-icon w-7 h-7 shrink-0"
                   style={{ background: `color-mix(in srgb, ${k.color} 14%, transparent)`, color: k.color }}

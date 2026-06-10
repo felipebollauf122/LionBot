@@ -50,6 +50,7 @@ export function RevenueChart({ data }: { data: DayPoint[] }) {
           {areaPath && <path d={areaPath} fill="url(#rev-area)" />}
           {linePath && (
             <path
+              className="draw-line"
               d={linePath}
               fill="none"
               stroke="url(#rev-line)"
@@ -61,7 +62,7 @@ export function RevenueChart({ data }: { data: DayPoint[] }) {
             />
           )}
           {data.map((d, i) => (
-            <circle key={i} cx={x(i)} cy={y(d.revenue)} r={3} fill="var(--cyan)" style={{ filter: "drop-shadow(0 0 4px var(--cyan-glow))" }} />
+            <circle key={i} cx={x(i)} cy={y(d.revenue)} r={3} fill="var(--cyan)" className="num-pop" style={{ filter: "drop-shadow(0 0 4px var(--cyan-glow))", animationDelay: `${0.6 + i * 0.08}s` }} />
           ))}
         </svg>
         <div className="flex justify-between mt-1 px-1">

@@ -36,11 +36,12 @@ export function Funnel({ starts, checkouts, paid }: FunnelProps) {
           <div key={s.label} className="flex-1 flex flex-col items-center justify-end h-full">
             <span className="stat-value text-sm text-foreground mb-1.5">{s.count}</span>
             <div
-              className="w-full rounded-t-md"
+              className="w-full rounded-t-md bar-grow transition-[filter] hover:brightness-125"
               style={{
                 height: `${Math.max(6, pct(s.count))}%`,
                 background: `linear-gradient(180deg, color-mix(in srgb, var(--cyan) ${70 - i * 15}%, transparent), color-mix(in srgb, var(--accent) ${30 + i * 10}%, transparent))`,
                 boxShadow: "0 0 16px -6px var(--cyan-glow)",
+                animationDelay: `${i * 0.12}s`,
               }}
             />
             <span className="text-[9px] uppercase tracking-wider text-(--text-ghost) mt-2">{s.label}</span>

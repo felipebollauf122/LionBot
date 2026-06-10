@@ -81,15 +81,15 @@ export default async function DashboardPage() {
       )}
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-1">
-        <KpiCard label="Vendas Aprovadas" value={brl(revenue.revenue)} hint={`${(revenue.approvalRate * 100).toFixed(0)}% aprov.`} accent="magenta" icon={icons.money} progress={revenue.approvalRate} />
-        <CardShell title="Taxa de Conversão" subtitle="start → pix" accent="cyan" icon={icons.activity}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+        <KpiCard label="Vendas Aprovadas" value="" numericValue={revenue.revenue} format={brl} hint={`${(revenue.approvalRate * 100).toFixed(0)}% aprov.`} accent="magenta" icon={icons.money} progress={revenue.approvalRate} revealIndex={1} />
+        <CardShell title="Taxa de Conversão" subtitle="start → pix" accent="cyan" icon={icons.activity} revealIndex={2}>
           <div className="flex items-center justify-center py-1">
             <Gauge value={conversionRate} label={`${tracking.checkouts} de ${tracking.starts} starts`} size={140} />
           </div>
         </CardShell>
-        <KpiCard label="Total Starts" value={tracking.starts.toLocaleString("pt-BR")} hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} />
-        <KpiCard label="Ticket Médio" value={brl(revenue.avgTicket)} hint={`${funnel.checkouts} PIX gerados · ${funnel.paid} pagos`} accent="amber" icon={icons.ticket} />
+        <KpiCard label="Total Starts" value="" numericValue={tracking.starts} format={(n) => Math.round(n).toLocaleString("pt-BR")} hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} revealIndex={3} />
+        <KpiCard label="Ticket Médio" value="" numericValue={revenue.avgTicket} format={brl} hint={`${funnel.checkouts} PIX gerados · ${funnel.paid} pagos`} accent="amber" icon={icons.ticket} revealIndex={4} />
       </div>
 
       {/* Revenue chart + activity */}

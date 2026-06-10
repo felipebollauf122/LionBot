@@ -15,6 +15,7 @@ import { Funnel } from "@/components/dashboard/analytics/funnel";
 import { WeekdayChart } from "@/components/dashboard/analytics/weekday-chart";
 import { ComingSoonCard } from "@/components/dashboard/analytics/coming-soon-card";
 import { FilterBar } from "@/components/dashboard/analytics/filter-bar";
+import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
 import { icons } from "@/components/dashboard/analytics/icons";
 
 export const dynamic = "force-dynamic";
@@ -65,11 +66,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-2">
-        <KpiCard label="Visitas" value={tracking.visits.toLocaleString("pt-BR")} hint={`${(tracking.startRate * 100).toFixed(1)}% viraram starts`} accent="cyan" icon={icons.eye} />
-        <KpiCard label="Starts" value={tracking.starts.toLocaleString("pt-BR")} hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} />
-        <KpiCard label="Receita Gerada" value={brl(revenue.grossRevenue)} hint={`ticket médio ${brl(revenue.avgTicket)}`} accent="magenta" icon={icons.money} />
-        <KpiCard label="Receita Confirmada" value={brl(revenue.revenue)} hint={`${(revenue.approvalRate * 100).toFixed(0)}% de aprovação`} accent="cyan" delta={`${(revenue.approvalRate * 100).toFixed(0)}%`} deltaUp icon={icons.check} progress={revenue.approvalRate} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+        <KpiCard label="Visitas" value="" numericValue={tracking.visits} format={(n) => Math.round(n).toLocaleString("pt-BR")} hint={`${(tracking.startRate * 100).toFixed(1)}% viraram starts`} accent="cyan" icon={icons.eye} revealIndex={1} />
+        <KpiCard label="Starts" value="" numericValue={tracking.starts} format={(n) => Math.round(n).toLocaleString("pt-BR")} hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} revealIndex={2} />
+        <KpiCard label="Receita Gerada" value="" numericValue={revenue.grossRevenue} format={brl} hint={`ticket médio ${brl(revenue.avgTicket)}`} accent="magenta" icon={icons.money} revealIndex={3} />
+        <KpiCard label="Receita Confirmada" value="" numericValue={revenue.revenue} format={brl} hint={`${(revenue.approvalRate * 100).toFixed(0)}% de aprovação`} accent="cyan" delta={`${(revenue.approvalRate * 100).toFixed(0)}%`} deltaUp icon={icons.check} progress={revenue.approvalRate} revealIndex={4} />
       </div>
 
       {/* Weekday + funnel row */}
@@ -91,18 +92,24 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       {/* Sources + customer metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-4">
         <TopList title="Fontes de Tráfego" subtitle="de onde vêm as vendas" accent="cyan" icon={icons.globe} rows={topRows(tops.sources)} emptyLabel="Sem fontes rastreadas" />
-        <CardShell title="LTV Médio" subtitle="lifetime value" accent="magenta" icon={icons.money}>
-          <p className="stat-value text-3xl text-(--accent) mt-2" style={{ textShadow: "0 0 18px var(--accent-glow)" }}>{brl(revenue.ltv)}</p>
+        <CardShell title="LTV Médio" subtitle="lifetime value" accent="magenta" icon={icons.money} revealIndex={5}>
+          <p className="stat-value text-3xl text-(--accent) mt-2 num-pop" style={{ textShadow: "0 0 18px var(--accent-glow)" }}>
+            <AnimatedNumber value={revenue.ltv} format={brl} />
+          </p>
           <p className="text-[11px] text-(--text-muted) mt-1">gasto médio por cliente</p>
         </CardShell>
-        <CardShell title="Vendas por Usuário" subtitle="média" accent="purple" icon={icons.users}>
-          <p className="stat-value text-3xl text-(--purple) mt-2" style={{ textShadow: "0 0 18px var(--purple-glow)" }}>{revenue.salesPerBuyer.toFixed(1)}×</p>
+        <CardShell title="Vendas por Usuário" subtitle="média" accent="purple" icon={icons.users} revealIndex={6}>
+          <p className="stat-value text-3xl text-(--purple) mt-2 num-pop" style={{ textShadow: "0 0 18px var(--purple-glow)" }}>
+            <AnimatedNumber value={revenue.salesPerBuyer} format={(n) => `${n.toFixed(1)}×`} />
+          </p>
           <p className="text-[11px] text-(--text-muted) mt-1">compras por cliente</p>
         </CardShell>
-        <CardShell title="Taxa Recorrência" subtitle="compradores recorrentes" accent="cyan" icon={icons.repeat}>
-          <p className="stat-value text-3xl text-(--cyan) mt-2" style={{ textShadow: "0 0 18px var(--cyan-glow)" }}>{(revenue.recurrenceRate * 100).toFixed(1)}%</p>
+        <CardShell title="Taxa Recorrência" subtitle="compradores recorrentes" accent="cyan" icon={icons.repeat} revealIndex={7}>
+          <p className="stat-value text-3xl text-(--cyan) mt-2 num-pop" style={{ textShadow: "0 0 18px var(--cyan-glow)" }}>
+            <AnimatedNumber value={revenue.recurrenceRate * 100} format={(n) => `${n.toFixed(1)}%`} />
+          </p>
           <div className="mt-3 h-1 rounded-full bg-white/5 overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${revenue.recurrenceRate * 100}%`, background: "linear-gradient(90deg, var(--cyan), var(--accent))" }} />
+            <div className="h-full rounded-full" style={{ width: `${revenue.recurrenceRate * 100}%`, background: "linear-gradient(90deg, var(--cyan), var(--accent))", transition: "width 1s cubic-bezier(0.16,1,0.3,1)" }} />
           </div>
         </CardShell>
       </div>

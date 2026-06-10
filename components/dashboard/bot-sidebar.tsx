@@ -43,7 +43,7 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, 
   return (
     <aside
       className={`group/rail z-50 flex flex-col shrink-0
-        fixed md:relative inset-y-0 left-0 transition-all duration-300 ease-out
+        fixed md:sticky inset-y-0 left-0 top-0 h-screen md:self-start transition-all duration-300 ease-out
         w-[228px] md:w-16 md:hover:w-[228px]
         ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       style={{ background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)" }}

@@ -39,8 +39,8 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
 
   return (
     <aside
-      className={`w-[270px] min-h-screen flex flex-col z-50 transition-transform duration-300 ease-out
-        fixed md:relative inset-y-0 left-0
+      className={`w-[270px] flex flex-col z-50 transition-transform duration-300 ease-out
+        fixed md:sticky inset-y-0 left-0 top-0 h-screen md:self-start shrink-0
         ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       style={{ background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)" }}
     >
@@ -63,7 +63,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 pt-6 pb-4">
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 pt-6 pb-4">
         <p className="text-(--text-ghost) text-[10px] font-bold uppercase tracking-[0.14em] px-3 mb-3">
           Menu
         </p>

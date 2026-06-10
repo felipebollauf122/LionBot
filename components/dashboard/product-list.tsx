@@ -128,7 +128,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
       </div>
 
       {showForm && (
-        <div className="card p-6 mb-6 animate-scale relative">
+        <div className="card p-4 sm:p-6 mb-6 animate-scale relative">
           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/30 to-transparent" />
           <h3 className="text-foreground font-semibold text-sm mb-4 tracking-tight">Novo Produto</h3>
           <div className="space-y-3">
@@ -169,7 +169,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
             <div key={product.id} className="card p-5 relative group">
               {editingId === product.id ? (
                 <div className="space-y-3 animate-in">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="input-label">Nome real (oculto na lista)</label>
                       <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="input" />
@@ -213,7 +213,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                         <span className="badge badge-error text-[10px]">FANTASMA</span>
                         <span className="text-(--text-muted) text-[10px]">Enviado pra gateway (fatura PIX) em qualquer fluxo. Cliente continua vendo o nome real. Fallback pro real se vazio.</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="input-label">Nome Fantasma</label>
                           <input

@@ -44,7 +44,7 @@ export default function PainSection() {
           {pains.map((pain) => (
             <div
               key={pain.index}
-              className="bg-(--bg-surface) hover:bg-(--bg-elevated) transition-colors duration-300 p-8 lg:p-10 group"
+              className="bg-(--bg-surface) hover:bg-(--bg-elevated) transition-colors duration-300 p-6 sm:p-8 lg:p-10 group"
             >
               <p
                 className="text-xs text-(--red) tracking-[0.18em] uppercase mb-6"

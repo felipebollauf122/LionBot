@@ -136,10 +136,10 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
       </div>
 
       {/* Interval config */}
-      <div className="card p-6 mb-6 relative">
+      <div className="card p-4 sm:p-6 mb-6 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--amber)/15 to-transparent" />
         <h2 className="text-foreground font-semibold text-sm mb-4 tracking-tight">Intervalo entre fluxos</h2>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {INTERVAL_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -171,7 +171,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
       </div>
 
       {showCreate && (
-        <div className="card p-6 mb-4 animate-scale relative">
+        <div className="card p-4 sm:p-6 mb-4 animate-scale relative">
           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/30 to-transparent" />
           <h3 className="text-foreground font-semibold text-sm mb-4 tracking-tight">Criar Fluxo de Remarketing</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

@@ -49,11 +49,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     rows.map((r) => ({ id: r.id, label: r.label, value: brl(r.revenue), sub: `${r.sales} venda${r.sales !== 1 ? "s" : ""}` }));
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px]">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px]">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6 animate-up">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight page-title">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight page-title">
             Aná<span className="gradient-text">lises</span>
           </h1>
           <p className="text-(--text-secondary) text-sm mt-1 border-l-2 border-(--accent) pl-2">Métricas e relatórios</p>
@@ -66,7 +66,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
         <KpiCard label="Visitas" value="" numericValue={tracking.visits} format="int" hint={`${(tracking.startRate * 100).toFixed(1)}% viraram starts`} accent="cyan" icon={icons.eye} revealIndex={1} />
         <KpiCard label="Starts" value="" numericValue={tracking.starts} format="int" hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} revealIndex={2} />
         <KpiCard label="Receita Gerada" value="" numericValue={revenue.grossRevenue} format="brl" hint={`ticket médio ${brl(revenue.avgTicket)}`} accent="magenta" icon={icons.money} revealIndex={3} />
@@ -82,7 +82,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* Top breakdowns */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-3">
         <TopList title="Top 5 Bots" subtitle="mais vendidos" accent="magenta" icon={icons.bot} rows={topRows(tops.bots)} />
         <TopList title="Top 5 Fluxos" subtitle="mais vendidos" accent="cyan" icon={icons.flow} rows={topRows(tops.flows)} />
         <TopList title="Top 5 Planos" subtitle="mais vendidos" accent="amber" icon={icons.trophy} rows={topRows(tops.products)} />
@@ -90,7 +90,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* Sources + customer metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-4 animate-up-4">
         <TopList title="Fontes de Tráfego" subtitle="de onde vêm as vendas" accent="cyan" icon={icons.globe} rows={topRows(tops.sources)} emptyLabel="Sem fontes rastreadas" />
         <CardShell title="LTV Médio" subtitle="lifetime value" accent="magenta" icon={icons.money} revealIndex={5}>
           <p className="stat-value text-3xl text-(--accent) mt-2 num-pop" style={{ textShadow: "0 0 18px var(--accent-glow)" }}>
@@ -115,7 +115,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </div>
 
       {/* Placeholders (🔴 no data source) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 animate-up-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4 animate-up-5">
         <ComingSoonCard title="Geolocalização" subtitle="mapa de leads por estado" icon={icons.pin} note="Precisa de captura de localização — em breve." />
         <ComingSoonCard title="Dispositivos" subtitle="distribuição por tipo" icon={icons.device} note="Captura de dispositivo em desenvolvimento." />
         <ComingSoonCard title="Taxa Upsell / Downsell / OrderBump" subtitle="tipos de venda" icon={icons.arrowUp} note="Classificação de transações em breve." />

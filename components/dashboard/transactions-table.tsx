@@ -74,13 +74,13 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-foreground tracking-tight page-title mb-1">Transacoes</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight page-title mb-1">Transacoes</h1>
       <p className="text-(--text-secondary) text-sm mb-6">
         <span className="stat-value">{count}</span> transacoes no total
       </p>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {statMeta.map((s, i) => (
           <div key={s.key} className="card p-5 relative group">
             <div className="absolute top-0 left-4 right-4 h-px opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(90deg, transparent, ${s.color}, transparent)` }} />
@@ -128,50 +128,52 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
         <>
           <div className="card overflow-hidden relative">
             <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-(--border-subtle)">
-                  <th className="table-header">Produto</th>
-                  <th className="table-header">Valor</th>
-                  <th className="table-header">Status</th>
-                  <th className="table-header">Data</th>
-                  <th className="table-header">ID Externo</th>
-                  <th className="table-header">Comprovação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((tx) => {
-                  const productName = tx.products?.ghost_name || tx.products?.name || "—";
-                  return (
-                    <tr key={tx.id} className="hover:bg-white/2 transition-colors">
-                      <td className="table-cell text-foreground text-sm font-medium">{productName}</td>
-                      <td className="table-cell stat-value text-sm text-foreground">
-                        {(tx.amount / 100).toLocaleString("pt-BR", { style: "currency", currency: tx.currency })}
-                      </td>
-                      <td className="table-cell">
-                        <span className={`badge ${statusBadge[tx.status] ?? "badge-inactive"}`}>
-                          {statusLabels[tx.status] ?? tx.status}
-                        </span>
-                      </td>
-                      <td className="table-cell text-(--text-muted) text-xs">
-                        {new Date(tx.created_at).toLocaleDateString("pt-BR")}
-                      </td>
-                      <td className="table-cell text-(--text-ghost) text-xs font-mono stat-value">{tx.external_id}</td>
-                      <td className="table-cell">
-                        <a
-                          href={`/dashboard/sales/${tx.id}/proof`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-(--accent) hover:underline text-xs font-medium"
-                        >
-                          Ver prova ↗
-                        </a>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-(--border-subtle)">
+                    <th className="table-header whitespace-nowrap">Produto</th>
+                    <th className="table-header whitespace-nowrap">Valor</th>
+                    <th className="table-header whitespace-nowrap">Status</th>
+                    <th className="table-header whitespace-nowrap">Data</th>
+                    <th className="table-header whitespace-nowrap">ID Externo</th>
+                    <th className="table-header whitespace-nowrap">Comprovação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((tx) => {
+                    const productName = tx.products?.ghost_name || tx.products?.name || "—";
+                    return (
+                      <tr key={tx.id} className="hover:bg-white/2 transition-colors">
+                        <td className="table-cell text-foreground text-sm font-medium whitespace-nowrap">{productName}</td>
+                        <td className="table-cell stat-value text-sm text-foreground whitespace-nowrap">
+                          {(tx.amount / 100).toLocaleString("pt-BR", { style: "currency", currency: tx.currency })}
+                        </td>
+                        <td className="table-cell whitespace-nowrap">
+                          <span className={`badge ${statusBadge[tx.status] ?? "badge-inactive"}`}>
+                            {statusLabels[tx.status] ?? tx.status}
+                          </span>
+                        </td>
+                        <td className="table-cell text-(--text-muted) text-xs whitespace-nowrap">
+                          {new Date(tx.created_at).toLocaleDateString("pt-BR")}
+                        </td>
+                        <td className="table-cell text-(--text-ghost) text-xs font-mono stat-value whitespace-nowrap">{tx.external_id}</td>
+                        <td className="table-cell whitespace-nowrap">
+                          <a
+                            href={`/dashboard/sales/${tx.id}/proof`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-(--accent) hover:underline text-xs font-medium"
+                          >
+                            Ver prova ↗
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {totalPages > 1 && (

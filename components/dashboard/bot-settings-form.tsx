@@ -173,23 +173,23 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
       <p className="text-(--text-secondary) text-sm mb-8">Configure as integracoes e tracking deste bot</p>
 
       {/* Bot Info */}
-      <div className="card p-6 mb-5 relative">
+      <div className="card p-4 sm:p-6 mb-5 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
         <SectionHeader sKey="info" />
 
         {/* Avatar Upload */}
-        <div className="flex items-center gap-5 mb-6">
+        <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-5 mb-6">
           <div className="relative group">
             {avatarUrl ? (
               <img
                 src={avatarUrl}
                 alt="Bot avatar"
-                className="w-20 h-20 rounded-2xl object-cover border border-(--border-subtle)"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-(--border-subtle)"
                 style={{ boxShadow: "0 0 20px -6px rgba(255,43,214,0.15)" }}
               />
             ) : (
               <div
-                className="w-20 h-20 rounded-2xl border border-dashed border-(--border-subtle) flex items-center justify-center"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border border-dashed border-(--border-subtle) flex items-center justify-center"
                 style={{ background: "rgba(255,255,255,0.02)" }}
               >
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-ghost)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -358,7 +358,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
       </div>
 
       {/* Facebook */}
-      <div className="card p-6 mb-5 relative">
+      <div className="card p-4 sm:p-6 mb-5 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/15 to-transparent" />
         <SectionHeader sKey="facebook" />
         <div className="space-y-4">
@@ -374,7 +374,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
       </div>
 
       {/* Utmify */}
-      <div className="card p-6 mb-5 relative">
+      <div className="card p-4 sm:p-6 mb-5 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--purple)/15 to-transparent" />
         <SectionHeader sKey="utmify" />
         <div>
@@ -384,7 +384,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
       </div>
 
       {/* Gateway de pagamento */}
-      <div className="card p-6 mb-5 relative">
+      <div className="card p-4 sm:p-6 mb-5 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
         <SectionHeader sKey="gateway" />
         <div className="space-y-4">
@@ -499,7 +499,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
       </div>
 
       {/* Tracking Page */}
-      <div className="card p-6 mb-8 relative">
+      <div className="card p-4 sm:p-6 mb-8 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--amber)/15 to-transparent" />
         <SectionHeader sKey="tracking" />
         <div className="space-y-4">
@@ -565,7 +565,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
 
       {/* Substituir token do Telegram (admin/owner) */}
       {isAdmin && (
-        <div className="mt-12 card p-6 border border-amber-500/30 bg-amber-500/5">
+        <div className="mt-12 card p-4 sm:p-6 border border-amber-500/30 bg-amber-500/5">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -638,7 +638,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
       )}
 
       {/* Danger zone — excluir bot */}
-      <div className="mt-12 card p-6 border border-red-500/30 bg-red-500/5">
+      <div className="mt-12 card p-4 sm:p-6 border border-red-500/30 bg-red-500/5">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-9 h-9 rounded-lg bg-red-500/15 flex items-center justify-center">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

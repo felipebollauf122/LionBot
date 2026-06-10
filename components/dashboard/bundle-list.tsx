@@ -166,7 +166,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
       </div>
 
       {showCreate && (
-        <div className="card p-6 mb-6 animate-scale relative">
+        <div className="card p-4 sm:p-6 mb-6 animate-scale relative">
           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--purple)/30 to-transparent" />
           <h2 className="text-foreground font-semibold text-sm mb-4 tracking-tight">Criar Conjunto</h2>
           <div className="space-y-3">

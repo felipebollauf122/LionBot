@@ -120,7 +120,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       </div>
 
       {/* Heading */}
-      <h1 className="text-[30px] font-bold tracking-tight mb-2 page-title">
+      <h1 className="text-2xl sm:text-[30px] font-bold tracking-tight mb-2 page-title">
         {mode === "login" ? "Bem-vindo de volta" : "Crie sua conta"}
       </h1>
       <p className="text-(--text-secondary) text-sm mb-8 leading-relaxed">

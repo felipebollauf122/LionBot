@@ -49,7 +49,7 @@ export function FilterBar({ options }: { options: FilterOptions }) {
       </div>
 
       {/* Dropdown filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
         <Select label="Todos os Bots" value={params.get("botId") ?? ""} onChange={(v) => setParam("botId", v)} options={options.bots.map((b) => ({ value: b.id, label: b.label }))} />
         <Select label="Todos os Fluxos" value={params.get("flowId") ?? ""} onChange={(v) => setParam("flowId", v)} options={options.flows.map((f) => ({ value: f.id, label: f.label }))} />
         <Select label="Todos os Gateways" value={params.get("gateway") ?? ""} onChange={(v) => setParam("gateway", v)} options={options.gateways.map((g) => ({ value: g, label: g }))} />
@@ -77,7 +77,7 @@ function Select({
   options: { value: string; label: string }[];
 }) {
   return (
-    <select className="input max-w-52 text-xs py-2!" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className="input w-full sm:w-auto sm:max-w-52 text-xs py-2!" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">{label}</option>
       {options.map((o) => (
         <option key={o.value} value={o.value}>

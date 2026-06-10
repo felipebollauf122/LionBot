@@ -87,7 +87,7 @@ export function TrackingStats({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-foreground tracking-tight page-title mb-1">Tracking</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight page-title mb-1">Tracking</h1>
       <p className="text-(--text-secondary) text-sm mb-6">Funil de conversao, leads e eventos de rastreamento</p>
 
       {/* Funnel */}
@@ -195,7 +195,7 @@ export function TrackingStats({
                       </div>
 
                       {isExpanded && (
-                        <div className="border-t border-(--border-subtle) px-5 py-4 grid grid-cols-2 md:grid-cols-4 gap-4 animate-in relative">
+                        <div className="border-t border-(--border-subtle) px-3 py-2 sm:px-5 sm:py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in relative">
                           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/10 to-transparent" />
                           {[
                             ["Telegram ID", String(lead.telegram_user_id)],
@@ -247,61 +247,63 @@ export function TrackingStats({
             <>
               <div className="card overflow-hidden relative">
                 <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-(--border-subtle)">
-                      <th className="table-header">Evento</th>
-                      <th className="table-header">TID</th>
-                      <th className="table-header">UTM Source</th>
-                      <th className="table-header">fbclid</th>
-                      <th className="table-header">FB</th>
-                      <th className="table-header">Utmify</th>
-                      <th className="table-header">Data</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.map((event) => {
-                      const utmSource = (event.utm_params as Record<string, string>)?.utm_source;
-                      return (
-                        <tr key={event.id} className="hover:bg-white/2 transition-colors">
-                          <td className="table-cell">
-                            <span className={`badge ${eventBadgeClass[event.event_type] ?? "badge-inactive"}`}>
-                              {eventTypeLabels[event.event_type] ?? event.event_type}
-                            </span>
-                          </td>
-                          <td className="table-cell text-(--text-muted) text-xs font-mono stat-value">{event.tid ?? "—"}</td>
-                          <td className="table-cell">
-                            {utmSource ? (
-                              <span className="badge badge-purple">{utmSource}</span>
-                            ) : (
-                              <span className="text-(--text-ghost)">—</span>
-                            )}
-                          </td>
-                          <td className="table-cell text-(--text-muted) text-xs font-mono">
-                            {event.fbclid ? event.fbclid.slice(0, 12) + "..." : "—"}
-                          </td>
-                          <td className="table-cell">
-                            {event.sent_to_facebook ? (
-                              <span className="text-(--accent) text-xs font-bold">OK</span>
-                            ) : (
-                              <span className="text-(--text-ghost) text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="table-cell">
-                            {event.sent_to_utmify ? (
-                              <span className="text-(--accent) text-xs font-bold">OK</span>
-                            ) : (
-                              <span className="text-(--text-ghost) text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="table-cell text-(--text-muted) text-xs">
-                            {new Date(event.created_at).toLocaleString("pt-BR")}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-(--border-subtle)">
+                        <th className="table-header whitespace-nowrap">Evento</th>
+                        <th className="table-header whitespace-nowrap">TID</th>
+                        <th className="table-header whitespace-nowrap">UTM Source</th>
+                        <th className="table-header whitespace-nowrap">fbclid</th>
+                        <th className="table-header whitespace-nowrap">FB</th>
+                        <th className="table-header whitespace-nowrap">Utmify</th>
+                        <th className="table-header whitespace-nowrap">Data</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {events.map((event) => {
+                        const utmSource = (event.utm_params as Record<string, string>)?.utm_source;
+                        return (
+                          <tr key={event.id} className="hover:bg-white/2 transition-colors">
+                            <td className="table-cell whitespace-nowrap">
+                              <span className={`badge ${eventBadgeClass[event.event_type] ?? "badge-inactive"}`}>
+                                {eventTypeLabels[event.event_type] ?? event.event_type}
+                              </span>
+                            </td>
+                            <td className="table-cell text-(--text-muted) text-xs font-mono stat-value whitespace-nowrap">{event.tid ?? "—"}</td>
+                            <td className="table-cell whitespace-nowrap">
+                              {utmSource ? (
+                                <span className="badge badge-purple">{utmSource}</span>
+                              ) : (
+                                <span className="text-(--text-ghost)">—</span>
+                              )}
+                            </td>
+                            <td className="table-cell text-(--text-muted) text-xs font-mono whitespace-nowrap">
+                              {event.fbclid ? event.fbclid.slice(0, 12) + "..." : "—"}
+                            </td>
+                            <td className="table-cell whitespace-nowrap">
+                              {event.sent_to_facebook ? (
+                                <span className="text-(--accent) text-xs font-bold">OK</span>
+                              ) : (
+                                <span className="text-(--text-ghost) text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="table-cell whitespace-nowrap">
+                              {event.sent_to_utmify ? (
+                                <span className="text-(--accent) text-xs font-bold">OK</span>
+                              ) : (
+                                <span className="text-(--text-ghost) text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="table-cell text-(--text-muted) text-xs whitespace-nowrap">
+                              {new Date(event.created_at).toLocaleString("pt-BR")}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {eventsTotalPages > 1 && (

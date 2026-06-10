@@ -36,9 +36,9 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight page-title">Leads</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight page-title">Leads</h1>
           <p className="text-(--text-secondary) text-sm mt-1">
             <span className="stat-value text-(--cyan)">{count}</span> leads no total
           </p>
@@ -50,7 +50,7 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Buscar por nome ou username..."
-            className="input w-64"
+            className="input w-full sm:w-64"
           />
           <button onClick={handleSearch} className="btn-primary">Buscar</button>
         </div>
@@ -69,38 +69,40 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
         <>
           <div className="card overflow-hidden relative">
             <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/15 to-transparent" />
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-(--border-subtle)">
-                  <th className="table-header">Nome</th>
-                  <th className="table-header">Username</th>
-                  <th className="table-header">Telegram ID</th>
-                  <th className="table-header">Fonte</th>
-                  <th className="table-header">TID</th>
-                  <th className="table-header">Criado em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-white/2 transition-colors group">
-                    <td className="table-cell text-foreground font-medium">{lead.first_name}</td>
-                    <td className="table-cell text-(--text-secondary)">{lead.username ? `@${lead.username}` : "—"}</td>
-                    <td className="table-cell text-(--text-muted) text-xs font-mono stat-value">{lead.telegram_user_id}</td>
-                    <td className="table-cell">
-                      {lead.utm_source ? (
-                        <span className="badge badge-purple">{lead.utm_source}</span>
-                      ) : (
-                        <span className="text-(--text-ghost)">—</span>
-                      )}
-                    </td>
-                    <td className="table-cell text-(--text-muted) text-xs font-mono stat-value">{lead.tid ?? "—"}</td>
-                    <td className="table-cell text-(--text-muted) text-xs">
-                      {new Date(lead.created_at).toLocaleDateString("pt-BR")}
-                    </td>
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-(--border-subtle)">
+                    <th className="table-header whitespace-nowrap">Nome</th>
+                    <th className="table-header whitespace-nowrap">Username</th>
+                    <th className="table-header whitespace-nowrap hidden sm:table-cell">Telegram ID</th>
+                    <th className="table-header whitespace-nowrap hidden sm:table-cell">Fonte</th>
+                    <th className="table-header whitespace-nowrap hidden sm:table-cell">TID</th>
+                    <th className="table-header whitespace-nowrap hidden sm:table-cell">Criado em</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {leads.map((lead) => (
+                    <tr key={lead.id} className="hover:bg-white/2 transition-colors group">
+                      <td className="table-cell text-foreground font-medium whitespace-nowrap">{lead.first_name}</td>
+                      <td className="table-cell text-(--text-secondary) whitespace-nowrap">{lead.username ? `@${lead.username}` : "—"}</td>
+                      <td className="table-cell text-(--text-muted) text-xs font-mono stat-value whitespace-nowrap hidden sm:table-cell">{lead.telegram_user_id}</td>
+                      <td className="table-cell whitespace-nowrap hidden sm:table-cell">
+                        {lead.utm_source ? (
+                          <span className="badge badge-purple">{lead.utm_source}</span>
+                        ) : (
+                          <span className="text-(--text-ghost)">—</span>
+                        )}
+                      </td>
+                      <td className="table-cell text-(--text-muted) text-xs font-mono stat-value whitespace-nowrap hidden sm:table-cell">{lead.tid ?? "—"}</td>
+                      <td className="table-cell text-(--text-muted) text-xs whitespace-nowrap hidden sm:table-cell">
+                        {new Date(lead.created_at).toLocaleDateString("pt-BR")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {totalPages > 1 && (

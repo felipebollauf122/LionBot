@@ -30,7 +30,8 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
     router.refresh();
   };
 
-  const isBotsActive = pathname === "/dashboard" || (pathname.startsWith("/dashboard/bots") && !pathname.startsWith("/dashboard/admin"));
+  const isDashboardActive = pathname === "/dashboard";
+  const isBotsActive = pathname.startsWith("/dashboard/bots");
   const isAnalyticsActive = pathname.startsWith("/dashboard/analytics");
   const isAutomationsActive = pathname.startsWith("/dashboard/automations");
   const isAdminActive = pathname.startsWith("/dashboard/admin");
@@ -67,9 +68,9 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
         </p>
         <a
           href="/dashboard"
-          className={`nav-item ${isBotsActive ? "active" : ""}`}
+          className={`nav-item ${isDashboardActive ? "active" : ""}`}
         >
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isBotsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isBotsActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDashboardActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isDashboardActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1" />
               <rect x="14" y="3" width="7" height="7" rx="1" />
@@ -77,7 +78,20 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
               <rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
           </div>
-          Meus Bots
+          Dashboard
+        </a>
+        <a
+          href="/dashboard/bots"
+          className={`nav-item ${isBotsActive ? "active" : ""}`}
+        >
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isBotsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isBotsActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="10" rx="2" />
+              <circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
+              <line x1="8" y1="16" x2="8" y2="16" /><line x1="16" y1="16" x2="16" y2="16" />
+            </svg>
+          </div>
+          Bots
         </a>
         <a
           href="/dashboard/analytics"

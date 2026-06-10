@@ -484,3 +484,72 @@ export async function getTenantName(): Promise<string> {
   const meta = (user.user_metadata ?? {}) as { name?: string; full_name?: string };
   return meta.name || meta.full_name || (user.email ? user.email.split("@")[0] : "");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bots fleet — each bot + its real stats (for the Bots tab)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BotFleetRow {
+  id: string;
+  bot_username: string | null;
+  redirect_display_name: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  has_tracking: boolean;
+  has_payment: boolean;
+  revenue: number; // approved cents (all-time)
+  sales: number;
+  leads: number;
+  created_at: string;
+}
+
+export async function getBotsFleet(): Promise<BotFleetRow[]> {
+  const supabase = await createClient();
+
+  const { data: bots } = await supabase
+    .from("bots")
+    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,created_at")
+    .order("created_at", { ascending: false });
+
+  const list = bots ?? [];
+  if (list.length === 0) return [];
+
+  const ids = list.map((b) => b.id as string);
+
+  // One query each for tx + leads, then aggregate per bot in JS.
+  const [txRes, leadsRes] = await Promise.all([
+    supabase.from("transactions").select("bot_id,amount,status").in("bot_id", ids),
+    supabase.from("leads").select("bot_id").in("bot_id", ids),
+  ]);
+
+  const rev = new Map<string, { revenue: number; sales: number }>();
+  for (const t of txRes.data ?? []) {
+    if (t.status !== "approved") continue;
+    const cur = rev.get(t.bot_id as string) ?? { revenue: 0, sales: 0 };
+    cur.revenue += (t.amount as number) ?? 0;
+    cur.sales += 1;
+    rev.set(t.bot_id as string, cur);
+  }
+  const leadCount = new Map<string, number>();
+  for (const l of leadsRes.data ?? []) {
+    leadCount.set(l.bot_id as string, (leadCount.get(l.bot_id as string) ?? 0) + 1);
+  }
+
+  return list.map((b) => {
+    const r = rev.get(b.id as string) ?? { revenue: 0, sales: 0 };
+    const hasPayment = !!(b.sigilopay_public_key || b.evpay_api_key);
+    return {
+      id: b.id as string,
+      bot_username: (b.bot_username as string) ?? null,
+      redirect_display_name: (b.redirect_display_name as string) ?? null,
+      avatar_url: (b.avatar_url as string) ?? null,
+      is_active: !!b.is_active,
+      has_tracking: !!b.facebook_pixel_id,
+      has_payment: hasPayment,
+      revenue: r.revenue,
+      sales: r.sales,
+      leads: leadCount.get(b.id as string) ?? 0,
+      created_at: b.created_at as string,
+    };
+  });
+}

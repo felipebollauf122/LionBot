@@ -2,6 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { getTransactions } from "@/lib/actions/transaction-actions";
+import { getOrphanedTransactions, redeliverAccess } from "@/lib/actions/orphaned-transactions-actions";
+import { CommandBar, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
+import { DataGrid, type Column } from "@/components/dashboard/console/data-grid";
+import { ContextDrawer } from "@/components/dashboard/console/context-drawer";
 
 interface TransactionRow {
   id: string;
@@ -13,6 +17,23 @@ interface TransactionRow {
   paid_at: string | null;
   products: { name: string; ghost_name?: string | null } | null;
 }
+
+/** Linha de transação órfã ("pagou e não recebeu") — vinda de getOrphanedTransactions. */
+interface OrphanRow {
+  id: string;
+  external_id: string;
+  amount: number;
+  currency: string;
+  paid_at: string | null;
+  created_at: string;
+  product_name: string;
+  telegram_user_id: number | null;
+  first_name: string;
+  lead_id: string;
+}
+
+/** União apresentada na grid: transação normal ou órfã (com flag e dados de comprador). */
+type GridRow = TransactionRow & { __orphan?: boolean; first_name?: string; telegram_user_id?: number | null };
 
 interface TransactionsTableProps {
   botId: string;
@@ -37,20 +58,60 @@ const statusLabels: Record<string, string> = {
   refunded: "Reembolsado",
 };
 
-const statMeta = [
-  { key: "revenue", label: "Receita Total", color: "var(--accent)", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" },
-  { key: "sales", label: "Vendas Aprovadas", color: "var(--accent)", icon: "M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3" },
-  { key: "pending", label: "Pendentes", color: "var(--amber)", icon: "M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" },
+const FILTERS: { key: string; label: string }[] = [
+  { key: "all", label: "Todas" },
+  { key: "approved", label: "Aprovadas" },
+  { key: "pending", label: "Pendentes" },
+  { key: "refused", label: "Recusadas" },
+  { key: "refunded", label: "Reembolsadas" },
 ];
 
+const fmtMoney = (cents: number, currency: string = "BRL") =>
+  (cents / 100).toLocaleString("pt-BR", { style: "currency", currency });
+
+/** Converte uma órfã na forma de TransactionRow pra reaproveitar a grid/drawer. */
+function orphanToGridRow(o: OrphanRow): GridRow {
+  return {
+    id: o.id,
+    external_id: o.external_id,
+    amount: o.amount,
+    currency: o.currency,
+    status: "approved",
+    created_at: o.created_at,
+    paid_at: o.paid_at,
+    products: { name: o.product_name },
+    __orphan: true,
+    first_name: o.first_name,
+    telegram_user_id: o.telegram_user_id,
+  };
+}
+
 export function TransactionsTable({ botId, initialTransactions, total, currentPage, pageSize, stats }: TransactionsTableProps) {
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const [transactions, setTransactions] = useState<GridRow[]>(initialTransactions);
   const [page, setPage] = useState(currentPage);
   const [count, setCount] = useState(total);
   const [filter, setFilter] = useState("all");
   const [isPending, startTransition] = useTransition();
 
-  const totalPages = Math.ceil(count / pageSize);
+  // Órfãs ("pagou e não recebeu") — carregadas sob demanda via server action existente.
+  const [orphans, setOrphans] = useState<OrphanRow[] | null>(null);
+  const [orphanCount, setOrphanCount] = useState<number | null>(null);
+
+  // Drawer de detalhe + estado de reenvio por transação.
+  const [selected, setSelected] = useState<GridRow | null>(null);
+  const [resending, startResend] = useTransition();
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+
+  const showingOrphans = filter === "orphaned";
+  const totalPages = showingOrphans ? 1 : Math.ceil(count / pageSize);
+
+  const loadOrphans = () => {
+    startTransition(async () => {
+      const result = await getOrphanedTransactions(botId);
+      setOrphans(result.transactions as OrphanRow[]);
+      setOrphanCount(result.total);
+    });
+  };
 
   const loadPage = (newPage: number, statusFilter?: string) => {
     startTransition(async () => {
@@ -63,132 +124,238 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
 
   const handleFilter = (newFilter: string) => {
     setFilter(newFilter);
-    loadPage(1, newFilter);
+    if (newFilter === "orphaned") {
+      loadOrphans();
+    } else {
+      loadPage(1, newFilter);
+    }
   };
 
-  const statValues = [
-    (stats.totalRevenue / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
-    String(stats.totalSales),
-    String(stats.pendingCount),
+  const handleResend = (txId: string) => {
+    if (
+      !confirm(
+        "Reenviar o acesso para este comprador que pagou mas não teve entrega confirmada?\n\n" +
+          "Ele recebe de novo o fluxo de produto/mensagens. O Facebook/Utmify NÃO são notificados de novo (sem duplicar venda).",
+      )
+    ) {
+      return;
+    }
+    setResendMsg(null);
+    startResend(async () => {
+      try {
+        const r = await redeliverAccess(botId, [txId]);
+        setResendMsg(`✅ Reenvio iniciado para ${r.queued} comprador(es). Acontece em segundo plano.`);
+      } catch (e) {
+        setResendMsg(`❌ ${e instanceof Error ? e.message : "erro ao reenviar"}`);
+      }
+    });
+  };
+
+  const rows: GridRow[] = showingOrphans ? (orphans ?? []).map(orphanToGridRow) : transactions;
+
+  const columns: Column<GridRow>[] = [
+    {
+      key: "created",
+      header: "Data",
+      cell: (tx) => (
+        <span className="text-(--text-muted) text-xs">{new Date(tx.created_at).toLocaleDateString("pt-BR")}</span>
+      ),
+    },
+    {
+      key: "product",
+      header: "Produto",
+      cell: (tx) => {
+        const productName = tx.products?.ghost_name || tx.products?.name || "—";
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-foreground font-medium truncate">{productName}</span>
+            {tx.__orphan && (
+              <span className="badge badge-error text-[9px]! py-0.5! px-1.5! shrink-0">órfã</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "amount",
+      header: "Valor",
+      align: "right",
+      cell: (tx) => <span className="stat-value text-sm text-foreground">{fmtMoney(tx.amount, tx.currency)}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (tx) => (
+        <span className={`badge ${statusBadge[tx.status] ?? "badge-inactive"}`}>
+          {statusLabels[tx.status] ?? tx.status}
+        </span>
+      ),
+    },
+    {
+      key: "gateway",
+      header: "Gateway",
+      align: "right",
+      secondary: true,
+      cell: (tx) => <span className="text-(--text-ghost) text-xs font-mono stat-value">{tx.external_id}</span>,
+    },
   ];
 
   return (
-    <div>
-      <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight page-title mb-1">Transacoes</h1>
-      <p className="text-(--text-secondary) text-sm mb-6">
-        <span className="stat-value">{count}</span> transacoes no total
-      </p>
+    <div className="min-h-screen flex flex-col">
+      <CommandBar
+        title="Transações"
+        subtitle="pagamentos e entregas"
+        filters={
+          <>
+            {FILTERS.map((f) => (
+              <FilterChip key={f.key} active={filter === f.key} onClick={() => handleFilter(f.key)}>
+                {f.label}
+              </FilterChip>
+            ))}
+            <FilterChip
+              active={showingOrphans}
+              onClick={() => handleFilter("orphaned")}
+              count={orphanCount ?? undefined}
+            >
+              Órfãs
+            </FilterChip>
+          </>
+        }
+        kpis={
+          <>
+            <KpiPill label="receita" value={fmtMoney(stats.totalRevenue)} accent="magenta" />
+            <KpiPill label="aprovadas" value={String(stats.totalSales)} accent="cyan" />
+            <KpiPill label="pendentes" value={String(stats.pendingCount)} accent="amber" />
+            <KpiPill label="órfãs" value={orphanCount !== null ? String(orphanCount) : "—"} accent="red" />
+          </>
+        }
+      />
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {statMeta.map((s, i) => (
-          <div key={s.key} className="card p-5 relative group">
-            <div className="absolute top-0 left-4 right-4 h-px opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(90deg, transparent, ${s.color}, transparent)` }} />
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-(--text-muted) text-[10px] font-bold uppercase tracking-[0.08em]">{s.label}</p>
-              <div className="section-icon w-8 h-8" style={{ background: `color-mix(in srgb, ${s.color} 12%, transparent)` }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={s.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d={s.icon} />
-                </svg>
-              </div>
-            </div>
-            <p className="stat-value text-xl" style={{ color: s.color }}>{statValues[i]}</p>
-          </div>
-        ))}
-      </div>
+      <div className="flex-1 p-4 sm:p-6">
+        {showingOrphans && (
+          <p className="text-(--text-secondary) text-sm mb-4">
+            {orphans === null
+              ? "Carregando transações que pagaram mas não receberam…"
+              : orphanCount === 0
+                ? "Nenhuma transação órfã — todo pagamento aprovado teve entrega confirmada. ✅"
+                : `${orphanCount} transação(ões) aprovada(s) sem confirmação de entrega. Abra uma para reenviar o acesso.`}
+          </p>
+        )}
 
-      {/* Filters */}
-      <div className="flex gap-2 mb-5">
-        {["all", "approved", "pending", "refused", "refunded"].map((f) => (
-          <button
-            key={f}
-            onClick={() => handleFilter(f)}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-              filter === f
-                ? "text-white"
-                : "bg-white/3 text-(--text-muted) hover:bg-white/6 hover:text-(--text-secondary) border border-(--border-subtle)"
-            }`}
-            style={filter === f ? { background: "linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)", boxShadow: "0 0 16px -4px var(--accent-glow)" } : {}}
-          >
-            {f === "all" ? "Todas" : statusLabels[f]}
-          </button>
-        ))}
-      </div>
-
-      {transactions.length === 0 ? (
-        <div className="text-center py-20 animate-up">
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(255, 43, 214, 0.12) 0%, rgba(255, 43, 214, 0.04) 100%)" }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-            </svg>
-          </div>
-          <p className="text-(--text-muted) text-sm">Nenhuma transacao encontrada</p>
+        <div className="card overflow-hidden">
+          <DataGrid
+            columns={columns}
+            rows={rows}
+            rowKey={(tx) => tx.id}
+            onRowClick={(tx) => {
+              setResendMsg(null);
+              setSelected(tx);
+            }}
+            selectedKey={selected?.id ?? null}
+            empty={showingOrphans ? "Nenhuma transação órfã" : "Nenhuma transação encontrada"}
+          />
         </div>
-      ) : (
-        <>
-          <div className="card overflow-hidden relative">
-            <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-(--border-subtle)">
-                    <th className="table-header whitespace-nowrap">Produto</th>
-                    <th className="table-header whitespace-nowrap">Valor</th>
-                    <th className="table-header whitespace-nowrap">Status</th>
-                    <th className="table-header whitespace-nowrap">Data</th>
-                    <th className="table-header whitespace-nowrap">ID Externo</th>
-                    <th className="table-header whitespace-nowrap">Comprovação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((tx) => {
-                    const productName = tx.products?.ghost_name || tx.products?.name || "—";
-                    return (
-                      <tr key={tx.id} className="hover:bg-white/2 transition-colors">
-                        <td className="table-cell text-foreground text-sm font-medium whitespace-nowrap">{productName}</td>
-                        <td className="table-cell stat-value text-sm text-foreground whitespace-nowrap">
-                          {(tx.amount / 100).toLocaleString("pt-BR", { style: "currency", currency: tx.currency })}
-                        </td>
-                        <td className="table-cell whitespace-nowrap">
-                          <span className={`badge ${statusBadge[tx.status] ?? "badge-inactive"}`}>
-                            {statusLabels[tx.status] ?? tx.status}
-                          </span>
-                        </td>
-                        <td className="table-cell text-(--text-muted) text-xs whitespace-nowrap">
-                          {new Date(tx.created_at).toLocaleDateString("pt-BR")}
-                        </td>
-                        <td className="table-cell text-(--text-ghost) text-xs font-mono stat-value whitespace-nowrap">{tx.external_id}</td>
-                        <td className="table-cell whitespace-nowrap">
-                          <a
-                            href={`/dashboard/sales/${tx.id}/proof`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-(--accent) hover:underline text-xs font-medium"
-                          >
-                            Ver prova ↗
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 mt-5">
-              <button onClick={() => loadPage(page - 1)} disabled={page <= 1 || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">
-                Anterior
-              </button>
-              <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">{page} / {totalPages}</span>
-              <button onClick={() => loadPage(page + 1)} disabled={page >= totalPages || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">
-                Proxima
-              </button>
+        {!showingOrphans && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-5">
+            <button onClick={() => loadPage(page - 1)} disabled={page <= 1 || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">
+              Anterior
+            </button>
+            <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">{page} / {totalPages}</span>
+            <button onClick={() => loadPage(page + 1)} disabled={page >= totalPages || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">
+              Próxima
+            </button>
+          </div>
+        )}
+      </div>
+
+      <ContextDrawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={selected ? (selected.products?.ghost_name || selected.products?.name || "Transação") : "Transação"}
+        subtitle={selected?.__orphan ? "pagou e não recebeu" : "detalhe da transação"}
+        actions={
+          selected ? (
+            <a
+              href={`/dashboard/sales/${selected.id}/proof`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost py-1.5! px-3! text-xs!"
+            >
+              Ver prova ↗
+            </a>
+          ) : undefined
+        }
+      >
+        {selected && (
+          <div className="space-y-4">
+            <DetailRow label="Produto" value={selected.products?.ghost_name || selected.products?.name || "—"} />
+            <DetailRow label="Valor" value={fmtMoney(selected.amount, selected.currency)} />
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Status</span>
+              <span className={`badge ${statusBadge[selected.status] ?? "badge-inactive"}`}>
+                {statusLabels[selected.status] ?? selected.status}
+              </span>
             </div>
-          )}
-        </>
-      )}
+            <DetailRow label="Gateway / ID Externo" value={selected.external_id} mono />
+            {selected.__orphan && (
+              <>
+                <DetailRow label="Comprador" value={selected.first_name || "—"} />
+                <DetailRow label="Telegram ID" value={selected.telegram_user_id != null ? String(selected.telegram_user_id) : "—"} mono />
+              </>
+            )}
+            <div className="divider my-2" />
+            <DetailRow label="Criado em" value={new Date(selected.created_at).toLocaleString("pt-BR")} />
+            <DetailRow
+              label="Pago em"
+              value={selected.paid_at ? new Date(selected.paid_at).toLocaleString("pt-BR") : "—"}
+            />
+
+            <div className="divider my-2" />
+            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Comprovação</p>
+            <a
+              href={`/dashboard/sales/${selected.id}/proof`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-(--accent) hover:underline text-xs font-medium inline-block"
+            >
+              Ver prova ↗
+            </a>
+
+            {selected.__orphan && (
+              <>
+                <div className="divider my-2" />
+                <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Pagou e não recebeu</p>
+                <p className="text-(--text-secondary) text-xs leading-relaxed">
+                  Este comprador pagou mas a entrega nunca foi confirmada. Reenvie o acesso para reexecutar o fluxo de
+                  produto/mensagens. Tracking não é duplicado.
+                </p>
+                <button
+                  onClick={() => handleResend(selected.id)}
+                  disabled={resending}
+                  className="btn-primary w-full disabled:opacity-50"
+                >
+                  {resending ? "Reenviando…" : "Reenviar acesso"}
+                </button>
+                {resendMsg && (
+                  <div className="px-4 py-3 rounded-xl border border-(--border-subtle) text-sm text-(--text-secondary) bg-white/2">
+                    {resendMsg}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </ContextDrawer>
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

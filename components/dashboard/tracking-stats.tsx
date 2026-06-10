@@ -3,6 +3,9 @@
 import { useState, useTransition } from "react";
 import { getTrackingEvents, getTrackingLeads } from "@/lib/actions/tracking-actions";
 import type { TrackingEvent, Lead } from "@/lib/types/database";
+import { CommandBar, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
+import { DataGrid, type Column } from "@/components/dashboard/console/data-grid";
+import { ContextDrawer } from "@/components/dashboard/console/context-drawer";
 
 interface TrackingStatsProps {
   botId: string;
@@ -31,20 +34,12 @@ const eventBadgeClass: Record<string, string> = {
   purchase: "badge-active",
 };
 
-const funnelColors: Record<string, string> = {
-  page_view: "var(--cyan)",
-  bot_start: "var(--cyan)",
-  view_offer: "var(--purple)",
-  checkout: "var(--amber)",
-  purchase: "var(--accent)",
-};
-
-const funnelIcons: Record<string, string> = {
-  page_view: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z",
-  bot_start: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z",
-  view_offer: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z",
-  checkout: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
-  purchase: "M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3",
+const funnelAccent: Record<string, "magenta" | "cyan" | "purple" | "amber"> = {
+  page_view: "cyan",
+  bot_start: "cyan",
+  view_offer: "purple",
+  checkout: "amber",
+  purchase: "magenta",
 };
 
 type Tab = "leads" | "events";
@@ -61,9 +56,9 @@ export function TrackingStats({
   const [eventsCount, setEventsCount] = useState(totalEvents);
   const [leadsCount, setLeadsCount] = useState(totalLeads);
   const [isPending, startTransition] = useTransition();
-  const [expandedLead, setExpandedLead] = useState<string | null>(null);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<TrackingEvent | null>(null);
 
-  const maxFunnel = Math.max(...Object.values(funnel), 1);
   const eventsTotalPages = Math.ceil(eventsCount / pageSize);
   const leadsTotalPages = Math.ceil(leadsCount / pageSize);
 
@@ -85,238 +80,220 @@ export function TrackingStats({
     });
   };
 
-  return (
-    <div>
-      <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight page-title mb-1">Tracking</h1>
-      <p className="text-(--text-secondary) text-sm mb-6">Funil de conversao, leads e eventos de rastreamento</p>
-
-      {/* Funnel */}
-      <div className="card p-6 mb-6 relative">
-        <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/15 to-transparent" />
-        <h2 className="text-foreground font-semibold text-sm mb-5 tracking-tight">Funil de Conversao</h2>
-        <div className="space-y-3">
-          {Object.entries(eventTypeLabels).map(([key, label]) => {
-            const value = funnel[key] ?? 0;
-            const widthPercent = Math.max((value / maxFunnel) * 100, 4);
-            const color = funnelColors[key] ?? "var(--accent)";
-            const icon = funnelIcons[key];
-            return (
-              <div key={key} className="flex items-center gap-4">
-                <div className="flex items-center gap-2.5 w-32 justify-end">
-                  <span className="text-(--text-secondary) text-xs font-medium text-right">{label}</span>
-                  <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ background: `color-mix(in srgb, ${color} 12%, transparent)` }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d={icon} />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1 rounded-full h-9 overflow-hidden relative" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid var(--border-subtle)" }}>
-                  <div
-                    className="h-full rounded-full flex items-center px-3 transition-all duration-700 relative overflow-hidden"
-                    style={{ width: `${widthPercent}%`, background: `linear-gradient(135deg, color-mix(in srgb, ${color} 25%, transparent) 0%, color-mix(in srgb, ${color} 12%, transparent) 100%)` }}
-                  >
-                    {/* Shimmer effect */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent" style={{ animation: "shimmer 3s ease-in-out infinite" }} />
-                    <span className="text-foreground text-xs font-bold stat-value relative z-10">{value}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+  const leadColumns: Column<Lead>[] = [
+    {
+      key: "name",
+      header: "Lead",
+      cell: (l) => (
+        <div className="flex items-center gap-2.5">
+          <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
+            {(l.first_name || "?").slice(0, 1).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="text-foreground font-medium truncate">{l.first_name || "—"}</p>
+            <p className="text-[10px] text-(--text-ghost)">{l.username ? `@${l.username}` : "sem username"}</p>
+          </div>
         </div>
+      ),
+    },
+    { key: "tgid", header: "Telegram ID", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.telegram_user_id}</span> },
+    { key: "source", header: "Fonte", secondary: true, cell: (l) => (l.utm_source ? <span className="badge badge-purple">{l.utm_source}</span> : <span className="text-(--text-ghost)">—</span>) },
+    { key: "tid", header: "TID", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.tid ?? "—"}</span> },
+    { key: "created", header: "Criado", align: "right", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs">{new Date(l.created_at).toLocaleDateString("pt-BR")}</span> },
+  ];
+
+  const eventColumns: Column<TrackingEvent>[] = [
+    {
+      key: "event",
+      header: "Evento",
+      cell: (e) => (
+        <span className={`badge ${eventBadgeClass[e.event_type] ?? "badge-inactive"}`}>
+          {eventTypeLabels[e.event_type] ?? e.event_type}
+        </span>
+      ),
+    },
+    { key: "tid", header: "TID", secondary: true, cell: (e) => <span className="text-(--text-muted) text-xs font-mono stat-value">{e.tid ?? "—"}</span> },
+    {
+      key: "source",
+      header: "UTM Source",
+      secondary: true,
+      cell: (e) => {
+        const utmSource = (e.utm_params as Record<string, string>)?.utm_source;
+        return utmSource ? <span className="badge badge-purple">{utmSource}</span> : <span className="text-(--text-ghost)">—</span>;
+      },
+    },
+    { key: "fbclid", header: "fbclid", secondary: true, cell: (e) => <span className="text-(--text-muted) text-xs font-mono">{e.fbclid ? e.fbclid.slice(0, 12) + "..." : "—"}</span> },
+    {
+      key: "fb",
+      header: "FB",
+      align: "center",
+      cell: (e) => (e.sent_to_facebook ? <span className="text-(--accent) text-xs font-bold">OK</span> : <span className="text-(--text-ghost) text-xs">—</span>),
+    },
+    {
+      key: "utmify",
+      header: "Utmify",
+      align: "center",
+      cell: (e) => (e.sent_to_utmify ? <span className="text-(--accent) text-xs font-bold">OK</span> : <span className="text-(--text-ghost) text-xs">—</span>),
+    },
+    { key: "created", header: "Data", align: "right", secondary: true, cell: (e) => <span className="text-(--text-muted) text-xs">{new Date(e.created_at).toLocaleString("pt-BR")}</span> },
+  ];
+
+  const selectedEventUtm = selectedEvent ? (selectedEvent.utm_params as Record<string, string>) : null;
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <CommandBar
+        title="Tracking"
+        subtitle="funil de conversao"
+        kpis={
+          <>
+            {Object.entries(eventTypeLabels).map(([key, label]) => (
+              <KpiPill key={key} label={label} value={(funnel[key] ?? 0).toLocaleString("pt-BR")} accent={funnelAccent[key] ?? "magenta"} />
+            ))}
+          </>
+        }
+        filters={
+          <>
+            <FilterChip active={tab === "leads"} onClick={() => setTab("leads")} count={leadsCount}>Leads</FilterChip>
+            <FilterChip active={tab === "events"} onClick={() => setTab("events")} count={eventsCount}>Eventos</FilterChip>
+          </>
+        }
+      />
+
+      <div className="flex-1 p-4 sm:p-6">
+        {/* Mobile funnel KPIs (CommandBar hides KPIs below md) */}
+        <div className="grid grid-cols-2 gap-2 mb-5 md:hidden">
+          {Object.entries(eventTypeLabels).map(([key, label]) => (
+            <KpiPill key={key} label={label} value={(funnel[key] ?? 0).toLocaleString("pt-BR")} accent={funnelAccent[key] ?? "magenta"} />
+          ))}
+        </div>
+
+        {tab === "leads" ? (
+          <>
+            <div className="card overflow-hidden">
+              <DataGrid
+                columns={leadColumns}
+                rows={leads}
+                rowKey={(l) => l.id}
+                onRowClick={(l) => setSelectedLead(l)}
+                selectedKey={selectedLead?.id ?? null}
+                empty="Nenhum lead registrado"
+              />
+            </div>
+
+            {leadsTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-5">
+                <button onClick={() => loadLeadsPage(leadsPage - 1)} disabled={leadsPage <= 1 || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Anterior</button>
+                <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">{leadsPage} / {leadsTotalPages}</span>
+                <button onClick={() => loadLeadsPage(leadsPage + 1)} disabled={leadsPage >= leadsTotalPages || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Proxima</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="card overflow-hidden">
+              <DataGrid
+                columns={eventColumns}
+                rows={events}
+                rowKey={(e) => e.id}
+                onRowClick={(e) => setSelectedEvent(e)}
+                selectedKey={selectedEvent?.id ?? null}
+                empty="Nenhum evento registrado"
+              />
+            </div>
+
+            {eventsTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-5">
+                <button onClick={() => loadEventsPage(eventsPage - 1)} disabled={eventsPage <= 1 || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Anterior</button>
+                <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">{eventsPage} / {eventsTotalPages}</span>
+                <button onClick={() => loadEventsPage(eventsPage + 1)} disabled={eventsPage >= eventsTotalPages || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Proxima</button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-5">
-        {(["leads", "events"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2.5 text-xs font-bold rounded-lg transition-all ${
-              tab === t
-                ? "text-white"
-                : "bg-white/3 text-(--text-muted) hover:bg-white/6 border border-(--border-subtle)"
-            }`}
-            style={tab === t ? { background: "linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)", boxShadow: "0 0 16px -4px var(--accent-glow)" } : {}}
-          >
-            {t === "leads" ? `Leads (${leadsCount})` : `Eventos (${eventsCount})`}
-          </button>
-        ))}
-      </div>
+      {/* Lead detail drawer */}
+      <ContextDrawer
+        open={!!selectedLead}
+        onClose={() => setSelectedLead(null)}
+        title={selectedLead?.first_name || "Lead"}
+        subtitle={selectedLead?.username ? `@${selectedLead.username}` : "detalhe do lead"}
+      >
+        {selectedLead && (
+          <div className="space-y-4">
+            <DetailRow label="Nome" value={selectedLead.first_name || "—"} />
+            <DetailRow label="Username" value={selectedLead.username ? `@${selectedLead.username}` : "—"} />
+            <DetailRow label="Telegram ID" value={String(selectedLead.telegram_user_id)} mono />
+            <DetailRow label="TID" value={selectedLead.tid ?? "—"} mono />
+            <DetailRow label="fbclid" value={selectedLead.fbclid ?? "—"} mono />
+            <div className="divider my-2" />
+            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Atribuição (UTM)</p>
+            <DetailRow label="Source" value={selectedLead.utm_source ?? "—"} />
+            <DetailRow label="Medium" value={selectedLead.utm_medium ?? "—"} />
+            <DetailRow label="Campaign" value={selectedLead.utm_campaign ?? "—"} />
+            <DetailRow label="Content" value={selectedLead.utm_content ?? "—"} />
+            <DetailRow label="Term" value={selectedLead.utm_term ?? "—"} />
+            <div className="divider my-2" />
+            <DetailRow label="Criado em" value={new Date(selectedLead.created_at).toLocaleString("pt-BR")} />
+          </div>
+        )}
+      </ContextDrawer>
 
-      {/* Leads Tab */}
-      {tab === "leads" && (
-        <>
-          {leads.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-(--text-muted) text-sm">Nenhum lead registrado</p>
+      {/* Event detail drawer */}
+      <ContextDrawer
+        open={!!selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        title={selectedEvent ? (eventTypeLabels[selectedEvent.event_type] ?? selectedEvent.event_type) : "Evento"}
+        subtitle="detalhe do evento"
+      >
+        {selectedEvent && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Tipo</span>
+              <span className={`badge ${eventBadgeClass[selectedEvent.event_type] ?? "badge-inactive"}`}>
+                {eventTypeLabels[selectedEvent.event_type] ?? selectedEvent.event_type}
+              </span>
             </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                {leads.map((lead) => {
-                  const isExpanded = expandedLead === lead.id;
-                  const hasUtm = lead.utm_source || lead.utm_medium || lead.utm_campaign || lead.utm_content || lead.utm_term;
-                  return (
-                    <div key={lead.id} className="card overflow-hidden">
-                      <div
-                        className="px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-white/2 transition-colors"
-                        onClick={() => setExpandedLead(isExpanded ? null : lead.id)}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "color-mix(in srgb, var(--cyan) 10%, transparent)" }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z" />
-                            </svg>
-                          </div>
-                          <div>
-                            <span className="text-foreground text-sm font-medium">{lead.first_name}</span>
-                            {lead.username && (
-                              <span className="text-(--text-ghost) text-xs ml-2">@{lead.username}</span>
-                            )}
-                          </div>
-                          {lead.utm_source && (
-                            <span className="badge badge-purple text-[10px]">{lead.utm_source}</span>
-                          )}
-                          {lead.tid && (
-                            <span className="text-(--text-ghost) text-[10px] font-mono stat-value">{lead.tid}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-(--text-muted) text-xs">
-                            {new Date(lead.created_at).toLocaleString("pt-BR")}
-                          </span>
-                          <div className={`w-6 h-6 rounded-md bg-white/4 flex items-center justify-center transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="border-t border-(--border-subtle) px-3 py-2 sm:px-5 sm:py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in relative">
-                          <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/10 to-transparent" />
-                          {[
-                            ["Telegram ID", String(lead.telegram_user_id)],
-                            ["TID", lead.tid ?? "—"],
-                            ["fbclid", lead.fbclid ?? "—"],
-                            ["utm_source", lead.utm_source ?? "—"],
-                            ["utm_medium", lead.utm_medium ?? "—"],
-                            ["utm_campaign", lead.utm_campaign ?? "—"],
-                            ["utm_content", lead.utm_content ?? "—"],
-                            ["utm_term", lead.utm_term ?? "—"],
-                          ].map(([label, value]) => (
-                            <div key={label}>
-                              <p className="text-(--text-ghost) text-[9px] uppercase tracking-[0.1em] font-bold mb-1">{label}</p>
-                              <p className="text-(--text-secondary) text-xs font-mono stat-value">{value}</p>
-                            </div>
-                          ))}
-                          {!hasUtm && (
-                            <div className="col-span-full">
-                              <p className="text-(--text-ghost) text-xs">Nenhum parametro UTM capturado (lead entrou sem link de tracking)</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {leadsTotalPages > 1 && (
-                <div className="flex items-center justify-center gap-3 mt-5">
-                  <button onClick={() => loadLeadsPage(leadsPage - 1)} disabled={leadsPage <= 1 || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Anterior</button>
-                  <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">{leadsPage} / {leadsTotalPages}</span>
-                  <button onClick={() => loadLeadsPage(leadsPage + 1)} disabled={leadsPage >= leadsTotalPages || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Proxima</button>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {/* Events Tab */}
-      {tab === "events" && (
-        <>
-          {events.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-(--text-muted) text-sm">Nenhum evento registrado</p>
+            <DetailRow label="TID" value={selectedEvent.tid ?? "—"} mono />
+            <DetailRow label="fbclid" value={selectedEvent.fbclid ?? "—"} mono />
+            <div className="divider my-2" />
+            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Envio</p>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Facebook</span>
+              {selectedEvent.sent_to_facebook
+                ? <span className="badge badge-active">Enviado</span>
+                : <span className="badge badge-inactive">Pendente</span>}
             </div>
-          ) : (
-            <>
-              <div className="card overflow-hidden relative">
-                <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
-                <div className="overflow-x-auto -mx-4 sm:mx-0">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-(--border-subtle)">
-                        <th className="table-header whitespace-nowrap">Evento</th>
-                        <th className="table-header whitespace-nowrap">TID</th>
-                        <th className="table-header whitespace-nowrap">UTM Source</th>
-                        <th className="table-header whitespace-nowrap">fbclid</th>
-                        <th className="table-header whitespace-nowrap">FB</th>
-                        <th className="table-header whitespace-nowrap">Utmify</th>
-                        <th className="table-header whitespace-nowrap">Data</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {events.map((event) => {
-                        const utmSource = (event.utm_params as Record<string, string>)?.utm_source;
-                        return (
-                          <tr key={event.id} className="hover:bg-white/2 transition-colors">
-                            <td className="table-cell whitespace-nowrap">
-                              <span className={`badge ${eventBadgeClass[event.event_type] ?? "badge-inactive"}`}>
-                                {eventTypeLabels[event.event_type] ?? event.event_type}
-                              </span>
-                            </td>
-                            <td className="table-cell text-(--text-muted) text-xs font-mono stat-value whitespace-nowrap">{event.tid ?? "—"}</td>
-                            <td className="table-cell whitespace-nowrap">
-                              {utmSource ? (
-                                <span className="badge badge-purple">{utmSource}</span>
-                              ) : (
-                                <span className="text-(--text-ghost)">—</span>
-                              )}
-                            </td>
-                            <td className="table-cell text-(--text-muted) text-xs font-mono whitespace-nowrap">
-                              {event.fbclid ? event.fbclid.slice(0, 12) + "..." : "—"}
-                            </td>
-                            <td className="table-cell whitespace-nowrap">
-                              {event.sent_to_facebook ? (
-                                <span className="text-(--accent) text-xs font-bold">OK</span>
-                              ) : (
-                                <span className="text-(--text-ghost) text-xs">—</span>
-                              )}
-                            </td>
-                            <td className="table-cell whitespace-nowrap">
-                              {event.sent_to_utmify ? (
-                                <span className="text-(--accent) text-xs font-bold">OK</span>
-                              ) : (
-                                <span className="text-(--text-ghost) text-xs">—</span>
-                              )}
-                            </td>
-                            <td className="table-cell text-(--text-muted) text-xs whitespace-nowrap">
-                              {new Date(event.created_at).toLocaleString("pt-BR")}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Utmify</span>
+              {selectedEvent.sent_to_utmify
+                ? <span className="badge badge-active">Enviado</span>
+                : <span className="badge badge-inactive">Pendente</span>}
+            </div>
+            <div className="divider my-2" />
+            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Parâmetros UTM</p>
+            {selectedEventUtm && Object.keys(selectedEventUtm).length > 0 ? (
+              Object.entries(selectedEventUtm).map(([k, v]) => (
+                <DetailRow key={k} label={k} value={String(v)} mono />
+              ))
+            ) : (
+              <p className="text-(--text-ghost) text-xs">Nenhum parâmetro UTM capturado.</p>
+            )}
+            <div className="divider my-2" />
+            <DetailRow label="Criado em" value={new Date(selectedEvent.created_at).toLocaleString("pt-BR")} />
+          </div>
+        )}
+      </ContextDrawer>
+    </div>
+  );
+}
 
-              {eventsTotalPages > 1 && (
-                <div className="flex items-center justify-center gap-3 mt-5">
-                  <button onClick={() => loadEventsPage(eventsPage - 1)} disabled={eventsPage <= 1 || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Anterior</button>
-                  <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">{eventsPage} / {eventsTotalPages}</span>
-                  <button onClick={() => loadEventsPage(eventsPage + 1)} disabled={eventsPage >= eventsTotalPages || isPending} className="btn-ghost py-2! px-4! disabled:opacity-30">Proxima</button>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

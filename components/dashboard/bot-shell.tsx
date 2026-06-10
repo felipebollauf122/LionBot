@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { BotSidebar } from "@/components/dashboard/bot-sidebar";
+import { usePathname } from "next/navigation";
+import { BotSidebar, botNavItems } from "@/components/dashboard/bot-sidebar";
 
 interface BotShellProps {
   botId: string;
@@ -11,33 +12,52 @@ interface BotShellProps {
   children: ReactNode;
 }
 
-/** Mobile-drawer shell for the per-bot sidebar (second-level nav). */
+// 4 primary tabs for the mobile bottom bar; the rest live behind "Mais".
+const PRIMARY = ["flows", "products", "leads", "transactions"];
+
+/**
+ * Console shell for a bot. Desktop: the BotRail (64px, hover-expand) sits
+ * statically at the left. Mobile: a bottom-tab-bar of primary destinations +
+ * "Mais" that opens the full rail as an off-canvas drawer.
+ */
 export function BotShell({ botId, botUsername, avatarUrl, basePath, children }: BotShellProps) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const base = basePath ?? `/dashboard/bots/${botId}`;
+  const primaryItems = PRIMARY.map((seg) => botNavItems.find((i) => i.segment === seg)!).filter(Boolean);
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-[#0a0a0f]">
-      {/* Mobile bot-nav bar */}
-      <header className="md:hidden sticky top-0 z-30 h-12 flex items-center gap-3 px-4 glass">
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="Abrir menu do bot"
-          className="w-8 h-8 -ml-1 rounded-lg flex items-center justify-center text-(--text-secondary) hover:text-foreground hover:bg-white/5 transition-colors"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-        <span className="text-sm font-semibold text-foreground truncate">@{botUsername}</span>
-      </header>
+    <div className="flex min-h-screen bg-[#0a0a0f]">
+      {/* Desktop rail (static) / mobile drawer */}
+      <BotSidebar botId={botId} botUsername={botUsername} avatarUrl={avatarUrl} basePath={basePath} open={open} onClose={() => setOpen(false)} />
 
+      {/* Mobile drawer backdrop */}
       {open && (
         <div onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden animate-in" aria-hidden />
       )}
 
-      <BotSidebar botId={botId} botUsername={botUsername} avatarUrl={avatarUrl} basePath={basePath} open={open} onClose={() => setOpen(false)} />
+      <main className="flex-1 min-w-0 pb-16 md:pb-0">{children}</main>
 
-      <main className="flex-1 min-w-0">{children}</main>
+      {/* Mobile bottom-tab-bar */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 glass border-t border-(--border-subtle) flex items-stretch h-16 px-1">
+        {primaryItems.map((item) => {
+          const href = `${base}/${item.segment}`;
+          const active = pathname.startsWith(href);
+          return (
+            <a key={item.segment} href={href} className="flex-1 flex flex-col items-center justify-center gap-1 relative">
+              {active && <span className="absolute top-0 h-0.5 w-8 rounded-full" style={{ background: item.color, boxShadow: `0 0 8px ${item.color}` }} />}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? item.color : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={item.icon} />
+              </svg>
+              <span className="text-[9px]" style={{ color: active ? item.color : "var(--text-ghost)" }}>{item.label}</span>
+            </a>
+          );
+        })}
+        <button onClick={() => setOpen(true)} className="flex-1 flex flex-col items-center justify-center gap-1 text-(--text-muted)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
+          <span className="text-[9px] text-(--text-ghost)">Mais</span>
+        </button>
+      </nav>
     </div>
   );
 }

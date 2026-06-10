@@ -13,7 +13,7 @@ interface BotSidebarProps {
   onClose?: () => void;
 }
 
-const botNavItems = [
+export const botNavItems = [
   { label: "Fluxos", segment: "flows", icon: "M9.59 4.59A2 2 0 1111 8H2m10.59 11.41A2 2 0 1013 16H2m16-8a2 2 0 10-2-2H2", color: "var(--accent)" },
   { label: "Produtos", segment: "products", icon: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01", color: "var(--accent)" },
   { label: "Conjuntos", segment: "bundles", icon: "M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z", color: "var(--purple)" },
@@ -25,6 +25,11 @@ const botNavItems = [
   { label: "Configuracoes", segment: "settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z", color: "var(--text-secondary)" },
 ];
 
+/**
+ * BotRail — a 64px icon rail that replaces the old 240px bot sidebar.
+ * Hover expands it to ~228px as an overlay (doesn't push the content).
+ * On mobile it's the off-canvas drawer (open/onClose), fully expanded.
+ */
 export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, open = false, onClose }: BotSidebarProps) {
   const pathname = usePathname();
   const base = baseProp ?? `/dashboard/bots/${botId}`;
@@ -37,51 +42,39 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, 
 
   return (
     <aside
-      className={`w-60 min-h-screen flex flex-col z-50 transition-transform duration-300 ease-out
-        fixed md:relative inset-y-0 left-0
+      className={`group/rail z-50 flex flex-col shrink-0
+        fixed md:relative inset-y-0 left-0 transition-all duration-300 ease-out
+        w-[228px] md:w-16 md:hover:w-[228px]
         ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       style={{ background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)" }}
     >
-      {/* Right border */}
+      {/* Right border + glow */}
       <div className="absolute top-0 right-0 bottom-0 w-px bg-gradient-to-b from-transparent via-(--border-default) to-transparent" />
 
-      {/* Ambient glow */}
-      <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-(--accent)/3 to-transparent pointer-events-none" />
-
-      {/* Bot header */}
-      <div className="px-4 pt-5 pb-4 relative">
+      {/* Header: back + avatar/username */}
+      <div className="h-16 flex items-center gap-2.5 px-3 relative shrink-0 overflow-hidden">
         <a
           href={backUrl}
-          className="inline-flex items-center gap-2 text-(--text-muted) hover:text-foreground text-xs transition-all mb-4 group"
+          aria-label="Voltar"
+          className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center hover:bg-white/5 transition-colors"
         >
-          <div className="w-6 h-6 rounded-md bg-white/4 flex items-center justify-center group-hover:bg-white/8 transition-colors">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-          </div>
-          Voltar
-        </a>
-        <div className="flex items-center gap-2.5">
           {avatarUrl ? (
             <img src={avatarUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
           ) : (
-            <LionMark size={32} glow={false} />
+            <LionMark size={30} glow={false} />
           )}
-          <h2 className="text-sm font-bold text-foreground truncate tracking-tight">
-            @{botUsername}
-          </h2>
+        </a>
+        <div className="min-w-0 md:opacity-0 md:group-hover/rail:opacity-100 transition-opacity duration-200">
+          <h2 className="text-sm font-bold text-foreground truncate tracking-tight">@{botUsername}</h2>
+          <span className="text-[9px] uppercase tracking-wider text-(--text-ghost)">voltar aos bots</span>
         </div>
-
-        {/* Separator */}
-        <div className="absolute bottom-0 left-3 right-3 h-px bg-gradient-to-r from-transparent via-(--border-default) to-transparent" />
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-2.5 pt-4 pb-3">
-        <p className="text-(--text-ghost) text-[10px] font-bold uppercase tracking-[0.14em] px-3 mb-3">
-          Gerenciar
-        </p>
-        <div className="space-y-0.5">
+      <div className="h-px mx-3 bg-gradient-to-r from-transparent via-(--border-default) to-transparent shrink-0" />
+
+      {/* Nav */}
+      <nav className="flex-1 px-2.5 py-3 overflow-y-auto overflow-x-hidden">
+        <div className="space-y-1">
           {botNavItems.map((item) => {
             const href = `${base}/${item.segment}`;
             const isActive = pathname === href || pathname.startsWith(`${href}/`);
@@ -89,17 +82,29 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, 
               <a
                 key={item.segment}
                 href={href}
-                className={`nav-item ${isActive ? "active" : ""}`}
+                title={item.label}
+                className={`relative flex items-center gap-3 h-10 px-1.5 rounded-xl transition-all
+                  ${isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"}`}
               >
+                {/* active accent bar */}
+                {isActive && (
+                  <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r" style={{ background: item.color, boxShadow: `0 0 8px ${item.color}` }} />
+                )}
                 <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${isActive ? "" : "bg-white/4"}`}
-                  style={isActive ? { background: `color-mix(in srgb, ${item.color} 15%, transparent)`, boxShadow: `0 0 10px -4px ${item.color}` } : {}}
+                  className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all"
+                  style={isActive ? { background: `color-mix(in srgb, ${item.color} 16%, transparent)`, boxShadow: `0 0 10px -4px ${item.color}` } : { background: "rgba(255,255,255,0.03)" }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isActive ? item.color : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={isActive ? item.color : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d={item.icon} />
                   </svg>
                 </div>
-                {item.label}
+                <span
+                  className={`text-[13px] font-medium truncate whitespace-nowrap transition-opacity duration-200
+                    md:opacity-0 md:group-hover/rail:opacity-100
+                    ${isActive ? "text-foreground" : "text-(--text-secondary)"}`}
+                >
+                  {item.label}
+                </span>
               </a>
             );
           })}

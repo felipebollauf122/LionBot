@@ -260,7 +260,7 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                       src={avatarUrl}
                       alt="Bot avatar"
                       className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-(--border-subtle)"
-                      style={{ boxShadow: "0 0 20px -6px rgba(255,43,214,0.15)" }}
+                      style={{ boxShadow: "0 0 20px -6px color-mix(in srgb, var(--accent) 15%, transparent)" }}
                     />
                   ) : (
                     <div
@@ -307,7 +307,7 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                       onClick={() => avatarInputRef.current?.click()}
                       disabled={uploadingAvatar}
                       className="px-3 py-1.5 text-xs font-bold text-(--accent) border border-(--accent)/15 rounded-lg hover:bg-(--accent-muted) transition-all disabled:opacity-50"
-                      style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)" }}
+                      style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 100%)" }}
                     >
                       {uploadingAvatar ? "Enviando..." : "Enviar foto"}
                     </button>
@@ -346,7 +346,7 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                   }`}
                   style={isActive
                     ? { background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(255,59,107,0.2)" }
-                    : { background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(255,43,214,0.2)" }
+                    : { background: "linear-gradient(135deg, var(--accent-muted) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 100%)", boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 20%, transparent)" }
                   }
                 >
                   {activating ? "Processando..." : isActive ? "Desativar Bot" : "Ativar Bot"}

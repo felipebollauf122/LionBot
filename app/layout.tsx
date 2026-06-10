@@ -58,7 +58,7 @@ export default function RootLayout({
         {/* Apply saved theme before paint to avoid a flash of the default theme. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('lionbot-theme');if(t&&t!=='synthwave'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('lionbot-theme');if(!t||t==='synthwave')return;var e=document.documentElement;e.setAttribute('data-theme',t);if(t==='custom'){var c=JSON.parse(localStorage.getItem('lionbot-custom')||'{}');function rgb(h){h=(h||'').replace('#','');if(h.length===3)h=h.split('').map(function(x){return x+x}).join('');var n=parseInt(h,16);return ((n>>16)&255)+', '+((n>>8)&255)+', '+(n&255)}if(c.accent){var a=rgb(c.accent);e.style.setProperty('--accent',c.accent);e.style.setProperty('--accent-muted','rgba('+a+',0.12)');e.style.setProperty('--accent-glow','rgba('+a+',0.45)');e.style.setProperty('--border-subtle','rgba('+a+',0.10)');e.style.setProperty('--border-default','rgba('+a+',0.18)')}if(c.cyan){var cy=rgb(c.cyan);e.style.setProperty('--cyan',c.cyan);e.style.setProperty('--cyan-glow','rgba('+cy+',0.40)')}if(c.purple){var p=rgb(c.purple);e.style.setProperty('--purple',c.purple);e.style.setProperty('--purple-glow','rgba('+p+',0.40)')}if(c.bg){var bg=rgb(c.bg);e.style.setProperty('--bg-root',c.bg);e.style.setProperty('--glass-bg','rgba('+bg+',0.82)')}}}catch(_){}})();`,
           }}
         />
       </head>

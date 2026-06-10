@@ -110,6 +110,24 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, 
           })}
         </div>
       </nav>
+
+      {/* Meu Perfil — fixo no rodapé do rail */}
+      <div className="px-2.5 py-3 mt-auto border-t border-(--border-subtle)">
+        <a
+          href="/dashboard/profile"
+          title="Meu Perfil"
+          className="relative flex items-center gap-3 h-10 px-1.5 rounded-xl transition-all hover:bg-white/[0.03]"
+        >
+          <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.03)" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+            </svg>
+          </div>
+          <span className="text-[13px] font-medium truncate whitespace-nowrap text-(--text-secondary) transition-opacity duration-200 md:opacity-0 md:group-hover/rail:opacity-100">
+            Meu Perfil
+          </span>
+        </a>
+      </div>
     </aside>
   );
 }

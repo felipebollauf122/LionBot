@@ -22,7 +22,7 @@ export function ComingSoonCard({ title, subtitle, icon, note, className }: Comin
       <div className="flex items-start justify-between mb-4 relative">
         <div className="flex items-center gap-3 min-w-0">
           {icon && (
-            <div className="section-icon w-9 h-9 shrink-0 opacity-50" style={{ background: "rgba(177,75,255,0.08)", color: "var(--text-muted)" }}>
+            <div className="section-icon w-9 h-9 shrink-0 opacity-50" style={{ background: "color-mix(in srgb, var(--purple) 8%, transparent)", color: "var(--text-muted)" }}>
               {icon}
             </div>
           )}

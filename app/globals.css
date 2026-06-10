@@ -8,6 +8,7 @@
   --bg-overlay: #160e24;
   --bg-input: rgba(177, 75, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.035);
+  --glass-bg: rgba(10, 6, 18, 0.78);
 
   /* ═══ Gradient Surfaces ═════════════════════════════ */
   --gradient-surface: linear-gradient(145deg, rgba(255, 43, 214, 0.04) 0%, rgba(10, 6, 18, 0.95) 40%, rgba(10, 6, 18, 1) 100%);
@@ -76,6 +77,7 @@
 /* ── Matrix — neon terminal (green/cyan on pure black) ── */
 [data-theme="matrix"] {
   --bg-root: #020604;
+  --glass-bg: rgba(4, 17, 10, 0.82);
   --bg-surface: #04110a;
   --bg-elevated: #06180e;
   --bg-overlay: #0a2114;
@@ -124,6 +126,7 @@
 /* ── Inferno — molten (red/orange/amber on charcoal) ── */
 [data-theme="inferno"] {
   --bg-root: #0c0604;
+  --glass-bg: rgba(20, 9, 10, 0.82);
   --bg-surface: #14090a;
   --bg-elevated: #1a0d0d;
   --bg-overlay: #241313;
@@ -172,6 +175,7 @@
 /* ── Ice — cold (blue/cyan/white on night blue) ── */
 [data-theme="ice"] {
   --bg-root: #05080f;
+  --glass-bg: rgba(8, 13, 24, 0.82);
   --bg-surface: #080d18;
   --bg-elevated: #0c1322;
   --bg-overlay: #111b2e;
@@ -216,6 +220,107 @@
   --gradient-card: linear-gradient(165deg, rgba(56, 189, 248, 0.05) 0%, rgba(255, 255, 255, 0.012) 100%);
   --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(56, 189, 248, 0.14) 0%, transparent 60%);
 }
+
+/* ── Gold — luxo (dourado/âmbar/bronze sobre preto) ── */
+[data-theme="gold"] {
+  --bg-root: #0a0805;
+  --glass-bg: rgba(15, 12, 6, 0.82);
+  --bg-surface: #0f0c08;
+  --bg-elevated: #16110a;
+  --bg-overlay: #201810;
+  --bg-input: rgba(245, 200, 92, 0.04);
+
+  --border-subtle: rgba(245, 200, 92, 0.10);
+  --border-default: rgba(245, 200, 92, 0.18);
+  --border-strong: rgba(245, 200, 92, 0.30);
+  --border-glow: rgba(245, 200, 92, 0.22);
+
+  --text-primary: #fdf6e8;
+  --text-secondary: rgba(253, 246, 232, 0.58);
+  --text-muted: rgba(253, 246, 232, 0.32);
+  --text-ghost: rgba(253, 246, 232, 0.16);
+
+  --accent: #f5c85c;
+  --accent-hover: #ffd980;
+  --accent-muted: rgba(245, 200, 92, 0.12);
+  --accent-glow: rgba(245, 200, 92, 0.45);
+  --accent-deep: rgba(245, 200, 92, 0.06);
+
+  --cyan: #e0a44a;
+  --cyan-muted: rgba(224, 164, 74, 0.12);
+  --cyan-glow: rgba(224, 164, 74, 0.40);
+
+  --purple: #c9933a;
+  --purple-muted: rgba(201, 147, 58, 0.12);
+  --purple-glow: rgba(201, 147, 58, 0.40);
+
+  --amber: #ffd23a;
+  --amber-muted: rgba(255, 210, 58, 0.12);
+  --amber-glow: rgba(255, 210, 58, 0.30);
+
+  --red: #ff6b5e;
+  --red-muted: rgba(255, 107, 94, 0.12);
+  --red-glow: rgba(255, 107, 94, 0.30);
+
+  --status-active: #f5c85c;
+  --status-pending: #ffd23a;
+  --status-error: #ff6b5e;
+
+  --gradient-card: linear-gradient(165deg, rgba(245, 200, 92, 0.05) 0%, rgba(255, 255, 255, 0.012) 100%);
+  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(245, 200, 92, 0.14) 0%, transparent 60%);
+}
+
+/* ── Mono — minimalista (branco/cinza sobre preto) ── */
+[data-theme="mono"] {
+  --bg-root: #060606;
+  --glass-bg: rgba(12, 12, 12, 0.82);
+  --bg-surface: #0c0c0c;
+  --bg-elevated: #141414;
+  --bg-overlay: #1c1c1c;
+  --bg-input: rgba(255, 255, 255, 0.04);
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --border-glow: rgba(255, 255, 255, 0.20);
+
+  --text-primary: #f5f5f5;
+  --text-secondary: rgba(245, 245, 245, 0.58);
+  --text-muted: rgba(245, 245, 245, 0.32);
+  --text-ghost: rgba(245, 245, 245, 0.16);
+
+  --accent: #f5f5f5;
+  --accent-hover: #ffffff;
+  --accent-muted: rgba(255, 255, 255, 0.12);
+  --accent-glow: rgba(255, 255, 255, 0.35);
+  --accent-deep: rgba(255, 255, 255, 0.06);
+
+  --cyan: #a3a3a3;
+  --cyan-muted: rgba(163, 163, 163, 0.12);
+  --cyan-glow: rgba(163, 163, 163, 0.35);
+
+  --purple: #d4d4d4;
+  --purple-muted: rgba(212, 212, 212, 0.12);
+  --purple-glow: rgba(212, 212, 212, 0.35);
+
+  --amber: #e5e5e5;
+  --amber-muted: rgba(229, 229, 229, 0.12);
+  --amber-glow: rgba(229, 229, 229, 0.30);
+
+  --red: #ff5e57;
+  --red-muted: rgba(255, 94, 87, 0.12);
+  --red-glow: rgba(255, 94, 87, 0.30);
+
+  --status-active: #f5f5f5;
+  --status-pending: #a3a3a3;
+  --status-error: #ff5e57;
+
+  --gradient-card: linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.012) 100%);
+  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.10) 0%, transparent 60%);
+}
+
+/* ── Custom — accent tokens set inline via JS (data-theme="custom") ── */
+/* The picker writes --accent/--cyan/--purple/--accent-* onto :root inline. */
 
 @theme inline {
   --color-background: var(--bg-root);
@@ -329,7 +434,7 @@ body {
 /* ═══ Glass Surface ══════════════════════════════════ */
 
 .glass {
-  background: rgba(10, 6, 18, 0.78);
+  background: var(--glass-bg);
   backdrop-filter: blur(32px) saturate(1.7);
   -webkit-backdrop-filter: blur(32px) saturate(1.7);
   border: 1px solid var(--border-subtle);

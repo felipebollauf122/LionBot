@@ -71,7 +71,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
           href="/dashboard"
           className={`nav-item ${isDashboardActive ? "active" : ""}`}
         >
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDashboardActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isDashboardActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDashboardActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isDashboardActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1" />
               <rect x="14" y="3" width="7" height="7" rx="1" />
@@ -85,7 +85,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
           href="/dashboard/bots"
           className={`nav-item ${isBotsActive ? "active" : ""}`}
         >
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isBotsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isBotsActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isBotsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isBotsActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="11" width="18" height="10" rx="2" />
               <circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
@@ -98,7 +98,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
           href="/dashboard/analytics"
           className={`nav-item ${isAnalyticsActive ? "active" : ""}`}
         >
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAnalyticsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAnalyticsActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAnalyticsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAnalyticsActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="20" x2="18" y2="10" />
               <line x1="12" y1="20" x2="12" y2="4" />
@@ -112,7 +112,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
             href="/dashboard/automations"
             className={`nav-item ${isAutomationsActive ? "active" : ""}`}
           >
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAutomationsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAutomationsActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAutomationsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAutomationsActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
               </svg>
@@ -130,7 +130,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
               href="/dashboard/admin/users"
               className={`nav-item ${isAdminActive ? "active" : ""}`}
             >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAdminActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAdminActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAdminActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAdminActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
@@ -145,7 +145,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
       <div className="p-3 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--border-default) to-transparent" />
         <a href="/dashboard/profile" className={`nav-item mt-1 ${isProfileActive ? "active" : ""}`}>
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isProfileActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isProfileActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isProfileActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isProfileActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
             </svg>

@@ -87,7 +87,7 @@ export function BotCard({ bot }: BotCardProps) {
               ? "bg-(--accent-muted) text-(--accent) border border-(--accent)/20"
               : "bg-white/4 text-(--text-secondary) border border-(--border-subtle) hover:bg-white/8 hover:text-foreground hover:border-(--border-default)"
           }`}
-          style={copied ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}
+          style={copied ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}
         >
           {copied ? "Copiado!" : "Copiar"}
         </button>

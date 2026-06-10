@@ -153,7 +153,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
       cell: (p) => (
         <span
           className="inline-flex items-baseline gap-1 px-2.5 py-1 rounded-lg stat-value font-bold text-(--accent)"
-          style={{ background: "linear-gradient(135deg, rgba(255, 43, 214, 0.10) 0%, rgba(255, 43, 214, 0.03) 100%)", boxShadow: "0 0 12px -6px rgba(255,43,214,0.2)" }}
+          style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent) 0%, color-mix(in srgb, var(--accent) 3%, transparent) 100%)", boxShadow: "0 0 12px -6px color-mix(in srgb, var(--accent) 20%, transparent)" }}
         >
           {(p.price / 100).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           <span className="text-(--accent)/60 text-[9px] font-semibold uppercase">{p.currency || "BRL"}</span>

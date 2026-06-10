@@ -30,11 +30,11 @@ export function BotShell({ botId, botUsername, avatarUrl, basePath, children }: 
   // (no rail, no bottom-tabs) so it gets the entire viewport.
   const isFullscreen = pathname.includes("/editor");
   if (isFullscreen) {
-    return <div className="min-h-screen bg-[#0a0a0f]">{children}</div>;
+    return <div className="min-h-screen bg-(--bg-root)">{children}</div>;
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0f]">
+    <div className="flex min-h-screen bg-(--bg-root)">
       {/* Desktop rail (static) / mobile drawer */}
       <BotSidebar botId={botId} botUsername={botUsername} avatarUrl={avatarUrl} basePath={basePath} open={open} onClose={() => setOpen(false)} />
 

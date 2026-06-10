@@ -119,7 +119,7 @@ export function CreateBotForm({ isOwner = false }: { isOwner?: boolean }) {
         <div className="card p-6 relative">
           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/15 to-transparent" />
           <div className="flex items-center gap-3 mb-5">
-            <div className="section-icon w-10 h-10" style={{ background: "linear-gradient(135deg, var(--cyan-muted) 0%, rgba(0,229,255,0.04) 100%)", boxShadow: "0 0 12px -4px var(--cyan-glow)" }}>
+            <div className="section-icon w-10 h-10" style={{ background: "linear-gradient(135deg, var(--cyan-muted) 0%, color-mix(in srgb, var(--cyan) 4%, transparent) 100%)", boxShadow: "0 0 12px -4px var(--cyan-glow)" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
               </svg>

@@ -95,7 +95,7 @@ export function BlacklistManager({ botId, initialBlacklist }: BlacklistManagerPr
         <button
           onClick={() => setShowAdd(true)}
           className="px-4 py-2 text-xs font-bold text-(--accent) border border-(--accent)/15 rounded-lg hover:bg-(--accent-muted) transition-all mb-4"
-          style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)" }}
+          style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 100%)" }}
         >
           + Adicionar usuario
         </button>

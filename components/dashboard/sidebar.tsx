@@ -35,6 +35,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
   const isAnalyticsActive = pathname.startsWith("/dashboard/analytics");
   const isAutomationsActive = pathname.startsWith("/dashboard/automations");
   const isAdminActive = pathname.startsWith("/dashboard/admin");
+  const isProfileActive = pathname.startsWith("/dashboard/profile");
 
   return (
     <aside
@@ -140,9 +141,17 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
         )}
       </nav>
 
-      {/* Logout */}
+      {/* Profile + Logout */}
       <div className="p-3 relative">
         <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--border-default) to-transparent" />
+        <a href="/dashboard/profile" className={`nav-item mt-1 ${isProfileActive ? "active" : ""}`}>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isProfileActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isProfileActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+            </svg>
+          </div>
+          Meu Perfil
+        </a>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 mt-1 rounded-xl text-[13px] text-(--text-muted) hover:text-(--red) hover:bg-(--red-muted) transition-all group"

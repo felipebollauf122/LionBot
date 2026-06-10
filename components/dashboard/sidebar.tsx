@@ -21,6 +21,7 @@ export function Sidebar({ isAdmin, isOwner }: SidebarProps) {
   };
 
   const isBotsActive = pathname === "/dashboard" || (pathname.startsWith("/dashboard/bots") && !pathname.startsWith("/dashboard/admin"));
+  const isAnalyticsActive = pathname.startsWith("/dashboard/analytics");
   const isAutomationsActive = pathname.startsWith("/dashboard/automations");
   const isAdminActive = pathname.startsWith("/dashboard/admin");
 
@@ -62,6 +63,19 @@ export function Sidebar({ isAdmin, isOwner }: SidebarProps) {
             </svg>
           </div>
           Meus Bots
+        </a>
+        <a
+          href="/dashboard/analytics"
+          className={`nav-item ${isAnalyticsActive ? "active" : ""}`}
+        >
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAnalyticsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAnalyticsActive ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="20" x2="18" y2="10" />
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <line x1="6" y1="20" x2="6" y2="14" />
+            </svg>
+          </div>
+          Análises
         </a>
         {isOwner && (
           <a

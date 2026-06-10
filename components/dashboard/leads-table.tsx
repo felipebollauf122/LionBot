@@ -49,20 +49,21 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
     {
       key: "name",
       header: "Nome",
+      width: "22%",
       cell: (l) => (
         <div className="flex items-center gap-2.5">
           <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
             {(l.first_name || "?").slice(0, 1).toUpperCase()}
           </span>
-          <span className="text-foreground font-medium">{l.first_name || "—"}</span>
+          <span className="text-foreground font-medium truncate">{l.first_name || "—"}</span>
         </div>
       ),
     },
-    { key: "username", header: "Username", cell: (l) => <span className="text-(--text-secondary)">{l.username ? `@${l.username}` : "—"}</span> },
-    { key: "tgid", header: "Telegram ID", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.telegram_user_id}</span> },
-    { key: "source", header: "Fonte", secondary: true, cell: (l) => (l.utm_source ? <span className="badge badge-purple">{l.utm_source}</span> : <span className="text-(--text-ghost)">—</span>) },
-    { key: "tid", header: "TID", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.tid ?? "—"}</span> },
-    { key: "created", header: "Criado em", align: "right", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs">{new Date(l.created_at).toLocaleDateString("pt-BR")}</span> },
+    { key: "username", header: "Username", width: "16%", cell: (l) => <span className="text-(--text-secondary)">{l.username ? `@${l.username}` : "—"}</span> },
+    { key: "tgid", header: "Telegram ID", width: "16%", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.telegram_user_id}</span> },
+    { key: "source", header: "Fonte", width: "12%", secondary: true, cell: (l) => (l.utm_source ? <span className="badge badge-purple">{l.utm_source}</span> : <span className="text-(--text-ghost)">—</span>) },
+    { key: "tid", header: "TID", width: "20%", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.tid ?? "—"}</span> },
+    { key: "created", header: "Criado em", width: "14%", align: "right", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs">{new Date(l.created_at).toLocaleDateString("pt-BR")}</span> },
   ];
 
   return (

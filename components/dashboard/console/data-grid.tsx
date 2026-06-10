@@ -39,14 +39,14 @@ export function DataGrid<T>({ columns, rows, rowKey, onRowClick, selectedKey, em
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse min-w-[320px] sm:min-w-[480px]">
+      <table className="w-full border-collapse min-w-[560px]">
         <thead className="sticky top-0 z-10 bg-(--bg-surface)/95 backdrop-blur-sm">
           <tr>
             {columns.map((c) => (
               <th
                 key={c.key}
                 className={`table-header whitespace-nowrap ${c.secondary ? "hidden sm:table-cell" : ""}`}
-                style={{ textAlign: ta(c.align), ...(c.width ? { width: c.width } : {}) }}
+                style={{ textAlign: ta(c.align), width: c.width }}
               >
                 {c.header}
               </th>
@@ -61,14 +61,13 @@ export function DataGrid<T>({ columns, rows, rowKey, onRowClick, selectedKey, em
               <tr
                 key={key}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`row-hover ${onRowClick ? "cursor-pointer" : ""} ${selected ? "bg-(--accent)/[0.06]" : ""}`}
-                style={selected ? { boxShadow: "inset 2px 0 0 var(--accent)" } : undefined}
+                className={`transition-colors ${onRowClick ? "cursor-pointer hover:bg-(--accent)/[0.05]" : ""} ${selected ? "bg-(--accent)/[0.07]" : ""}`}
               >
                 {columns.map((c) => (
                   <td
                     key={c.key}
                     className={`table-cell whitespace-nowrap ${c.secondary ? "hidden sm:table-cell" : ""}`}
-                    style={{ textAlign: ta(c.align) }}
+                    style={{ textAlign: ta(c.align), width: c.width, ...(selected && c.key === columns[0].key ? { boxShadow: "inset 2px 0 0 var(--accent)" } : {}) }}
                   >
                     {c.cell(row)}
                   </td>

@@ -48,23 +48,21 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
   const columns: Column<Lead>[] = [
     {
       key: "name",
-      header: "Lead",
+      header: "Nome",
       cell: (l) => (
         <div className="flex items-center gap-2.5">
           <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
             {(l.first_name || "?").slice(0, 1).toUpperCase()}
           </span>
-          <div className="min-w-0">
-            <p className="text-foreground font-medium truncate">{l.first_name || "—"}</p>
-            <p className="text-[10px] text-(--text-ghost)">{l.username ? `@${l.username}` : "sem username"}</p>
-          </div>
+          <span className="text-foreground font-medium">{l.first_name || "—"}</span>
         </div>
       ),
     },
+    { key: "username", header: "Username", cell: (l) => <span className="text-(--text-secondary)">{l.username ? `@${l.username}` : "—"}</span> },
     { key: "tgid", header: "Telegram ID", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.telegram_user_id}</span> },
     { key: "source", header: "Fonte", secondary: true, cell: (l) => (l.utm_source ? <span className="badge badge-purple">{l.utm_source}</span> : <span className="text-(--text-ghost)">—</span>) },
     { key: "tid", header: "TID", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.tid ?? "—"}</span> },
-    { key: "created", header: "Criado", align: "right", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs">{new Date(l.created_at).toLocaleDateString("pt-BR")}</span> },
+    { key: "created", header: "Criado em", align: "right", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs">{new Date(l.created_at).toLocaleDateString("pt-BR")}</span> },
   ];
 
   return (

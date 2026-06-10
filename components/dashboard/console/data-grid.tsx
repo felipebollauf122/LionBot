@@ -33,7 +33,9 @@ export function DataGrid<T>({ columns, rows, rowKey, onRowClick, selectedKey, em
     return <div className="py-16 text-center text-(--text-ghost) text-sm">{empty ?? "Nada por aqui ainda."}</div>;
   }
 
-  const align = (a?: string) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
+  // Use inline textAlign so it always wins over the `.table-header { text-align:left }`
+  // global rule — otherwise headers of right/center columns desync from their cells.
+  const ta = (a?: string): "left" | "right" | "center" => (a === "right" ? "right" : a === "center" ? "center" : "left");
 
   return (
     <div className="overflow-x-auto">
@@ -43,8 +45,8 @@ export function DataGrid<T>({ columns, rows, rowKey, onRowClick, selectedKey, em
             {columns.map((c) => (
               <th
                 key={c.key}
-                className={`table-header ${align(c.align)} ${c.secondary ? "hidden sm:table-cell" : ""} whitespace-nowrap`}
-                style={c.width ? { width: c.width } : undefined}
+                className={`table-header whitespace-nowrap ${c.secondary ? "hidden sm:table-cell" : ""}`}
+                style={{ textAlign: ta(c.align), ...(c.width ? { width: c.width } : {}) }}
               >
                 {c.header}
               </th>
@@ -65,7 +67,8 @@ export function DataGrid<T>({ columns, rows, rowKey, onRowClick, selectedKey, em
                 {columns.map((c) => (
                   <td
                     key={c.key}
-                    className={`table-cell ${align(c.align)} ${c.secondary ? "hidden sm:table-cell" : ""} whitespace-nowrap`}
+                    className={`table-cell whitespace-nowrap ${c.secondary ? "hidden sm:table-cell" : ""}`}
+                    style={{ textAlign: ta(c.align) }}
                   >
                     {c.cell(row)}
                   </td>

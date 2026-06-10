@@ -11,7 +11,7 @@ export function TriggerNode({ data, selected }: NodeProps) {
       className="rounded-2xl px-4 py-3 min-w-45 relative"
       style={{
         background: "linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 100%)",
-        border: `1px solid ${selected ? "var(--accent)" : "rgba(16,185,129,0.2)"}`,
+        border: `1px solid ${selected ? "var(--accent)" : "rgba(255,43,214,0.2)"}`,
         boxShadow: selected ? "0 0 20px -4px var(--accent-glow), var(--shadow-md)" : "var(--shadow-md)",
       }}
     >

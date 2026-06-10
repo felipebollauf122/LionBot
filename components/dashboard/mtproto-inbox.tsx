@@ -66,7 +66,7 @@ export function MtprotoInbox({ accountId }: { accountId: string }) {
         {status === "connecting" && <span className="text-white/40">conectando…</span>}
         {status === "live" && (
           <>
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-(--cyan) animate-pulse" />
             <span className="text-white/60">ao vivo</span>
           </>
         )}

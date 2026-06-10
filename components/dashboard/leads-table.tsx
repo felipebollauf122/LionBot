@@ -58,7 +58,7 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
 
       {leads.length === 0 ? (
         <div className="text-center py-20 animate-up">
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(34, 211, 238, 0.12) 0%, rgba(34, 211, 238, 0.04) 100%)" }}>
+          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, var(--cyan-muted) 0%, rgba(0,229,255,0.04) 100%)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" />
             </svg>

@@ -105,10 +105,10 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
             onClick={() => handleFilter(f)}
             className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
               filter === f
-                ? "text-black"
+                ? "text-white"
                 : "bg-white/3 text-(--text-muted) hover:bg-white/6 hover:text-(--text-secondary) border border-(--border-subtle)"
             }`}
-            style={filter === f ? { background: "linear-gradient(135deg, var(--accent) 0%, #0d9668 100%)", boxShadow: "0 0 16px -4px rgba(16,185,129,0.3)" } : {}}
+            style={filter === f ? { background: "linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)", boxShadow: "0 0 16px -4px var(--accent-glow)" } : {}}
           >
             {f === "all" ? "Todas" : statusLabels[f]}
           </button>
@@ -117,7 +117,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
 
       {transactions.length === 0 ? (
         <div className="text-center py-20 animate-up">
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0.04) 100%)" }}>
+          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(255, 43, 214, 0.12) 0%, rgba(255, 43, 214, 0.04) 100%)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
             </svg>

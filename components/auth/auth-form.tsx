@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
+import { LionMark } from "@/components/brand/lion-mark";
 
 interface AuthFormProps {
   mode: "login" | "register";
@@ -111,9 +112,9 @@ export function AuthForm({ mode }: AuthFormProps) {
       {/* Logo */}
       <div className="mb-10">
         <div className="flex items-center gap-2.5 mb-1">
-          <img src="/logo.png" alt="EagleBot" className="w-11 h-11 object-contain drop-shadow-[0_0_10px_rgba(34,211,238,0.3)]" />
+          <LionMark size={40} />
           <span className="text-lg font-bold tracking-tight page-title">
-            EagleBot
+            Lion<span className="gradient-text">Bot</span>
           </span>
         </div>
       </div>

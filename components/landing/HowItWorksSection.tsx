@@ -24,18 +24,18 @@ const steps = [
 
 export default function HowItWorksSection() {
   return (
-    <section id="como-funciona" className="bg-[#030508] py-28 lg:py-36 border-t border-white/[0.06]">
+    <section id="como-funciona" className="bg-(--bg-root) py-28 lg:py-36 border-t border-(--border-subtle)">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <p
-          className="text-xs text-slate-600 tracking-[0.2em] uppercase mb-5"
-          style={{ fontFamily: 'var(--font-jetbrains)' }}
+          className="text-xs text-(--cyan) tracking-[0.22em] uppercase mb-5"
+          style={{ fontFamily: 'var(--font-mono)' }}
         >
-          Como funciona
+          {'// Como funciona'}
         </p>
         <h2
-          className="text-4xl sm:text-5xl font-bold text-white leading-tight mb-16 max-w-2xl"
-          style={{ fontFamily: 'var(--font-syne)' }}
+          className="text-4xl sm:text-5xl font-bold text-(--text-primary) leading-tight mb-16 max-w-2xl"
+          style={{ fontFamily: 'var(--font-display)' }}
         >
           Três passos para seu bot vender{' '}
           <span className="gradient-text">enquanto você dorme</span>
@@ -45,7 +45,7 @@ export default function HowItWorksSection() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 lg:gap-0 relative">
           {/* Connector */}
           <div className="hidden lg:block absolute top-[2.25rem] left-[calc(16.67%+3rem)] right-[calc(16.67%+3rem)] h-px">
-            <div className="w-full h-full bg-gradient-to-r from-indigo-500/30 via-cyan-500/30 to-indigo-500/30" />
+            <div className="w-full h-full bg-gradient-to-r from-(--accent)/40 via-(--cyan)/40 to-(--purple)/40" />
           </div>
 
           {steps.map((step, i) => (
@@ -55,17 +55,19 @@ export default function HowItWorksSection() {
             >
               {/* Number + detail */}
               <div className="flex items-center gap-4">
-                <div className="flex items-center justify-center w-[4.5rem] h-[4.5rem] rounded-2xl border border-white/[0.08] bg-white/[0.03]">
+                <div
+                  className="flex items-center justify-center w-[4.5rem] h-[4.5rem] rounded-2xl border border-(--border-default) bg-(--bg-elevated) relative"
+                  style={{ boxShadow: '0 0 24px -10px var(--accent-glow)' }}
+                >
                   <span
-                    className="text-2xl font-bold gradient-text"
-                    style={{ fontFamily: 'var(--font-jetbrains)' }}
+                    className="text-2xl gradient-text stat-value"
                   >
                     {step.number}
                   </span>
                 </div>
                 <span
-                  className="text-xs text-slate-600 tracking-widest uppercase"
-                  style={{ fontFamily: 'var(--font-jetbrains)' }}
+                  className="text-xs text-(--text-muted) tracking-widest uppercase"
+                  style={{ fontFamily: 'var(--font-mono)' }}
                 >
                   {step.detail}
                 </span>
@@ -73,22 +75,23 @@ export default function HowItWorksSection() {
 
               <div>
                 <h3
-                  className="text-xl font-semibold text-white mb-2"
-                  style={{ fontFamily: 'var(--font-syne)' }}
+                  className="text-xl font-semibold text-(--text-primary) mb-2"
+                  style={{ fontFamily: 'var(--font-display)' }}
                 >
                   {step.title}
                 </h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{step.description}</p>
+                <p className="text-sm text-(--text-muted) leading-relaxed">{step.description}</p>
               </div>
             </div>
           ))}
         </div>
 
         {/* CTA */}
-        <div className="mt-16 pt-12 border-t border-white/[0.06]">
+        <div className="mt-16 pt-12 border-t border-(--border-subtle)">
           <a
             href="/register"
-            className="inline-flex items-center gap-2.5 text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors group"
+            className="inline-flex items-center gap-2.5 text-sm font-semibold text-(--accent) hover:text-(--accent-hover) transition-colors group"
+            style={{ fontFamily: 'var(--font-mono)' }}
           >
             Quero começar agora
             <svg

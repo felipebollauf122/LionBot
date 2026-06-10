@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LionMark } from "@/components/brand/lion-mark";
 import type { Bot } from "@/lib/types/database";
 
 interface BotCardProps {
@@ -41,7 +42,7 @@ export function BotCard({ bot }: BotCardProps) {
             {bot.avatar_url ? (
               <img src={bot.avatar_url} alt="" className="w-10 h-10 rounded-xl object-cover" />
             ) : (
-              <img src="/logo.png" alt="" className="w-10 h-10 object-contain drop-shadow-[0_0_6px_rgba(34,211,238,0.2)]" />
+              <LionMark size={38} glow={false} />
             )}
             {bot.is_active && (
               <div className="absolute -inset-0.5 rounded-xl border border-(--cyan)/15" style={{ animation: "pulse-ring 3s ease-in-out infinite" }} />
@@ -86,7 +87,7 @@ export function BotCard({ bot }: BotCardProps) {
               ? "bg-(--accent-muted) text-(--accent) border border-(--accent)/20"
               : "bg-white/4 text-(--text-secondary) border border-(--border-subtle) hover:bg-white/8 hover:text-foreground hover:border-(--border-default)"
           }`}
-          style={copied ? { boxShadow: "0 0 12px -4px rgba(16,185,129,0.3)" } : {}}
+          style={copied ? { boxShadow: "0 0 12px -4px rgba(255,43,214,0.3)" } : {}}
         >
           {copied ? "Copiado!" : "Copiar"}
         </button>

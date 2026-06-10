@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { saveBotSettings, updateBotAvatar, toggleBlackEnabled, toggleProtectContent, deleteBot, updateBotToken } from "@/lib/actions/bot-settings-actions";
 import { uploadMedia } from "@/lib/actions/upload-actions";
+import { LionMark } from "@/components/brand/lion-mark";
 import type { Bot } from "@/lib/types/database";
 
 interface BotSettingsFormProps {
@@ -150,7 +151,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
     return (
       <div className="flex items-center gap-3 mb-5">
         {sKey === "info" ? (
-          <img src="/logo.png" alt="" className="w-10 h-10 object-contain drop-shadow-[0_0_6px_rgba(34,211,238,0.2)]" />
+          <LionMark size={38} glow={false} />
         ) : (
           <div className="section-icon w-10 h-10" style={{ background: `color-mix(in srgb, ${s.color} 14%, transparent)`, boxShadow: `0 0 12px -4px ${s.color}` }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={s.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -184,7 +185,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                 src={avatarUrl}
                 alt="Bot avatar"
                 className="w-20 h-20 rounded-2xl object-cover border border-(--border-subtle)"
-                style={{ boxShadow: "0 0 20px -6px rgba(16,185,129,0.15)" }}
+                style={{ boxShadow: "0 0 20px -6px rgba(255,43,214,0.15)" }}
               />
             ) : (
               <div
@@ -231,7 +232,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                 onClick={() => avatarInputRef.current?.click()}
                 disabled={uploadingAvatar}
                 className="px-3 py-1.5 text-xs font-bold text-(--accent) border border-(--accent)/15 rounded-lg hover:bg-(--accent-muted) transition-all disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(16,185,129,0.04) 100%)" }}
+                style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)" }}
               >
                 {uploadingAvatar ? "Enviando..." : "Enviar foto"}
               </button>
@@ -241,7 +242,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                   onClick={handleRemoveAvatar}
                   disabled={uploadingAvatar}
                   className="px-3 py-1.5 text-xs font-bold text-(--red) border border-(--red)/15 rounded-lg hover:bg-(--red-muted) transition-all disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(239,68,68,0.04) 100%)" }}
+                  style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)" }}
                 >
                   Remover
                 </button>
@@ -269,8 +270,8 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                 : "text-(--accent) border border-(--accent)/15"
             }`}
             style={isActive
-              ? { background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(239,68,68,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(239,68,68,0.2)" }
-              : { background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(16,185,129,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(16,185,129,0.2)" }
+              ? { background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(255,59,107,0.2)" }
+              : { background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(255,43,214,0.2)" }
             }
           >
             {activating ? "Processando..." : isActive ? "Desativar Bot" : "Ativar Bot"}
@@ -307,7 +308,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
               }}
               disabled={togglingProtect}
               className={`relative w-11 h-6 rounded-full transition-all duration-200 ${protectContent ? "bg-(--cyan)" : "bg-(--border-default)"}`}
-              style={protectContent ? { boxShadow: "0 0 12px -2px rgba(34,211,238,0.4)" } : {}}
+              style={protectContent ? { boxShadow: "0 0 12px -2px var(--cyan-glow)" } : {}}
             >
               <span
                 className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${protectContent ? "translate-x-5" : "translate-x-0"}`}
@@ -345,7 +346,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                 }}
                 disabled={togglingBlack}
                 className={`relative w-11 h-6 rounded-full transition-all duration-200 ${blackEnabled ? "bg-(--red)" : "bg-(--border-default)"}`}
-                style={blackEnabled ? { boxShadow: "0 0 12px -2px rgba(239,68,68,0.4)" } : {}}
+                style={blackEnabled ? { boxShadow: "0 0 12px -2px rgba(255,59,107,0.4)" } : {}}
               >
                 <span
                   className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${blackEnabled ? "translate-x-5" : "translate-x-0"}`}

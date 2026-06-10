@@ -276,8 +276,8 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
       {/* ═══ VISUAL FLOW ═══ */}
       <div className="mb-6 animate-up-1">
         <div className="flex items-center gap-3 mb-3">
-          <div className="section-icon w-8 h-8" style={{ background: "linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.05) 100%)" }}>
-            <div className="w-2.5 h-2.5 rounded-full bg-(--accent)" style={{ boxShadow: "0 0 6px rgba(16,185,129,0.5)" }} />
+          <div className="section-icon w-8 h-8" style={{ background: "linear-gradient(135deg, rgba(255, 43, 214, 0.15) 0%, rgba(255, 43, 214, 0.05) 100%)" }}>
+            <div className="w-2.5 h-2.5 rounded-full bg-(--accent)" style={{ boxShadow: "0 0 6px rgba(255,43,214,0.5)" }} />
           </div>
           <div>
             <h2 className="text-foreground font-semibold text-sm tracking-tight">Fluxo Principal</h2>
@@ -308,8 +308,8 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
       <div className="mb-8 animate-up-2">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="section-icon w-8 h-8" style={{ background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%)" }}>
-              <div className="w-2.5 h-2.5 rounded-full bg-(--red)" style={{ boxShadow: "0 0 6px rgba(239,68,68,0.5)" }} />
+            <div className="section-icon w-8 h-8" style={{ background: "linear-gradient(135deg, rgba(255, 59, 107, 0.15) 0%, rgba(255, 59, 107, 0.05) 100%)" }}>
+              <div className="w-2.5 h-2.5 rounded-full bg-(--red)" style={{ boxShadow: "0 0 6px rgba(255,59,107,0.5)" }} />
             </div>
             <div>
               <h2 className="text-foreground font-semibold text-sm tracking-tight">Fluxo Black</h2>
@@ -324,7 +324,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
                 ? "text-(--red) border border-(--red)/20"
                 : "text-(--text-muted) border border-(--border-subtle) hover:bg-white/4"
             }`}
-            style={blackOn ? { background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(239,68,68,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(239,68,68,0.25)" } : { background: "rgba(255,255,255,0.03)" }}
+            style={blackOn ? { background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)", boxShadow: "0 0 12px -4px rgba(255,59,107,0.25)" } : { background: "rgba(255,255,255,0.03)" }}
           >
             {togglingBlack ? "..." : blackOn ? "Ativado" : "Desativado"}
           </button>
@@ -507,7 +507,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
                     <path d="M9.59 4.59A2 2 0 1111 8H2m10.59 11.41A2 2 0 1013 16H2m16-8a2 2 0 10-2-2H2" />
                   </svg>
                   {flow.is_active && (
-                    <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-(--accent)" style={{ boxShadow: "0 0 4px rgba(16,185,129,0.5)" }} />
+                    <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-(--accent)" style={{ boxShadow: "0 0 4px rgba(255,43,214,0.5)" }} />
                   )}
                 </div>
                 <div>

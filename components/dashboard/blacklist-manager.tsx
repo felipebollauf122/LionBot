@@ -95,7 +95,7 @@ export function BlacklistManager({ botId, initialBlacklist }: BlacklistManagerPr
         <button
           onClick={() => setShowAdd(true)}
           className="px-4 py-2 text-xs font-bold text-(--accent) border border-(--accent)/15 rounded-lg hover:bg-(--accent-muted) transition-all mb-4"
-          style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(16,185,129,0.04) 100%)" }}
+          style={{ background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)" }}
         >
           + Adicionar usuario
         </button>
@@ -206,7 +206,7 @@ export function BlacklistManager({ botId, initialBlacklist }: BlacklistManagerPr
                 onClick={() => handleRemove(entry.id)}
                 disabled={removing === entry.id}
                 className="px-3 py-1.5 text-xs font-bold text-(--red) border border-(--red)/15 rounded-lg hover:bg-(--red-muted) transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 shrink-0"
-                style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(239,68,68,0.04) 100%)" }}
+                style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)" }}
               >
                 {removing === entry.id ? "..." : "Remover"}
               </button>

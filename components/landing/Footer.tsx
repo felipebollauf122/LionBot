@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { LionMark } from '@/components/brand/lion-mark'
 
 const productLinks = [
   { href: '#produto', label: 'Funcionalidades' },
@@ -18,21 +19,21 @@ const legalLinks = [
 
 export default function Footer() {
   return (
-    <footer className="bg-[#030508] border-t border-white/[0.06]">
+    <footer className="bg-(--bg-root) border-t border-(--border-subtle)">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-        <div className="flex flex-col lg:flex-row justify-between gap-12 pb-12 border-b border-white/[0.06]">
+        <div className="flex flex-col lg:flex-row justify-between gap-12 pb-12 border-b border-(--border-subtle)">
           {/* Brand */}
           <div className="max-w-xs">
             <div className="flex items-center gap-2.5 mb-3">
-              <EagleMark />
+              <LionMark size={22} />
               <span
-                className="text-lg font-bold text-white tracking-tight"
-                style={{ fontFamily: 'var(--font-syne)' }}
+                className="text-lg font-bold text-(--text-primary) tracking-tight"
+                style={{ fontFamily: 'var(--font-display)' }}
               >
-                Eaglebot
+                Lion<span className="gradient-text">Bot</span>
               </span>
             </div>
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <p className="text-sm text-(--text-muted) leading-relaxed">
               A plataforma profissional para criar bots de vendas no Telegram.
             </p>
           </div>
@@ -48,10 +49,10 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="pt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p
-            className="text-xs text-slate-700"
-            style={{ fontFamily: 'var(--font-jetbrains)' }}
+            className="text-xs text-(--text-ghost)"
+            style={{ fontFamily: 'var(--font-mono)' }}
           >
-            © 2026 Eaglebot — Todos os direitos reservados
+            © 2026 LionBot — Todos os direitos reservados
           </p>
           <div className="flex items-center gap-5">
             <SocialLink href="#" label="Instagram" icon={<InstagramIcon />} />
@@ -60,23 +61,6 @@ export default function Footer() {
         </div>
       </div>
     </footer>
-  )
-}
-
-function EagleMark() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <defs>
-        <linearGradient id="footer-grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#818cf8" />
-          <stop offset="100%" stopColor="#06b6d4" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 2L4 8l2.5 1.5L2 16h5.5L9 13.5l3 6.5 3-6.5 1.5 2.5H22l-4.5-6.5L20 8 12 2z"
-        fill="url(#footer-grad)"
-      />
-    </svg>
   )
 }
 
@@ -90,15 +74,15 @@ function LinkColumn({
   return (
     <div>
       <p
-        className="text-xs font-semibold text-slate-500 tracking-[0.12em] uppercase mb-4"
-        style={{ fontFamily: 'var(--font-jetbrains)' }}
+        className="text-xs font-semibold text-(--text-secondary) tracking-[0.14em] uppercase mb-4"
+        style={{ fontFamily: 'var(--font-mono)' }}
       >
         {title}
       </p>
       <ul className="flex flex-col gap-2.5">
         {links.map(({ href, label }) => (
           <li key={label}>
-            <a href={href} className="text-slate-600 hover:text-white transition-colors text-sm">
+            <a href={href} className="text-(--text-muted) hover:text-(--accent) transition-colors text-sm">
               {label}
             </a>
           </li>
@@ -121,7 +105,7 @@ function SocialLink({
     <a
       href={href}
       aria-label={label}
-      className="text-slate-700 hover:text-white transition-colors duration-200"
+      className="text-(--text-muted) hover:text-(--cyan) transition-colors duration-200"
     >
       {icon}
     </a>

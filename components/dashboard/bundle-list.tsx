@@ -189,7 +189,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
 
       {bundles.length === 0 && !showCreate ? (
         <div className="text-center py-20 animate-up">
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(167, 139, 250, 0.12) 0%, rgba(167, 139, 250, 0.04) 100%)" }}>
+          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(177, 75, 255, 0.12) 0%, rgba(177, 75, 255, 0.04) 100%)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
             </svg>
@@ -216,7 +216,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
                   onClick={() => setExpandedBundle(isExpanded ? null : bundle.id)}
                 >
                   <div className="flex items-center gap-3.5">
-                    <div className="section-icon w-10 h-10" style={{ background: "linear-gradient(135deg, rgba(167, 139, 250, 0.14) 0%, rgba(167, 139, 250, 0.04) 100%)" }}>
+                    <div className="section-icon w-10 h-10" style={{ background: "linear-gradient(135deg, rgba(177, 75, 255, 0.14) 0%, rgba(177, 75, 255, 0.04) 100%)" }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
                       </svg>

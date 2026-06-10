@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { LionMark } from "@/components/brand/lion-mark";
 
 interface BotSidebarProps {
   botId: string;
@@ -51,7 +52,7 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp }
           {avatarUrl ? (
             <img src={avatarUrl} alt="" className="w-8 h-8 rounded-lg object-cover" />
           ) : (
-            <img src="/logo.png" alt="" className="w-8 h-8 object-contain drop-shadow-[0_0_6px_rgba(34,211,238,0.2)]" />
+            <LionMark size={32} glow={false} />
           )}
           <h2 className="text-sm font-bold text-foreground truncate tracking-tight">
             @{botUsername}

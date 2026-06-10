@@ -30,7 +30,7 @@ export function VideoConfig({ data, onChange }: VideoConfigProps) {
         className="rounded-xl p-3 text-[11px]"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--cyan) 6%, transparent), color-mix(in srgb, var(--cyan) 2%, transparent))",
-          border: "1px solid rgba(34,211,238,0.1)",
+          border: "1px solid rgba(0,229,255,0.1)",
           color: "var(--cyan)",
           opacity: 0.7,
         }}

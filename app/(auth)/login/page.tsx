@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AuthForm } from "@/components/auth/auth-form";
+import { LionMark } from "@/components/brand/lion-mark";
 
 export default function LoginPage() {
   return (
@@ -36,7 +37,7 @@ export default function LoginPage() {
         <div className="relative z-10 flex flex-col items-center justify-center px-14 w-full">
           {/* Logo with glow */}
           <div className="relative mb-10">
-            <img src="/logo.png" alt="EagleBot" className="w-28 h-28 object-contain drop-shadow-[0_0_24px_rgba(34,211,238,0.25)]" style={{ filter: "drop-shadow(0 0 20px rgba(34,211,238,0.2))" }} />
+            <LionMark size={104} />
             {/* Orbital ring */}
             <div className="absolute inset-[-12px] border border-(--cyan)/8 rounded-full" style={{ animation: "pulse-ring 3s ease-in-out infinite" }} />
           </div>

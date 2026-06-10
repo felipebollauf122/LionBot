@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { LionMark } from '@/components/brand/lion-mark'
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
@@ -16,30 +17,31 @@ export default function Navbar() {
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-500 ${
         scrolled
-          ? 'bg-[#030508]/85 backdrop-blur-xl border-b border-white/[0.06]'
+          ? 'bg-[#07040d]/85 backdrop-blur-xl border-b border-(--border-subtle)'
           : 'bg-transparent'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex h-14 items-center justify-between">
+        <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <a href="/" className="flex items-center gap-2.5 group">
-            <EagleMark />
+            <LionMark size={28} />
             <span
-              className="font-display text-lg font-bold tracking-tight text-white"
-              style={{ fontFamily: 'var(--font-syne)' }}
+              className="text-lg font-bold tracking-tight text-(--text-primary)"
+              style={{ fontFamily: 'var(--font-display)' }}
             >
-              Eaglebot
+              Lion<span className="gradient-text">Bot</span>
             </span>
           </a>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-7">
+          <nav className="hidden md:flex items-center gap-8">
             {navLinks.map(({ href, label }) => (
               <a
                 key={href}
                 href={href}
-                className="text-sm text-slate-500 hover:text-white transition-colors duration-200 tracking-wide"
+                className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors duration-200 tracking-wide"
+                style={{ fontFamily: 'var(--font-mono)' }}
               >
                 {label}
               </a>
@@ -48,11 +50,11 @@ export default function Navbar() {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <a
-              href="/register"
-              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-all duration-200 shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/35"
-            >
-              Criar bot grátis
+            <a href="/login" className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors">
+              Entrar
+            </a>
+            <a href="/register" className="btn-primary text-xs! py-2.5! px-5!">
+              Criar bot
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
@@ -62,7 +64,7 @@ export default function Navbar() {
           {/* Mobile toggle */}
           <button
             onClick={() => setMobileOpen((v) => !v)}
-            className="md:hidden p-1.5 text-slate-500 hover:text-white transition-colors"
+            className="md:hidden p-1.5 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
             aria-label="Abrir menu"
           >
             {mobileOpen ? <XIcon /> : <MenuIcon />}
@@ -72,22 +74,19 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="md:hidden bg-[#030508]/98 backdrop-blur-xl border-b border-white/[0.06] px-4 pb-6">
+        <div className="md:hidden bg-[#07040d]/98 backdrop-blur-xl border-b border-(--border-subtle) px-4 pb-6">
           <nav className="flex flex-col gap-1 pt-3">
             {navLinks.map(({ href, label }) => (
               <a
                 key={href}
                 href={href}
                 onClick={() => setMobileOpen(false)}
-                className="text-sm text-slate-400 hover:text-white transition-colors py-2.5 px-2 rounded-lg hover:bg-white/[0.04]"
+                className="text-sm text-(--text-secondary) hover:text-(--text-primary) transition-colors py-2.5 px-2 rounded-lg hover:bg-white/[0.04]"
               >
                 {label}
               </a>
             ))}
-            <a
-              href="/register"
-              className="mt-3 flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-3 rounded-lg transition-all"
-            >
+            <a href="/register" className="btn-primary mt-3 py-3!">
               Criar bot grátis
             </a>
           </nav>
@@ -102,23 +101,6 @@ const navLinks = [
   { href: '#como-funciona', label: 'Como funciona' },
   { href: '#depoimentos', label: 'Depoimentos' },
 ]
-
-function EagleMark() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <defs>
-        <linearGradient id="em-grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#818cf8" />
-          <stop offset="100%" stopColor="#06b6d4" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 2L4 8l2.5 1.5L2 16h5.5L9 13.5l3 6.5 3-6.5 1.5 2.5H22l-4.5-6.5L20 8 12 2z"
-        fill="url(#em-grad)"
-      />
-    </svg>
-  )
-}
 
 function MenuIcon() {
   return (

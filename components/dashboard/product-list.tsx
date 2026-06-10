@@ -156,7 +156,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
 
       {products.length === 0 ? (
         <div className="text-center py-20 animate-up">
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0.04) 100%)" }}>
+          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(255, 43, 214, 0.12) 0%, rgba(255, 43, 214, 0.04) 100%)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01" />
             </svg>
@@ -205,7 +205,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                     <div className="border-t border-(--border-subtle) pt-4 mt-4 relative">
                       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-(--red)/20 to-transparent" />
                       <div className="flex items-center gap-2.5 mb-3">
-                        <div className="section-icon w-6 h-6" style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(239,68,68,0.04) 100%)" }}>
+                        <div className="section-icon w-6 h-6" style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)" }}>
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
                           </svg>
@@ -222,7 +222,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                             onChange={(e) => setEditGhostName(e.target.value)}
                             placeholder="Nome alternativo para o gateway"
                             className="input"
-                            style={{ borderColor: "rgba(239,68,68,0.15)" }}
+                            style={{ borderColor: "rgba(255,59,107,0.15)" }}
                           />
                         </div>
                         <div>
@@ -233,7 +233,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                             onChange={(e) => setEditGhostDescription(e.target.value)}
                             placeholder="Descricao alternativa"
                             className="input"
-                            style={{ borderColor: "rgba(239,68,68,0.15)" }}
+                            style={{ borderColor: "rgba(255,59,107,0.15)" }}
                           />
                         </div>
                       </div>
@@ -251,7 +251,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     {/* Price badge */}
-                    <div className="w-16 h-16 rounded-xl flex flex-col items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, rgba(16, 185, 129, 0.10) 0%, rgba(16, 185, 129, 0.03) 100%)", boxShadow: "0 0 12px -6px rgba(16,185,129,0.2)" }}>
+                    <div className="w-16 h-16 rounded-xl flex flex-col items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, rgba(255, 43, 214, 0.10) 0%, rgba(255, 43, 214, 0.03) 100%)", boxShadow: "0 0 12px -6px rgba(255,43,214,0.2)" }}>
                       <span className="text-(--accent) text-sm font-bold stat-value leading-none">
                         {(product.price / 100).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </span>

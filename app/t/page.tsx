@@ -386,7 +386,7 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
           fontWeight: 600,
         }}
       >
-        Powered by EagleBot
+        Powered by LionBot
       </p>
 
       <script

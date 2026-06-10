@@ -474,7 +474,7 @@ function MonitorsTab({
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { text: string; cls: string }> = {
-    active: { text: "ativo", cls: "bg-green-500/20 text-green-300" },
+    active: { text: "ativo", cls: "bg-(--cyan)/20 text-(--cyan)" },
     paused: { text: "pausado", cls: "bg-amber-500/20 text-amber-300" },
     replaced: { text: "substituído", cls: "bg-(--accent)/20 text-(--accent)" },
     dead: { text: "morto", cls: "bg-red-500/20 text-red-300" },

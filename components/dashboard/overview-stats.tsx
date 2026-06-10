@@ -15,10 +15,10 @@ const icons = {
 
 export function OverviewStats({ totalBots, activeBots, totalLeads, totalRevenue, totalSales }: OverviewStatsProps) {
   const cards = [
-    { label: "Bots Ativos", value: `${activeBots}/${totalBots}`, icon: icons.bots, color: "var(--accent)", glowColor: "rgba(16, 185, 129, 0.25)" },
-    { label: "Total de Leads", value: totalLeads.toLocaleString("pt-BR"), icon: icons.leads, color: "var(--cyan)", glowColor: "rgba(34, 211, 238, 0.25)" },
-    { label: "Vendas Aprovadas", value: totalSales.toLocaleString("pt-BR"), icon: icons.sales, color: "var(--purple)", glowColor: "rgba(167, 139, 250, 0.25)" },
-    { label: "Receita Total", value: (totalRevenue / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), icon: icons.revenue, color: "var(--accent)", glowColor: "rgba(16, 185, 129, 0.25)" },
+    { label: "Bots Ativos", value: `${activeBots}/${totalBots}`, icon: icons.bots, color: "var(--accent)", glowColor: "var(--accent-glow)" },
+    { label: "Total de Leads", value: totalLeads.toLocaleString("pt-BR"), icon: icons.leads, color: "var(--cyan)", glowColor: "var(--cyan-glow)" },
+    { label: "Vendas Aprovadas", value: totalSales.toLocaleString("pt-BR"), icon: icons.sales, color: "var(--purple)", glowColor: "var(--purple-glow)" },
+    { label: "Receita Total", value: (totalRevenue / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), icon: icons.revenue, color: "var(--accent)", glowColor: "var(--accent-glow)" },
   ];
 
   return (

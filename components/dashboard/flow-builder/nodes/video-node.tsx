@@ -10,7 +10,7 @@ export function VideoNode({ data, selected }: NodeProps) {
       className="rounded-2xl px-4 py-3 min-w-45 relative"
       style={{
         background: "linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 100%)",
-        border: `1px solid ${selected ? "var(--cyan)" : "rgba(34,211,238,0.15)"}`,
+        border: `1px solid ${selected ? "var(--cyan)" : "rgba(0,229,255,0.15)"}`,
         boxShadow: selected ? "0 0 20px -4px var(--cyan-glow), var(--shadow-md)" : "var(--shadow-md)",
       }}
     >

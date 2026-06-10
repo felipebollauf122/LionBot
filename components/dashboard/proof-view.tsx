@@ -213,7 +213,7 @@ export function ProofView({
         <header className="flex items-end justify-between pb-6 border-b border-zinc-300 mb-8">
           <div>
             <div className="text-zinc-400 text-[10px] uppercase tracking-[0.2em] font-semibold mb-1">
-              EagleBot
+              LionBot
             </div>
             <h1 className="text-2xl font-bold text-zinc-900 leading-tight">
               Comprovação de Compra
@@ -380,7 +380,7 @@ export function ProofView({
 
         {/* Footer */}
         <footer className="mt-12 pt-6 border-t border-zinc-200 text-center text-[10px] text-zinc-400">
-          Documento emitido eletronicamente por EagleBot · {generatedAt}
+          Documento emitido eletronicamente por LionBot · {generatedAt}
           <br />
           Verificação interna: {transaction.id}
         </footer>

@@ -147,9 +147,9 @@ export function MtprotoCampaignDetail({
               <span
                 className={`text-xs ${
                   t.status === "sent"
-                    ? "text-green-400"
+                    ? "text-(--cyan)"
                     : t.status === "failed"
-                      ? "text-red-400"
+                      ? "text-(--red)"
                       : "text-white/40"
                 }`}
               >

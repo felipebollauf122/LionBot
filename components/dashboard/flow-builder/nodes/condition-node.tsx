@@ -13,7 +13,7 @@ export function ConditionNode({ data, selected }: NodeProps) {
       className="rounded-2xl px-4 py-3 min-w-50 relative"
       style={{
         background: "linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 100%)",
-        border: `1px solid ${selected ? "var(--amber)" : "rgba(245,158,11,0.18)"}`,
+        border: `1px solid ${selected ? "var(--amber)" : "rgba(255,184,0,0.18)"}`,
         boxShadow: selected ? "0 0 20px -4px var(--amber-glow), var(--shadow-md)" : "var(--shadow-md)",
       }}
     >

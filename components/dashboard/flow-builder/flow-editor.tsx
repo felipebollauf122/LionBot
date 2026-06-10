@@ -29,6 +29,7 @@ import { ActionNode } from "./nodes/action-node";
 import { VideoNode } from "./nodes/video-node";
 import { PaymentButtonNode } from "./nodes/payment-button-node";
 import { saveFlow } from "@/lib/actions/flow-actions";
+import { LionMark } from "@/components/brand/lion-mark";
 import type { FlowData, FlowNode, NodeType } from "@/lib/types/database";
 
 export interface BundleOption {
@@ -215,7 +216,7 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
               </svg>
             </a>
             <div className="flex items-center gap-2.5">
-              <img src="/logo.png" alt="" className="w-6 h-6 object-contain drop-shadow-[0_0_4px_rgba(34,211,238,0.15)]" />
+              <LionMark size={24} glow={false} />
               <h2 className="text-foreground font-semibold text-sm tracking-tight">{flowName}</h2>
             </div>
           </div>
@@ -277,7 +278,7 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
               className="rounded-xl! border-0! overflow-hidden!"
               style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)", boxShadow: "var(--shadow-md)" }}
               nodeColor="var(--accent)"
-              maskColor="rgba(5,5,8,0.75)"
+              maskColor="rgba(7,4,13,0.78)"
             />
             <Background
               variant={BackgroundVariant.Dots}

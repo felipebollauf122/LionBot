@@ -127,7 +127,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
               : "text-(--text-muted) border border-(--border-subtle)"
           }`}
           style={isActive
-            ? { background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(16,185,129,0.04) 100%)", boxShadow: "0 0 16px -4px rgba(16,185,129,0.25)" }
+            ? { background: "linear-gradient(135deg, var(--accent-muted) 0%, rgba(255,43,214,0.04) 100%)", boxShadow: "0 0 16px -4px rgba(255,43,214,0.25)" }
             : { background: "rgba(255,255,255,0.03)" }
           }
         >
@@ -147,10 +147,10 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
               disabled={saving}
               className={`py-3 rounded-xl text-sm font-semibold transition-all ${
                 interval === opt.value
-                  ? "text-black"
+                  ? "text-white"
                   : "bg-white/3 text-(--text-muted) hover:bg-white/6 hover:text-(--text-secondary) border border-(--border-subtle)"
               }`}
-              style={interval === opt.value ? { background: "linear-gradient(135deg, var(--accent) 0%, #0d9668 100%)", boxShadow: "0 0 16px -4px rgba(16,185,129,0.3)" } : {}}
+              style={interval === opt.value ? { background: "linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)", boxShadow: "0 0 16px -4px var(--accent-glow)" } : {}}
             >
               {opt.label}
             </button>
@@ -200,7 +200,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
       {flows.length === 0 ? (
         <div className="text-center py-20 card relative">
           <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--amber)/15 to-transparent" />
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.04) 100%)" }}>
+          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, rgba(255, 184, 0, 0.12) 0%, rgba(255, 184, 0, 0.04) 100%)" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
             </svg>
@@ -228,7 +228,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
                   </div>
 
                   {/* Order badge */}
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold stat-value" style={{ background: "linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(245, 158, 11, 0.04) 100%)", color: "var(--amber)", boxShadow: "0 0 10px -4px rgba(245,158,11,0.2)" }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold stat-value" style={{ background: "linear-gradient(135deg, rgba(255, 184, 0, 0.14) 0%, rgba(255, 184, 0, 0.04) 100%)", color: "var(--amber)", boxShadow: "0 0 10px -4px rgba(255,184,0,0.2)" }}>
                     {index + 1}
                   </div>
 

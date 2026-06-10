@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { BotCard } from "@/components/dashboard/bot-card";
 import { OverviewStats } from "@/components/dashboard/overview-stats";
+import { LionMark } from "@/components/brand/lion-mark";
 import type { Bot } from "@/lib/types/database";
 
 export default async function DashboardPage() {
@@ -55,7 +56,7 @@ export default async function DashboardPage() {
 
       {/* Error */}
       {error && (
-        <div className="mb-6 px-4 py-3 rounded-xl border border-(--red)/15 text-(--red) text-sm" style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(239,68,68,0.04) 100%)" }}>
+        <div className="mb-6 px-4 py-3 rounded-xl border border-(--red)/15 text-(--red) text-sm" style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)" }}>
           Erro ao carregar bots: {error.message}
         </div>
       )}
@@ -63,7 +64,7 @@ export default async function DashboardPage() {
       {/* Bot List */}
       {botList.length === 0 && !error ? (
         <div className="text-center py-24 animate-up">
-          <img src="/logo.png" alt="EagleBot" className="w-20 h-20 object-contain mx-auto mb-5" style={{ filter: "drop-shadow(0 0 16px rgba(34,211,238,0.2))" }} />
+          <div className="w-20 h-20 mx-auto mb-5 flex items-center justify-center"><LionMark size={72} /></div>
           <h2 className="text-foreground text-lg font-bold mb-2 tracking-tight page-title">
             Nenhum bot ainda
           </h2>

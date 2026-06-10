@@ -134,10 +134,10 @@ export function TrackingStats({
             onClick={() => setTab(t)}
             className={`px-5 py-2.5 text-xs font-bold rounded-lg transition-all ${
               tab === t
-                ? "text-black"
+                ? "text-white"
                 : "bg-white/3 text-(--text-muted) hover:bg-white/6 border border-(--border-subtle)"
             }`}
-            style={tab === t ? { background: "linear-gradient(135deg, var(--accent) 0%, #0d9668 100%)", boxShadow: "0 0 16px -4px rgba(16,185,129,0.3)" } : {}}
+            style={tab === t ? { background: "linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%)", boxShadow: "0 0 16px -4px var(--accent-glow)" } : {}}
           >
             {t === "leads" ? `Leads (${leadsCount})` : `Eventos (${eventsCount})`}
           </button>

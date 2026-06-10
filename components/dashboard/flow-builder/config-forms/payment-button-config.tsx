@@ -52,7 +52,7 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
         className="rounded-xl p-3 text-[11px]"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 6%, transparent), color-mix(in srgb, var(--amber) 2%, transparent))",
-          border: "1px solid rgba(245,158,11,0.1)",
+          border: "1px solid rgba(255,184,0,0.1)",
           color: "var(--amber)",
           opacity: 0.75,
         }}

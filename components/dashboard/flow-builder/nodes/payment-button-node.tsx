@@ -10,7 +10,7 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
       className="rounded-2xl px-4 py-3 min-w-50 max-w-70 relative"
       style={{
         background: "linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 100%)",
-        border: `1px solid ${selected ? "var(--amber)" : "rgba(245,158,11,0.18)"}`,
+        border: `1px solid ${selected ? "var(--amber)" : "rgba(255,184,0,0.18)"}`,
         boxShadow: selected ? "0 0 20px -4px var(--amber-glow), var(--shadow-md)" : "var(--shadow-md)",
       }}
     >
@@ -32,7 +32,7 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
           background: bundleId
             ? "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 4%, transparent))"
             : "linear-gradient(135deg, color-mix(in srgb, var(--amber) 10%, transparent), color-mix(in srgb, var(--amber) 4%, transparent))",
-          border: bundleId ? "1px solid rgba(16,185,129,0.15)" : "1px solid rgba(245,158,11,0.15)",
+          border: bundleId ? "1px solid rgba(255,43,214,0.15)" : "1px solid rgba(255,184,0,0.15)",
           color: bundleId ? "var(--accent)" : "var(--amber)",
         }}
       >

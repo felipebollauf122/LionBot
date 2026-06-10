@@ -231,7 +231,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
         }
       />
 
-      <div className="flex-1 p-4 sm:p-6">
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
         {showingOrphans && (
           <p className="text-(--text-secondary) text-sm mb-4">
             {orphans === null
@@ -242,7 +242,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
           </p>
         )}
 
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <DataGrid
             columns={columns}
             rows={rows}

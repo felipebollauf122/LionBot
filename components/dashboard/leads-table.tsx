@@ -76,8 +76,8 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
         kpis={<KpiPill label="total" value={count.toLocaleString("pt-BR")} accent="cyan" />}
       />
 
-      <div className="flex-1 p-4 sm:p-6">
-        <div className="card overflow-hidden">
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+        <div className="card overflow-x-auto">
           <DataGrid
             columns={columns}
             rows={leads}

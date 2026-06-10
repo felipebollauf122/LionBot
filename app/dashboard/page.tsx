@@ -57,7 +57,7 @@ export default async function DashboardPage() {
   const conversionRate = tracking.starts > 0 ? tracking.checkouts / tracking.starts : 0;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px]">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
       {/* Greeting header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6 animate-up">
         <div>

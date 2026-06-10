@@ -22,7 +22,7 @@ interface CommandBarProps {
  */
 export function CommandBar({ title, subtitle, search, filters, kpis, action }: CommandBarProps) {
   return (
-    <div className="sticky top-0 z-30 glass border-b border-(--border-subtle) px-4 sm:px-6 py-3">
+    <div className="sticky top-0 z-20 glass border-b border-(--border-subtle) px-4 sm:px-6 py-3">
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5">
         {/* Title */}
         <div className="min-w-0 shrink-0">

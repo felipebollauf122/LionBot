@@ -229,8 +229,8 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
         }
       />
 
-      <div className="flex-1 p-4 sm:p-6">
-        <div className="card overflow-hidden">
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+        <div className="card overflow-x-auto">
           <DataGrid
             columns={columns}
             rows={filtered}

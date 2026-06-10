@@ -14,7 +14,7 @@ interface ContextDrawerProps {
   size?: "sm" | "md" | "lg";
 }
 
-const WIDTH = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl" };
+const WIDTH = { sm: "sm:max-w-md", md: "sm:max-w-xl", lg: "sm:max-w-3xl" };
 
 /**
  * Sliding panel from the right — the home for all detail/edit that used to be

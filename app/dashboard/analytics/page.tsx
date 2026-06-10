@@ -49,7 +49,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     rows.map((r) => ({ id: r.id, label: r.label, value: brl(r.revenue), sub: `${r.sales} venda${r.sales !== 1 ? "s" : ""}` }));
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px]">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6 animate-up">
         <div>

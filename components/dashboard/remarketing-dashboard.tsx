@@ -165,7 +165,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
         }
       />
 
-      <div className="flex-1 p-4 sm:p-6">
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
         {saving && (
           <p className="text-(--text-ghost) text-[10px] uppercase tracking-wider mb-3">Salvando intervalo…</p>
         )}
@@ -184,7 +184,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
         ) : (
           <div className="max-w-2xl mx-auto">
             {/* Timeline start cap */}
-            <div className="flex items-center gap-3 pl-[18px]">
+            <div className="flex items-center gap-3 pl-4 sm:pl-[18px]">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "var(--cyan)", boxShadow: "0 0 10px var(--cyan)" }} />
               <span className="text-(--text-ghost) text-[10px] uppercase tracking-[0.14em]">Início da sequência</span>
             </div>
@@ -286,7 +286,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
             </ol>
 
             {/* Timeline end cap */}
-            <div className="flex items-center gap-3 pl-[18px] pt-1">
+            <div className="flex items-center gap-3 pl-4 sm:pl-[18px] pt-1">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "var(--accent)", boxShadow: "0 0 10px var(--accent-glow)" }} />
               <span className="text-(--text-ghost) text-[10px] uppercase tracking-[0.14em]">Fim da sequência</span>
             </div>

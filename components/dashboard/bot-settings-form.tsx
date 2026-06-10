@@ -6,10 +6,13 @@ import { saveBotSettings, updateBotAvatar, toggleBlackEnabled, toggleProtectCont
 import { uploadMedia } from "@/lib/actions/upload-actions";
 import { LionMark } from "@/components/brand/lion-mark";
 import type { Bot } from "@/lib/types/database";
+import type { ReactNode } from "react";
 
 interface BotSettingsFormProps {
   bot: Bot;
   isAdmin?: boolean;
+  /** extra content rendered inside the "Avançado" section (e.g. Blacklist, admin-only) */
+  children?: ReactNode;
 }
 
 type SectionKey = "info" | "facebook" | "utmify" | "gateway" | "tracking" | "advanced" | "danger";
@@ -24,7 +27,7 @@ const sections = [
   { key: "danger", label: "Zona de perigo", desc: "Excluir bot permanentemente", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01", color: "var(--red)" },
 ] as const;
 
-export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) {
+export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsFormProps) {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<SectionKey>("info");
   const [saving, setSaving] = useState(false);
@@ -183,7 +186,7 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
 
       <div className="flex flex-col lg:flex-row gap-5 lg:gap-7 items-start">
         {/* Sub-rail — section list */}
-        <nav className="w-full lg:w-64 shrink-0 lg:sticky lg:top-6">
+        <nav className="w-full lg:w-64 shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
           <ul className="card p-2 flex flex-col gap-1">
             {sections.map((s) => {
               const isActiveItem = activeSection === s.key;
@@ -710,6 +713,9 @@ export function BotSettingsForm({ bot, isAdmin = false }: BotSettingsFormProps) 
                   </button>
                 </div>
               )}
+
+              {/* Blacklist (admin) — vive aqui dentro da seção Avançado */}
+              {children}
             </div>
           )}
 

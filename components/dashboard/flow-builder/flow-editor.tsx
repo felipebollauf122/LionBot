@@ -190,7 +190,7 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
   }, [flowId, nodes, edges, saveAction]);
 
   return (
-    <div className="flex flex-col md:flex-row h-screen" style={{ background: "var(--bg-root)" }}>
+    <div className="flex flex-col md:flex-row h-[100dvh]" style={{ background: "var(--bg-root)" }}>
       <NodePalette />
 
       <div className="flex-1 flex flex-col">

@@ -26,6 +26,13 @@ export function BotShell({ botId, botUsername, avatarUrl, basePath, children }: 
   const base = basePath ?? `/dashboard/bots/${botId}`;
   const primaryItems = PRIMARY.map((seg) => botNavItems.find((i) => i.segment === seg)!).filter(Boolean);
 
+  // The flow editor is a full-screen canvas — it must escape the console shell
+  // (no rail, no bottom-tabs) so it gets the entire viewport.
+  const isFullscreen = pathname.includes("/editor");
+  if (isFullscreen) {
+    return <div className="min-h-screen bg-[#0a0a0f]">{children}</div>;
+  }
+
   return (
     <div className="flex min-h-screen bg-[#0a0a0f]">
       {/* Desktop rail (static) / mobile drawer */}
@@ -36,7 +43,7 @@ export function BotShell({ botId, botUsername, avatarUrl, basePath, children }: 
         <div onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden animate-in" aria-hidden />
       )}
 
-      <main className="flex-1 min-w-0 pb-16 md:pb-0">{children}</main>
+      <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
       {/* Mobile bottom-tab-bar */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 glass border-t border-(--border-subtle) flex items-stretch h-16 px-1">

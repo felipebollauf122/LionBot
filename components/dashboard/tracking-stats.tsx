@@ -160,7 +160,7 @@ export function TrackingStats({
         }
       />
 
-      <div className="flex-1 p-4 sm:p-6">
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
         {/* Mobile funnel KPIs (CommandBar hides KPIs below md) */}
         <div className="grid grid-cols-2 gap-2 mb-5 md:hidden">
           {Object.entries(eventTypeLabels).map(([key, label]) => (
@@ -170,7 +170,7 @@ export function TrackingStats({
 
         {tab === "leads" ? (
           <>
-            <div className="card overflow-hidden">
+            <div className="card overflow-x-auto">
               <DataGrid
                 columns={leadColumns}
                 rows={leads}
@@ -191,7 +191,7 @@ export function TrackingStats({
           </>
         ) : (
           <>
-            <div className="card overflow-hidden">
+            <div className="card overflow-x-auto">
               <DataGrid
                 columns={eventColumns}
                 rows={events}

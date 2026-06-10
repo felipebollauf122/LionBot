@@ -37,8 +37,8 @@ export function DataGrid<T>({ columns, rows, rowKey, onRowClick, selectedKey, em
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse min-w-[640px]">
-        <thead className="sticky top-0 z-10">
+      <table className="w-full border-collapse min-w-[320px] sm:min-w-[480px]">
+        <thead className="sticky top-0 z-10 bg-(--bg-surface)/95 backdrop-blur-sm">
           <tr>
             {columns.map((c) => (
               <th

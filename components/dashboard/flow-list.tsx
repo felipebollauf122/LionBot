@@ -339,14 +339,14 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
         }
       />
 
-      <div className="flex-1 p-4 sm:p-6 max-w-5xl w-full">
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6 max-w-5xl w-full mx-auto">
         {/* ═══ PRINCIPAL ═══ */}
         <RowGroupHeader label="Principal" count={groups.principal.length} accent="magenta" />
         <p className="text-(--text-muted) text-xs mb-2 px-3">
           Executado quando alguém envia /start sem payload (tráfego orgânico).
         </p>
         {groups.principal.length > 0 ? (
-          <div className="card overflow-hidden">
+          <div className="card overflow-x-auto">
             <DataGrid
               columns={columns}
               rows={groups.principal}
@@ -398,7 +398,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
             </p>
             {blackOn ? (
               groups.black.length > 0 ? (
-                <div className="card overflow-hidden">
+                <div className="card overflow-x-auto">
                   <DataGrid
                     columns={columns}
                     rows={groups.black}
@@ -436,7 +436,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
         <div className="mt-2">
           <RowGroupHeader label="Outros" count={groups.outros.length} accent="cyan" />
           {groups.outros.length > 0 ? (
-            <div className="card overflow-hidden">
+            <div className="card overflow-x-auto">
               <DataGrid
                 columns={columns}
                 rows={groups.outros}

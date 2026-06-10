@@ -104,7 +104,7 @@ export function BlacklistManager({ botId, initialBlacklist }: BlacklistManagerPr
       {/* Add form */}
       {showAdd && (
         <div className="p-4 rounded-xl border border-(--border-subtle) mb-4" style={{ background: "rgba(255,255,255,0.02)" }}>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
               <label className="input-label">Telegram User ID *</label>
               <input

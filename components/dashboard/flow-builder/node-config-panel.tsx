@@ -58,7 +58,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles }: 
 
   return (
     <div
-      className="w-72 overflow-y-auto relative hidden md:flex flex-col"
+      className="w-72 lg:w-80 shrink-0 overflow-y-auto relative hidden md:flex flex-col"
       style={{
         background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
         borderLeft: "1px solid var(--border-subtle)",

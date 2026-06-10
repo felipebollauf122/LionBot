@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LionMark } from "@/components/brand/lion-mark";
@@ -7,12 +8,21 @@ import { LionMark } from "@/components/brand/lion-mark";
 interface SidebarProps {
   isAdmin?: boolean;
   isOwner?: boolean;
+  /** mobile drawer open state (ignored on desktop where sidebar is static) */
+  open?: boolean;
+  onClose?: () => void;
 }
 
-export function Sidebar({ isAdmin, isOwner }: SidebarProps) {
+export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -26,7 +36,12 @@ export function Sidebar({ isAdmin, isOwner }: SidebarProps) {
   const isAdminActive = pathname.startsWith("/dashboard/admin");
 
   return (
-    <aside className="w-[270px] min-h-screen flex flex-col relative" style={{ background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)" }}>
+    <aside
+      className={`w-[270px] min-h-screen flex flex-col z-50 transition-transform duration-300 ease-out
+        fixed md:relative inset-y-0 left-0
+        ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+      style={{ background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)" }}
+    >
       {/* Subtle right border with glow */}
       <div className="absolute top-0 right-0 bottom-0 w-px bg-gradient-to-b from-transparent via-(--border-default) to-transparent" />
 

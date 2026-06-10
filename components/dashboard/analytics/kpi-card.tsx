@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { InteractiveCard } from "./interactive-card";
-import { AnimatedNumber } from "./animated-number";
+import { AnimatedNumber, type NumberFormat } from "./animated-number";
 
 interface KpiCardProps {
   label: string;
@@ -8,7 +8,8 @@ interface KpiCardProps {
   value: string;
   /** raw number to count-up; pair with `format` */
   numericValue?: number;
-  format?: (n: number) => string;
+  /** serializable format kind (string, crosses RSC boundary) */
+  format?: NumberFormat;
   hint?: string;
   delta?: string;
   deltaUp?: boolean;

@@ -2,10 +2,31 @@
 
 import { useEffect, useRef, useState } from "react";
 
+/** Serializable format kinds — safe to pass across the server→client boundary. */
+export type NumberFormat = "int" | "brl" | "pct" | "pct1" | "pct2" | "mult";
+
+export function formatNumber(n: number, fmt: NumberFormat = "int"): string {
+  switch (fmt) {
+    case "brl":
+      return (n / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    case "pct":
+      return `${Math.round(n)}%`;
+    case "pct1":
+      return `${n.toFixed(1)}%`;
+    case "pct2":
+      return `${n.toFixed(2)}%`;
+    case "mult":
+      return `${n.toFixed(1)}×`;
+    case "int":
+    default:
+      return Math.round(n).toLocaleString("pt-BR");
+  }
+}
+
 interface AnimatedNumberProps {
   value: number;
-  /** format the (interpolated) numeric value into a display string */
-  format?: (n: number) => string;
+  /** serializable format kind (NOT a function — must cross the RSC boundary) */
+  format?: NumberFormat;
   durationMs?: number;
   className?: string;
   style?: React.CSSProperties;
@@ -15,7 +36,7 @@ interface AnimatedNumberProps {
  * Counts up from 0 → value with an ease-out curve when it scrolls into view.
  * Respects prefers-reduced-motion (jumps straight to the value).
  */
-export function AnimatedNumber({ value, format, durationMs = 1100, className, style }: AnimatedNumberProps) {
+export function AnimatedNumber({ value, format = "int", durationMs = 1100, className, style }: AnimatedNumberProps) {
   const ref = useRef<HTMLSpanElement>(null);
   const [display, setDisplay] = useState(0);
   const started = useRef(false);
@@ -26,7 +47,6 @@ export function AnimatedNumber({ value, format, durationMs = 1100, className, st
 
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
-      // async (rAF) so we don't call setState synchronously inside the effect body
       const id = requestAnimationFrame(() => setDisplay(value));
       return () => cancelAnimationFrame(id);
     }
@@ -35,11 +55,10 @@ export function AnimatedNumber({ value, format, durationMs = 1100, className, st
       if (started.current) return;
       started.current = true;
       const start = performance.now();
-      const from = 0;
       const tick = (now: number) => {
         const t = Math.min(1, (now - start) / durationMs);
         const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
-        setDisplay(from + (value - from) * eased);
+        setDisplay(value * eased);
         if (t < 1) requestAnimationFrame(tick);
         else setDisplay(value);
       };
@@ -59,11 +78,9 @@ export function AnimatedNumber({ value, format, durationMs = 1100, className, st
     return () => io.disconnect();
   }, [value, durationMs]);
 
-  const fmt = format ?? ((n: number) => Math.round(n).toLocaleString("pt-BR"));
-
   return (
     <span ref={ref} className={className} style={style}>
-      {fmt(display)}
+      {formatNumber(display, format)}
     </span>
   );
 }

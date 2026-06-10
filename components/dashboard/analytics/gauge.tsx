@@ -71,7 +71,7 @@ export function Gauge({ value, label, size = 160 }: GaugeProps) {
       </svg>
       <div className="-mt-[60%] text-center pointer-events-none">
         <p className="stat-value text-2xl text-foreground">
-          <AnimatedNumber value={v * 100} format={(n) => `${n.toFixed(2)}%`} />
+          <AnimatedNumber value={v * 100} format="pct2" />
         </p>
         {label && <p className="text-[11px] text-(--text-muted) mt-0.5">{label}</p>}
       </div>

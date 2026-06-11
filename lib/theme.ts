@@ -9,12 +9,12 @@ export interface ThemeDef {
 }
 
 export const THEMES: ThemeDef[] = [
-  { id: "synthwave", name: "Synthwave", description: "Magenta & cyan · Blade Runner", swatch: ["#0a0612", "#ff2bd6", "#00e5ff", "#b14bff"] },
-  { id: "matrix", name: "Matrix", description: "Verde neon · terminal hacker", swatch: ["#020604", "#00ff8c", "#00e5ff", "#7cff6b"] },
-  { id: "inferno", name: "Inferno", description: "Vermelho & âmbar · molten", swatch: ["#0c0604", "#ff4d2e", "#ffb800", "#ff2d6f"] },
-  { id: "ice", name: "Ice", description: "Azul gelo · frio e limpo", swatch: ["#05080f", "#38bdf8", "#22d3ee", "#818cf8"] },
-  { id: "gold", name: "Gold", description: "Dourado · luxo", swatch: ["#0a0805", "#f5c85c", "#e0a44a", "#c9933a"] },
-  { id: "mono", name: "Mono", description: "Branco & cinza · minimalista", swatch: ["#060606", "#f5f5f5", "#a3a3a3", "#d4d4d4"] },
+  { id: "synthwave", name: "Synthwave", description: "Magenta & cyan · Blade Runner", swatch: ["#08040e", "#ff2bd6", "#00e5ff", "#b14bff"] },
+  { id: "matrix", name: "Matrix", description: "Verde neon · terminal hacker", swatch: ["#010402", "#00ff8c", "#00e5ff", "#7cff6b"] },
+  { id: "inferno", name: "Inferno", description: "Vermelho & âmbar · molten", swatch: ["#090402", "#ff4d2e", "#ffb800", "#ff2d6f"] },
+  { id: "ice", name: "Ice", description: "Azul gelo · frio e limpo", swatch: ["#03050b", "#38bdf8", "#22d3ee", "#818cf8"] },
+  { id: "gold", name: "Gold", description: "Dourado · luxo", swatch: ["#070503", "#f5c85c", "#e0a44a", "#c9933a"] },
+  { id: "mono", name: "Mono", description: "Branco & cinza · minimalista", swatch: ["#030303", "#f5f5f5", "#a3a3a3", "#d4d4d4"] },
 ];
 
 export interface CustomColors {
@@ -24,7 +24,7 @@ export interface CustomColors {
   purple: string;
 }
 
-export const DEFAULT_CUSTOM: CustomColors = { bg: "#0a0612", accent: "#ff2bd6", cyan: "#00e5ff", purple: "#b14bff" };
+export const DEFAULT_CUSTOM: CustomColors = { bg: "#06030c", accent: "#ff2bd6", cyan: "#00e5ff", purple: "#b14bff" };
 
 const KEY = "lionbot-theme";
 const CUSTOM_KEY = "lionbot-custom";
@@ -73,11 +73,12 @@ export function applyCustomColors(c: CustomColors) {
   set("--purple", c.purple);
   set("--purple-muted", `rgba(${pu}, 0.12)`);
   set("--purple-glow", `rgba(${pu}, 0.40)`);
+  // Camadas mais sutis = fundo mais preto (clareia menos rumo ao branco).
   set("--bg-root", c.bg);
-  set("--bg-surface", `color-mix(in srgb, ${c.bg} 92%, white)`);
-  set("--bg-elevated", `color-mix(in srgb, ${c.bg} 85%, white)`);
-  set("--bg-overlay", `color-mix(in srgb, ${c.bg} 78%, white)`);
-  set("--glass-bg", `rgba(${bg}, 0.82)`);
+  set("--bg-surface", `color-mix(in srgb, ${c.bg} 95%, white)`);
+  set("--bg-elevated", `color-mix(in srgb, ${c.bg} 90%, white)`);
+  set("--bg-overlay", `color-mix(in srgb, ${c.bg} 85%, white)`);
+  set("--glass-bg", `rgba(${bg}, 0.85)`);
   set("--border-subtle", `rgba(${a}, 0.10)`);
   set("--border-default", `rgba(${a}, 0.18)`);
   set("--border-glow", `rgba(${a}, 0.22)`);

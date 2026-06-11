@@ -2,13 +2,13 @@
 
 :root {
   /* ═══ Deep Surface System — Synthwave Night ═════════ */
-  --bg-root: #07040d;
-  --bg-surface: #0a0612;
-  --bg-elevated: #100a1a;
-  --bg-overlay: #160e24;
+  --bg-root: #05030a;
+  --bg-surface: #08040e;
+  --bg-elevated: #0c0714;
+  --bg-overlay: #120b1d;
   --bg-input: rgba(177, 75, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.035);
-  --glass-bg: rgba(10, 6, 18, 0.78);
+  --glass-bg: rgba(8, 4, 14, 0.80);
 
   /* ═══ Gradient Surfaces ═════════════════════════════ */
   --gradient-surface: linear-gradient(145deg, rgba(255, 43, 214, 0.04) 0%, rgba(10, 6, 18, 0.95) 40%, rgba(10, 6, 18, 1) 100%);
@@ -76,11 +76,11 @@
 
 /* ── Matrix — neon terminal (green/cyan on pure black) ── */
 [data-theme="matrix"] {
-  --bg-root: #020604;
-  --glass-bg: rgba(4, 17, 10, 0.82);
-  --bg-surface: #04110a;
-  --bg-elevated: #06180e;
-  --bg-overlay: #0a2114;
+  --bg-root: #010402;
+  --glass-bg: rgba(3, 12, 7, 0.84);
+  --bg-surface: #030c07;
+  --bg-elevated: #04120a;
+  --bg-overlay: #07190f;
   --bg-input: rgba(0, 255, 140, 0.04);
 
   --border-subtle: rgba(0, 255, 140, 0.10);
@@ -125,11 +125,11 @@
 
 /* ── Inferno — molten (red/orange/amber on charcoal) ── */
 [data-theme="inferno"] {
-  --bg-root: #0c0604;
-  --glass-bg: rgba(20, 9, 10, 0.82);
-  --bg-surface: #14090a;
-  --bg-elevated: #1a0d0d;
-  --bg-overlay: #241313;
+  --bg-root: #090402;
+  --glass-bg: rgba(15, 6, 7, 0.84);
+  --bg-surface: #0e0606;
+  --bg-elevated: #140909;
+  --bg-overlay: #1c0e0e;
   --bg-input: rgba(255, 94, 58, 0.04);
 
   --border-subtle: rgba(255, 94, 58, 0.10);
@@ -174,11 +174,11 @@
 
 /* ── Ice — cold (blue/cyan/white on night blue) ── */
 [data-theme="ice"] {
-  --bg-root: #05080f;
-  --glass-bg: rgba(8, 13, 24, 0.82);
-  --bg-surface: #080d18;
-  --bg-elevated: #0c1322;
-  --bg-overlay: #111b2e;
+  --bg-root: #03050b;
+  --glass-bg: rgba(6, 10, 18, 0.84);
+  --bg-surface: #060912;
+  --bg-elevated: #090e1a;
+  --bg-overlay: #0d1524;
   --bg-input: rgba(91, 140, 255, 0.04);
 
   --border-subtle: rgba(91, 140, 255, 0.10);
@@ -223,11 +223,11 @@
 
 /* ── Gold — luxo (dourado/âmbar/bronze sobre preto) ── */
 [data-theme="gold"] {
-  --bg-root: #0a0805;
-  --glass-bg: rgba(15, 12, 6, 0.82);
-  --bg-surface: #0f0c08;
-  --bg-elevated: #16110a;
-  --bg-overlay: #201810;
+  --bg-root: #070503;
+  --glass-bg: rgba(11, 9, 4, 0.84);
+  --bg-surface: #0b0906;
+  --bg-elevated: #110d07;
+  --bg-overlay: #19130c;
   --bg-input: rgba(245, 200, 92, 0.04);
 
   --border-subtle: rgba(245, 200, 92, 0.10);
@@ -272,11 +272,11 @@
 
 /* ── Mono — minimalista (branco/cinza sobre preto) ── */
 [data-theme="mono"] {
-  --bg-root: #060606;
-  --glass-bg: rgba(12, 12, 12, 0.82);
-  --bg-surface: #0c0c0c;
-  --bg-elevated: #141414;
-  --bg-overlay: #1c1c1c;
+  --bg-root: #030303;
+  --glass-bg: rgba(8, 8, 8, 0.84);
+  --bg-surface: #080808;
+  --bg-elevated: #0f0f0f;
+  --bg-overlay: #161616;
   --bg-input: rgba(255, 255, 255, 0.04);
 
   --border-subtle: rgba(255, 255, 255, 0.08);

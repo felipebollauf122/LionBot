@@ -8,6 +8,7 @@ import { isBlacklisted } from "../services/blacklist.js";
 import { botCache } from "../cache.js";
 import { config } from "../config.js";
 import { notifySale } from "../services/push.js";
+import { logEvent } from "../services/lead-messages.js";
 import type { Lead } from "../engine/types.js";
 
 interface Bot {
@@ -230,8 +231,9 @@ export async function processPaymentCallback(botId: string | null, body: Record<
     botCache.set(transaction.bot_id, botData as Record<string, unknown>);
   }
 
-  // Push de venda para os dispositivos do tenant — fire-and-forget,
-  // nunca bloqueia nem quebra o fluxo de pagamento.
+  // Push de venda para os dispositivos do tenant + marco na timeline do
+  // chat (aba Clientes) — fire-and-forget, nunca bloqueia nem quebra o
+  // fluxo de pagamento.
   void (async () => {
     try {
       const { data: prod } = await supabase
@@ -239,11 +241,22 @@ export async function processPaymentCallback(botId: string | null, body: Record<
         .select("name")
         .eq("id", transaction.product_id)
         .single();
+      const productName = (prod as { name?: string } | null)?.name ?? null;
       await notifySale(transaction.tenant_id, {
         amount: transaction.amount,
-        productName: (prod as { name?: string } | null)?.name ?? null,
+        productName,
         botName: (bot as unknown as { bot_username?: string }).bot_username ?? null,
       });
+      logEvent(
+        {
+          leadId: transaction.lead_id,
+          botId: transaction.bot_id,
+          tenantId: transaction.tenant_id,
+        },
+        "payment_approved",
+        productName ? `Pagou: ${productName}` : "Pagamento aprovado",
+        { amount: transaction.amount, product_name: productName },
+      );
     } catch (err) {
       console.error("[push] notifySale failed:", (err as Error).message);
     }

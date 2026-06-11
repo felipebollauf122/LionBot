@@ -482,6 +482,22 @@ export function startWorkers(): void {
   setInterval(() => cleanupInboxMessages(), 24 * 60 * 60 * 1000);
   setTimeout(() => cleanupInboxMessages(), 60_000);
 
+  // Cleanup diário do chat da aba Clientes: apaga mensagens com mais de 30 dias.
+  async function cleanupLeadMessages(): Promise<void> {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { error, count } = await supabase
+      .from("lead_messages")
+      .delete({ count: "exact" })
+      .lt("created_at", cutoff);
+    if (error) {
+      console.error("[lead-messages-cleanup] error:", error);
+      return;
+    }
+    if (count && count > 0) console.log(`[lead-messages-cleanup] removed ${count} msgs older than 30d`);
+  }
+  setInterval(() => cleanupLeadMessages(), 24 * 60 * 60 * 1000);
+  setTimeout(() => cleanupLeadMessages(), 90_000);
+
   // EvPay status poller — fallback caso o webhook automático do Yvepay
   // não dispare. Roda a cada 5s, mas só consulta cada transação no
   // intervalo apropriado por idade (5s pra recém-criadas, 30s/2min

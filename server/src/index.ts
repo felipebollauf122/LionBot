@@ -553,6 +553,81 @@ app.post("/api/bots/:botId/deactivate", async (req, res) => {
   }
 });
 
+// Envio manual de mensagem pelo painel (aba Clientes / chat ao vivo).
+// O operador responde um lead pelo bot; gravamos o 'out' na timeline.
+// Auth: a server-action do front valida dono/admin antes de chamar (RLS
+// no select do lead). Aqui revalidamos que o lead pertence ao bot.
+app.post("/api/bots/:botId/send-message", async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { leadId, text } = req.body as { leadId?: string; text?: string };
+
+    const trimmed = (text ?? "").trim();
+    if (!leadId || !trimmed) {
+      res.status(400).json({ error: "missing leadId or text" });
+      return;
+    }
+    if (trimmed.length > 4096) {
+      res.status(400).json({ error: "text too long" });
+      return;
+    }
+
+    // Lead precisa pertencer a este bot (defesa em profundidade).
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("id, bot_id, tenant_id, telegram_user_id")
+      .eq("id", leadId)
+      .eq("bot_id", botId)
+      .single();
+    if (!lead) {
+      res.status(404).json({ error: "lead not found for this bot" });
+      return;
+    }
+
+    const { data: bot } = await supabase
+      .from("bots")
+      .select("telegram_token, protect_content")
+      .eq("id", botId)
+      .single();
+    if (!bot) {
+      res.status(404).json({ error: "bot not found" });
+      return;
+    }
+
+    const typedBot = bot as { telegram_token: string; protect_content: boolean };
+    const telegram = new TelegramApi(typedBot.telegram_token, { protectContent: typedBot.protect_content });
+
+    let sent;
+    try {
+      sent = await telegram.sendMessage({ chatId: Number(lead.telegram_user_id), text: trimmed });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Lead bloqueou o bot → Telegram devolve 403 Forbidden.
+      if (/bot was blocked by the user|Forbidden|chat not found|user is deactivated/i.test(msg)) {
+        await supabase.from("leads").update({ blocked: true }).eq("id", lead.id);
+        res.status(409).json({ error: "blocked", message: "O lead bloqueou o bot." });
+        return;
+      }
+      console.error("[send-message] telegram error:", msg);
+      res.status(502).json({ error: "telegram send failed" });
+      return;
+    }
+
+    // Grava o 'out' na timeline (a mesma mensagem volta pro painel via Realtime).
+    const { logOutgoing } = await import("./services/lead-messages.js");
+    logOutgoing(
+      { leadId: lead.id, botId: lead.bot_id, tenantId: lead.tenant_id },
+      trimmed,
+      sent?.message_id,
+    );
+
+    res.json({ success: true, message_id: sent?.message_id ?? null });
+  } catch (error) {
+    console.error("[send-message] failed:", error);
+    res.status(500).json({ error: "send failed" });
+  }
+});
+
 // Start server
 const server = app.listen(config.port, () => {
   console.log(`EagleBot Engine running on port ${config.port}`);

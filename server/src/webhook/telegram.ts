@@ -11,8 +11,32 @@ import { ensureBotPaymentKeys } from "../services/bot-loader.js";
 import { buildGateway } from "../services/gateway-factory.js";
 import { isBlacklisted } from "../services/blacklist.js";
 import { resolveTenantIdentity } from "../services/lead-identity.js";
+import { logIncoming, logEvent } from "../services/lead-messages.js";
 import { config } from "../config.js";
 import { botCache } from "../cache.js";
+
+/**
+ * Acha o texto do botão clicado dentro do inline keyboard que o Telegram
+ * devolve no callback_query.message. Permite logar "clicou em <label>" sem
+ * tocar no engine de fluxo. Retorna undefined se não achar (ex.: teclado já
+ * editado) — aí logamos só o callback_data cru como fallback.
+ */
+function findClickedButtonLabel(
+  cbMessage: unknown,
+  callbackData: string,
+): string | undefined {
+  const markup = (cbMessage as { reply_markup?: { inline_keyboard?: Array<Array<{ text?: string; callback_data?: string }>> } })?.reply_markup;
+  const rows = markup?.inline_keyboard;
+  if (!Array.isArray(rows)) return undefined;
+  for (const row of rows) {
+    for (const btn of row) {
+      if (btn?.callback_data === callbackData && typeof btn.text === "string") {
+        return btn.text;
+      }
+    }
+  }
+  return undefined;
+}
 
 interface Bot {
   id: string;
@@ -316,6 +340,16 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         utmTerm: identity.utm_term ?? undefined,
       });
 
+      // Timeline do chat (aba Clientes): registra o texto que o lead mandou.
+      // Ignora /start (ruído de comando, não conversa). Fire-and-forget.
+      if (text && !isStartCommand) {
+        logIncoming(
+          { leadId: lead.id, botId: typedBot.id, tenantId: typedBot.tenant_id },
+          text,
+          msg.message_id,
+        );
+      }
+
       // Register bot_start tracking event + Facebook CAPI Lead event
       // Fire-and-forget: don't block the flow execution on tracking
       if (tid && lead.tid === tid) {
@@ -434,6 +468,18 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
       });
 
       console.log(`[webhook] Lead ${lead.id}, flow=${lead.current_flow_id}, node=${lead.current_node_id}, active_flow_name=${lead.active_flow_name}`);
+
+      // Timeline do chat: registra "clicou em <botão>". Pega o texto do botão
+      // do próprio teclado que veio no callback; fallback pro callback_data.
+      {
+        const label = findClickedButtonLabel(cb.message, callbackData) ?? callbackData;
+        logEvent(
+          { leadId: lead.id, botId: typedBot.id, tenantId: typedBot.tenant_id },
+          "button_click",
+          label,
+          { callback_data: callbackData },
+        );
+      }
 
       await processor.handleCallbackQuery(typedBot, lead, telegram, chatId, callbackData);
 

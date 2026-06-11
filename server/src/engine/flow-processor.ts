@@ -7,6 +7,7 @@ import type { LeadService } from "../services/lead-service.js";
 import type { ExecuteNodeDeps } from "./node-executor.js";
 import type { PaymentGateway } from "../services/payment-gateway.js";
 import { flowCache, flowByIdCache } from "../cache.js";
+import { logEvent } from "../services/lead-messages.js";
 
 const BLACK_DELETE_DELAY_MINUTES = 15;
 
@@ -210,6 +211,14 @@ export class FlowProcessor {
       // User blocked the bot — stop flow immediately
       if (result.blocked) {
         console.log(`[flow] Lead ${lead.id} blocked the bot, stopping flow`);
+        // Marca o lead como bloqueado + registra na timeline do chat (aba
+        // Clientes). Fire-and-forget: não atrapalha o stop do flow.
+        void this.db.from("leads").update({ blocked: true }).eq("id", lead.id);
+        logEvent(
+          { leadId: lead.id, botId: flow.bot_id, tenantId: lead.tenant_id },
+          "blocked",
+          "Lead bloqueou o bot",
+        );
         return { blocked: true };
       }
 

@@ -5,6 +5,7 @@ import { UtmifyService } from "../../services/utmify.js";
 import { FacebookCapi } from "../../services/facebook-capi.js";
 import { TrackingService } from "../../services/tracking-service.js";
 import { addPaymentTimeoutJob } from "../../queue.js";
+import { logEvent } from "../../services/lead-messages.js";
 
 interface BundleProduct {
   id: string;
@@ -286,6 +287,18 @@ export async function handleProductPaymentCallback(
     currency: typedProduct.currency,
     status: "pending",
   }).select("id").single();
+
+  // Marco na timeline do chat (aba Clientes): PIX gerado. Fire-and-forget.
+  logEvent(
+    {
+      leadId: ctx.lead.id,
+      botId: ctx.lead.bot_id,
+      tenantId: ctx.lead.tenant_id,
+    },
+    "pix_generated",
+    `PIX gerado: ${typedProduct.name}`,
+    { amount: typedProduct.price, product_name: typedProduct.name },
+  );
 
   // Fire checkout (Facebook InitiateCheckout) + Utmify waiting_payment
   const { data: botConfig } = await db

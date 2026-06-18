@@ -5,7 +5,10 @@ import {
   getFunnelStats,
   getActivityFeed,
   getTenantName,
+  type AnalyticsFilters,
+  type Period,
 } from "@/lib/actions/analytics-actions";
+import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
 import { RevenueChart } from "@/components/dashboard/analytics/revenue-chart";
 import { ActivityFeed } from "@/components/dashboard/analytics/activity-feed";
@@ -29,16 +32,25 @@ function greeting(): string {
   return "Boa noite";
 }
 
-export default async function DashboardPage() {
+type SP = { [key: string]: string | string[] | undefined };
+
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const filters: AnalyticsFilters = {
+    period: (typeof sp.period === "string" ? sp.period : "today") as Period,
+    startDate: typeof sp.startDate === "string" ? sp.startDate : undefined,
+    endDate: typeof sp.endDate === "string" ? sp.endDate : undefined,
+  };
+
   const [name, revenue] = await Promise.all([
     getTenantName(),
-    getRevenueStats({ period: "today" }),
+    getRevenueStats(filters),
   ]);
 
   const [tracking, series, funnel, activity] = await Promise.all([
-    getTrackingStats({ period: "today" }, revenue.sales),
+    getTrackingStats(filters, revenue.sales),
     getRevenue7d(),
-    getFunnelStats({ period: "today" }),
+    getFunnelStats(filters),
     getActivityFeed(12),
   ]);
 
@@ -59,6 +71,11 @@ export default async function DashboardPage() {
           Ver meus bots
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
         </a>
+      </div>
+
+      {/* Filtro de período */}
+      <div className="mb-4 animate-up flex justify-end">
+        <PeriodFilter />
       </div>
 
       {/* KPI strip */}

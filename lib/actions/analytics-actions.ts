@@ -12,10 +12,13 @@ import { createClient } from "@/lib/supabase/server";
  * - No migrations / no backend changes — read-only aggregations over existing tables.
  */
 
-export type Period = "today" | "yesterday" | "7d" | "30d" | "all";
+export type Period = "today" | "yesterday" | "7d" | "30d" | "all" | "custom";
 
 export interface AnalyticsFilters {
   period?: Period;
+  /** ISO date YYYY-MM-DD (só usado quando period === "custom") */
+  startDate?: string;
+  endDate?: string;
   botId?: string;
   flowId?: string;
   gateway?: string;
@@ -23,7 +26,11 @@ export interface AnalyticsFilters {
 }
 
 /** Resolve a period into an inclusive ISO start (and optional exclusive end). */
-function periodRange(period: Period = "today"): { start: string | null; end: string | null } {
+function periodRange(
+  period: Period = "today",
+  startDate?: string,
+  endDate?: string,
+): { start: string | null; end: string | null } {
   // Server "now". We avoid Date.now() concerns by using a single Date instance.
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -46,6 +53,15 @@ function periodRange(period: Period = "today"): { start: string | null; end: str
       s.setDate(s.getDate() - 29);
       return { start: s.toISOString(), end: null };
     }
+    case "custom": {
+      // intervalo personalizado: [startDate 00:00, endDate+1 00:00) — inclui o dia final
+      if (!startDate || !endDate) return { start: null, end: null };
+      const s = new Date(`${startDate}T00:00:00`);
+      const e = new Date(`${endDate}T00:00:00`);
+      e.setDate(e.getDate() + 1);
+      if (isNaN(s.getTime()) || isNaN(e.getTime())) return { start: null, end: null };
+      return { start: s.toISOString(), end: e.toISOString() };
+    }
     case "all":
     default:
       return { start: null, end: null };
@@ -60,7 +76,7 @@ function periodRange(period: Period = "today"): { start: string | null; end: str
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyFilters(query: any, filters: AnalyticsFilters, opts?: { createdCol?: string }): any {
-  const { start, end } = periodRange(filters.period);
+  const { start, end } = periodRange(filters.period, filters.startDate, filters.endDate);
   const col = opts?.createdCol ?? "created_at";
   let q = query;
   if (start) q = q.gte(col, start);
@@ -663,23 +679,39 @@ export async function getBotsFleet(): Promise<BotFleetRow[]> {
 
   const ids = list.map((b) => b.id as string);
 
-  // One query each for tx + leads, then aggregate per bot in JS.
-  const [txRes, leadsRes] = await Promise.all([
-    supabase.from("transactions").select("bot_id,amount,status").in("bot_id", ids),
-    supabase.from("leads").select("bot_id").in("bot_id", ids),
+  // Pagina os resultados: o Supabase corta em 1000 linhas por query. Com >1000
+  // transações/leads, uma query única deixava bots zerados (a receita real
+  // aparecia no admin, que consulta 1 bot por vez). Aqui buscamos TODAS as
+  // linhas em lotes de 1000 até esgotar.
+  const PAGE = 1000;
+  async function fetchAll<T>(table: string, cols: string, approvedOnly = false): Promise<T[]> {
+    const out: T[] = [];
+    for (let from = 0; ; from += PAGE) {
+      let q = supabase.from(table).select(cols).in("bot_id", ids);
+      if (approvedOnly) q = q.eq("status", "approved");
+      const { data, error } = await q.range(from, from + PAGE - 1);
+      if (error || !data || data.length === 0) break;
+      out.push(...(data as T[]));
+      if (data.length < PAGE) break; // última página
+    }
+    return out;
+  }
+
+  const [txRows, leadRows] = await Promise.all([
+    fetchAll<{ bot_id: string; amount: number }>("transactions", "bot_id,amount", true),
+    fetchAll<{ bot_id: string }>("leads", "bot_id"),
   ]);
 
   const rev = new Map<string, { revenue: number; sales: number }>();
-  for (const t of txRes.data ?? []) {
-    if (t.status !== "approved") continue;
-    const cur = rev.get(t.bot_id as string) ?? { revenue: 0, sales: 0 };
-    cur.revenue += (t.amount as number) ?? 0;
+  for (const t of txRows) {
+    const cur = rev.get(t.bot_id) ?? { revenue: 0, sales: 0 };
+    cur.revenue += t.amount ?? 0;
     cur.sales += 1;
-    rev.set(t.bot_id as string, cur);
+    rev.set(t.bot_id, cur);
   }
   const leadCount = new Map<string, number>();
-  for (const l of leadsRes.data ?? []) {
-    leadCount.set(l.bot_id as string, (leadCount.get(l.bot_id as string) ?? 0) + 1);
+  for (const l of leadRows) {
+    leadCount.set(l.bot_id, (leadCount.get(l.bot_id) ?? 0) + 1);
   }
 
   return list.map((b) => {

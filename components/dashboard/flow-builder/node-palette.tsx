@@ -33,7 +33,7 @@ function onDragStart(event: DragEvent, nodeType: string) {
 export function NodePalette() {
   return (
     <div
-      className="w-56 overflow-y-auto relative flex flex-col"
+      className="w-56 overflow-y-auto relative hidden md:flex flex-col"
       style={{
         background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
         borderRight: "1px solid var(--border-subtle)",

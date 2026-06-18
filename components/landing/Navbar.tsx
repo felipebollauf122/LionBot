@@ -25,7 +25,7 @@ export default function Navbar() {
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <a href="/" className="flex items-center gap-2.5 group">
-            <LionMark size={28} />
+            <LionMark size={28} bare />
             <span
               className="text-lg font-bold tracking-tight text-(--text-primary)"
               style={{ fontFamily: 'var(--font-display)' }}

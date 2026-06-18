@@ -87,7 +87,7 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
         className="w-full px-3 py-2.5 text-xs font-medium rounded-xl transition-all disabled:opacity-50"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--cyan) 10%, transparent), color-mix(in srgb, var(--cyan) 4%, transparent))",
-          border: "1px solid rgba(0,229,255,0.12)",
+          border: "1px solid color-mix(in srgb, var(--cyan) 12%, transparent)",
           color: "var(--cyan)",
         }}
       >

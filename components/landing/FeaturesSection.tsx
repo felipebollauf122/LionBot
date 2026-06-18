@@ -74,7 +74,7 @@ export default function FeaturesSection() {
           {features.map((f) => (
             <div
               key={f.index}
-              className="relative bg-(--bg-surface) hover:bg-(--bg-elevated) transition-colors duration-300 p-8 group overflow-hidden"
+              className="relative bg-(--bg-surface) hover:bg-(--bg-elevated) transition-colors duration-300 p-6 sm:p-8 group overflow-hidden"
             >
               {/* Hover glow */}
               <div

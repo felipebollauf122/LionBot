@@ -70,7 +70,7 @@ const defaultNodeData: Record<string, Record<string, unknown>> = {
   input: { prompt: "Qual seu email?", variable: "email" },
   action: { action_type: "set_variable", variable: "", value: "" },
   video: { video_url: "", caption: "" },
-  payment_button: { bundle_id: "", payment_timeout_minutes: 15 },
+  payment_button: { bundle_id: "", payment_timeout_minutes: 15, sale_type: "main" },
 };
 
 let nodeIdCounter = 0;
@@ -190,7 +190,7 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
   }, [flowId, nodes, edges, saveAction]);
 
   return (
-    <div className="flex h-screen" style={{ background: "var(--bg-root)" }}>
+    <div className="flex flex-col md:flex-row h-[100dvh]" style={{ background: "var(--bg-root)" }}>
       <NodePalette />
 
       <div className="flex-1 flex flex-col">
@@ -254,7 +254,22 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
         </div>
 
         {/* Canvas */}
-        <div ref={reactFlowWrapper} className="flex-1 flow-canvas">
+        <div ref={reactFlowWrapper} className="flex-1 flow-canvas relative">
+          {/* Mobile notice */}
+          <div
+            className="md:hidden absolute top-2 left-2 right-2 z-10 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium pointer-events-none"
+            style={{
+              background: "color-mix(in srgb, var(--amber) 12%, var(--bg-elevated))",
+              border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
+              color: "var(--amber)",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            Edicao de fluxos e melhor no desktop.
+          </div>
           <ReactFlow
             nodes={nodes}
             edges={edges}

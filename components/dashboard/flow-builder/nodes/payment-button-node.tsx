@@ -32,7 +32,7 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
           background: bundleId
             ? "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 4%, transparent))"
             : "linear-gradient(135deg, color-mix(in srgb, var(--amber) 10%, transparent), color-mix(in srgb, var(--amber) 4%, transparent))",
-          border: bundleId ? "1px solid rgba(255,43,214,0.15)" : "1px solid rgba(255,184,0,0.15)",
+          border: bundleId ? "1px solid color-mix(in srgb, var(--accent) 15%, transparent)" : "1px solid rgba(255,184,0,0.15)",
           color: bundleId ? "var(--accent)" : "var(--amber)",
         }}
       >

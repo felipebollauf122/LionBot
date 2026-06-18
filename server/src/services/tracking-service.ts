@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FacebookCapi } from "./facebook-capi.js";
 import type { UtmifyService } from "./utmify.js";
+import { geoLookup } from "./geoip.js";
 
 interface LeadInfo {
   id: string;
@@ -311,6 +312,37 @@ export class TrackingService {
   }
 
   /**
+   * Resolve estado/cidade do IP do page_view (via ip-api) e grava em
+   * event_data.state/.city. Best-effort: silencia qualquer erro e pula se já
+   * estiver enriquecido ou sem IP. Lê e regrava o page_view mais recente do tid.
+   */
+  private async enrichGeo(tid: string | null): Promise<void> {
+    try {
+      if (!tid) return;
+      const { data } = await this.db
+        .from("tracking_events")
+        .select("id,event_data")
+        .eq("tid", tid)
+        .eq("event_type", "page_view")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!data) return;
+      const ed = (data.event_data ?? {}) as Record<string, unknown>;
+      if (ed.state || ed.city) return; // já enriquecido
+      const ip = typeof ed.client_ip === "string" ? ed.client_ip : null;
+      const geo = await geoLookup(ip);
+      if (!geo.state && !geo.city) return;
+      await this.db
+        .from("tracking_events")
+        .update({ event_data: { ...ed, state: geo.state ?? null, city: geo.city ?? null } })
+        .eq("id", data.id as string);
+    } catch (e) {
+      console.error("[geo] enrichGeo falhou:", (e as Error).message);
+    }
+  }
+
+  /**
    * REVERTIDO 2026-06-03: o disparo de Lead/ViewContent/InitiateCheckout
    * pro Facebook (reativado na Onda 1 EMQ) coincidiu com o bot parar de
    * vender — a campanha estava otimizada pra Purchase e os eventos de
@@ -375,6 +407,12 @@ export class TrackingService {
       tid: lead.tid,
       utmParams: buildUtmRecord(lead),
     });
+
+    // Enriquecimento de GEO (estado/cidade) — fire-and-forget. O IP foi
+    // capturado no page_view; resolvemos via ip-api e gravamos state/city de
+    // volta no event_data do page_view (pra agregação nas Análises). Nunca
+    // bloqueia nem quebra o /start.
+    void this.enrichGeo(lead.tid);
 
     if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);

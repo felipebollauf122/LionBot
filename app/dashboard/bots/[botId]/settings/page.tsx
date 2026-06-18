@@ -37,13 +37,10 @@ export default async function SettingsPage({
 
   return (
     <SettingsPasswordGate enabled={owner}>
-      <div className="p-8">
-        <BotSettingsForm bot={bot as Bot} isAdmin={admin} />
-        {admin && (
-          <div className="max-w-2xl">
-            <BlacklistManager botId={botId} initialBlacklist={blacklist} />
-          </div>
-        )}
+      <div className="p-4 sm:p-6 lg:p-8 pb-20 md:pb-8 max-w-5xl mx-auto w-full">
+        <BotSettingsForm bot={bot as Bot} isAdmin={admin}>
+          {admin && <BlacklistManager botId={botId} initialBlacklist={blacklist} />}
+        </BotSettingsForm>
       </div>
     </SettingsPasswordGate>
   );

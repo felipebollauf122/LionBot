@@ -134,8 +134,31 @@ export interface Lead {
   current_node_id: string | null;
   active_flow_name: string | null;
   state: Record<string, unknown>;
+  blocked: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// === Chat / Clientes ===
+export type LeadMessageDirection = "in" | "out" | "event";
+export type LeadMessageEventType =
+  | "button_click"
+  | "pix_generated"
+  | "payment_approved"
+  | "blocked";
+
+export interface LeadMessage {
+  id: string;
+  lead_id: string;
+  bot_id: string;
+  tenant_id: string;
+  direction: LeadMessageDirection;
+  text: string | null;
+  event_type: LeadMessageEventType | null;
+  event_data: Record<string, unknown>;
+  sent_by: string | null;
+  tg_message_id: number | null;
+  created_at: string;
 }
 
 export interface Transaction {

@@ -233,7 +233,7 @@ export async function processPaymentCallback(botId: string | null, body: Record<
 
   // Push de venda para os dispositivos do tenant + marco na timeline do
   // chat (aba Clientes) — fire-and-forget, nunca bloqueia nem quebra o
-  // fluxo de pagamento.
+  // fluxo de pagamento (push desativa sozinho se as chaves VAPID não setadas).
   void (async () => {
     try {
       const { data: prod } = await supabase

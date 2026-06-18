@@ -3,6 +3,9 @@
 import { useState, useTransition } from "react";
 import { getLeads } from "@/lib/actions/lead-actions";
 import type { Lead } from "@/lib/types/database";
+import { CommandBar, CommandSearch, KpiPill } from "@/components/dashboard/console/command-bar";
+import { DataGrid, type Column } from "@/components/dashboard/console/data-grid";
+import { ContextDrawer } from "@/components/dashboard/console/context-drawer";
 
 interface LeadsTableProps {
   botId: string;
@@ -17,115 +20,115 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
   const [page, setPage] = useState(currentPage);
   const [count, setCount] = useState(total);
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Lead | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const totalPages = Math.ceil(count / pageSize);
+  const hasMore = leads.length < count;
 
-  const loadPage = (newPage: number, searchQuery?: string) => {
+  const runSearch = (q: string) => {
+    setSearch(q);
     startTransition(async () => {
-      const result = await getLeads(botId, newPage, searchQuery ?? search);
+      const result = await getLeads(botId, 1, q);
       setLeads(result.leads as Lead[]);
       setCount(result.total);
-      setPage(newPage);
+      setPage(1);
     });
   };
 
-  const handleSearch = () => {
-    loadPage(1, search);
+  const loadMore = () => {
+    startTransition(async () => {
+      const next = page + 1;
+      const result = await getLeads(botId, next, search);
+      setLeads((prev) => [...prev, ...(result.leads as Lead[])]);
+      setCount(result.total);
+      setPage(next);
+    });
   };
 
+  const columns: Column<Lead>[] = [
+    {
+      key: "name",
+      header: "Nome",
+      width: "22%",
+      cell: (l) => (
+        <div className="flex items-center gap-2.5">
+          <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
+            {(l.first_name || "?").slice(0, 1).toUpperCase()}
+          </span>
+          <span className="text-foreground font-medium truncate">{l.first_name || "—"}</span>
+        </div>
+      ),
+    },
+    { key: "username", header: "Username", width: "16%", cell: (l) => <span className="text-(--text-secondary)">{l.username ? `@${l.username}` : "—"}</span> },
+    { key: "tgid", header: "Telegram ID", width: "16%", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.telegram_user_id}</span> },
+    { key: "source", header: "Fonte", width: "12%", secondary: true, cell: (l) => (l.utm_source ? <span className="badge badge-purple">{l.utm_source}</span> : <span className="text-(--text-ghost)">—</span>) },
+    { key: "tid", header: "TID", width: "20%", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs font-mono stat-value">{l.tid ?? "—"}</span> },
+    { key: "created", header: "Criado em", width: "14%", align: "right", secondary: true, cell: (l) => <span className="text-(--text-muted) text-xs">{new Date(l.created_at).toLocaleDateString("pt-BR")}</span> },
+  ];
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight page-title">Leads</h1>
-          <p className="text-(--text-secondary) text-sm mt-1">
-            <span className="stat-value text-(--cyan)">{count}</span> leads no total
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder="Buscar por nome ou username..."
-            className="input w-64"
+    <div className="min-h-screen flex flex-col">
+      <CommandBar
+        title="Leads"
+        subtitle="base de contatos"
+        search={<CommandSearch value={search} onChange={runSearch} placeholder="Buscar por nome ou @username..." />}
+        kpis={<KpiPill label="total" value={count.toLocaleString("pt-BR")} accent="cyan" />}
+      />
+
+      <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
+        <div className="card overflow-x-auto">
+          <DataGrid
+            columns={columns}
+            rows={leads}
+            rowKey={(l) => l.id}
+            onRowClick={(l) => setSelected(l)}
+            selectedKey={selected?.id ?? null}
+            empty="Nenhum lead encontrado"
           />
-          <button onClick={handleSearch} className="btn-primary">Buscar</button>
         </div>
+
+        {hasMore && (
+          <div className="flex justify-center mt-5">
+            <button onClick={loadMore} disabled={isPending} className="btn-ghost disabled:opacity-30">
+              {isPending ? "Carregando..." : `Carregar mais (${count - leads.length})`}
+            </button>
+          </div>
+        )}
       </div>
 
-      {leads.length === 0 ? (
-        <div className="text-center py-20 animate-up">
-          <div className="section-icon w-14 h-14 mx-auto mb-4" style={{ background: "linear-gradient(135deg, var(--cyan-muted) 0%, rgba(0,229,255,0.04) 100%)" }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" />
-            </svg>
+      <ContextDrawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={selected?.first_name || "Lead"}
+        subtitle={selected?.username ? `@${selected.username}` : "detalhe do lead"}
+      >
+        {selected && (
+          <div className="space-y-4">
+            <DetailRow label="Nome" value={selected.first_name || "—"} />
+            <DetailRow label="Username" value={selected.username ? `@${selected.username}` : "—"} />
+            <DetailRow label="Telegram ID" value={String(selected.telegram_user_id)} mono />
+            <DetailRow label="TID" value={selected.tid ?? "—"} mono />
+            <div className="divider my-2" />
+            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Atribuição (UTM)</p>
+            <DetailRow label="Source" value={selected.utm_source ?? "—"} />
+            <DetailRow label="Medium" value={selected.utm_medium ?? "—"} />
+            <DetailRow label="Campaign" value={selected.utm_campaign ?? "—"} />
+            <DetailRow label="Content" value={selected.utm_content ?? "—"} />
+            <DetailRow label="Term" value={selected.utm_term ?? "—"} />
+            <div className="divider my-2" />
+            <DetailRow label="Criado em" value={new Date(selected.created_at).toLocaleString("pt-BR")} />
           </div>
-          <p className="text-(--text-muted) text-sm">Nenhum lead encontrado</p>
-        </div>
-      ) : (
-        <>
-          <div className="card overflow-hidden relative">
-            <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--cyan)/15 to-transparent" />
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-(--border-subtle)">
-                  <th className="table-header">Nome</th>
-                  <th className="table-header">Username</th>
-                  <th className="table-header">Telegram ID</th>
-                  <th className="table-header">Fonte</th>
-                  <th className="table-header">TID</th>
-                  <th className="table-header">Criado em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-white/2 transition-colors group">
-                    <td className="table-cell text-foreground font-medium">{lead.first_name}</td>
-                    <td className="table-cell text-(--text-secondary)">{lead.username ? `@${lead.username}` : "—"}</td>
-                    <td className="table-cell text-(--text-muted) text-xs font-mono stat-value">{lead.telegram_user_id}</td>
-                    <td className="table-cell">
-                      {lead.utm_source ? (
-                        <span className="badge badge-purple">{lead.utm_source}</span>
-                      ) : (
-                        <span className="text-(--text-ghost)">—</span>
-                      )}
-                    </td>
-                    <td className="table-cell text-(--text-muted) text-xs font-mono stat-value">{lead.tid ?? "—"}</td>
-                    <td className="table-cell text-(--text-muted) text-xs">
-                      {new Date(lead.created_at).toLocaleDateString("pt-BR")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        )}
+      </ContextDrawer>
+    </div>
+  );
+}
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 mt-5">
-              <button
-                onClick={() => loadPage(page - 1)}
-                disabled={page <= 1 || isPending}
-                className="btn-ghost py-2! px-4! disabled:opacity-30"
-              >
-                Anterior
-              </button>
-              <span className="text-(--text-muted) text-sm stat-value px-3 py-1.5 rounded-lg bg-white/3">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => loadPage(page + 1)}
-                disabled={page >= totalPages || isPending}
-                className="btn-ghost py-2! px-4! disabled:opacity-30"
-              >
-                Proxima
-              </button>
-            </div>
-          )}
-        </>
-      )}
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

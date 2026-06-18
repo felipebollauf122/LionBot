@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { GalaxyBackground } from "@/components/landing/hero3d/galaxy-background";
 
 export default async function DashboardLayout({
   children,
@@ -23,14 +24,15 @@ export default async function DashboardLayout({
     .single();
 
   return (
-    <div className="flex min-h-screen relative">
-      {/* Ambient background effects */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 left-[30%] w-[600px] h-[400px] bg-(--accent) rounded-full opacity-[0.015] blur-[180px]" />
-        <div className="absolute bottom-0 right-[20%] w-[500px] h-[300px] bg-(--cyan) rounded-full opacity-[0.01] blur-[150px]" />
+    <div className="relative">
+      {/* Fundo de galáxia SUTIL — bem ao fundo (z-0, atrás de tudo), só estrelas
+          + um toque de roxo/névoa, sem parallax pra ficar quieto na dashboard. */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <GalaxyBackground className="absolute inset-0 h-full w-full" nebula={0.35} stars={0.7} parallax={false} />
       </div>
-      <Sidebar isAdmin={tenant?.role === "admin"} isOwner={tenant?.is_owner === true} />
-      <main className="flex-1 min-w-0 relative z-10">{children}</main>
+      <DashboardShell isAdmin={tenant?.role === "admin"} isOwner={tenant?.is_owner === true}>
+        {children}
+      </DashboardShell>
     </div>
   );
 }

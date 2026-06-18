@@ -11,9 +11,26 @@ interface PaymentButtonConfigProps {
 export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonConfigProps) {
   const bundleId = String(data.bundle_id ?? "");
   const timeoutMinutes = Number(data.payment_timeout_minutes ?? 15);
+  const saleType = String(data.sale_type ?? "main");
 
   return (
     <div className="space-y-3">
+      <div>
+        <label className="input-label">Tipo de Venda</label>
+        <select
+          value={saleType}
+          onChange={(e) => onChange({ ...data, sale_type: e.target.value })}
+          className="input"
+        >
+          <option value="main">Principal</option>
+          <option value="upsell">Upsell</option>
+          <option value="downsell">Downsell</option>
+          <option value="orderbump">Order Bump</option>
+        </select>
+        <p className="text-(--text-muted) text-[10px] mt-1" style={{ opacity: 0.7 }}>
+          Classifica as vendas deste botão nas Análises (Upsell / Downsell / Order Bump).
+        </p>
+      </div>
       <div>
         <label className="input-label">Conjunto de Produtos</label>
         <select

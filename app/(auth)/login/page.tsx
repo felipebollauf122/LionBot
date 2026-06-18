@@ -4,13 +4,13 @@ import { LionMark } from "@/components/brand/lion-mark";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex relative overflow-hidden">
+    <div className="min-h-screen flex flex-col lg:flex-row relative overflow-hidden">
       {/* Global ambient orbs */}
       <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-(--accent) rounded-full opacity-[0.03] blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[-30%] left-[-15%] w-[500px] h-[500px] bg-(--cyan) rounded-full opacity-[0.02] blur-[120px] pointer-events-none" />
 
       {/* Left — form */}
-      <div className="flex-1 flex items-center justify-center px-8 relative z-10">
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-8 relative z-10">
         <Suspense>
           <AuthForm mode="login" />
         </Suspense>

@@ -46,7 +46,7 @@ export default function FAQSection() {
               {'// Dúvidas'}
             </p>
             <h2
-              className="text-4xl font-bold text-(--text-primary) leading-tight"
+              className="text-3xl sm:text-4xl font-bold text-(--text-primary) leading-tight"
               style={{ fontFamily: 'var(--font-display)' }}
             >
               Perguntas

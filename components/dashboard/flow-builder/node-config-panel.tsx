@@ -57,13 +57,29 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles }: 
   };
 
   return (
-    <div
-      className="w-72 lg:w-80 shrink-0 overflow-y-auto relative hidden md:flex flex-col"
-      style={{
-        background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
-        borderLeft: "1px solid var(--border-subtle)",
-      }}
-    >
+    <>
+      {/* Mobile: backdrop por trás do sheet (toca pra fechar) */}
+      <button
+        aria-label="Fechar"
+        onClick={onClose}
+        className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-in"
+      />
+      <div
+        className={
+          // MOBILE: bottom sheet (fixo embaixo, animado). DESKTOP: coluna lateral.
+          "flex flex-col overflow-y-auto relative z-50 " +
+          "fixed inset-x-0 bottom-0 max-h-[80vh] rounded-t-2xl border-t border-(--border-default) pb-safe animate-up " +
+          "md:static md:z-auto md:inset-auto md:bottom-auto md:max-h-none md:rounded-none md:border-t-0 md:w-72 lg:w-80 md:shrink-0 md:animate-none"
+        }
+        style={{
+          background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
+          borderLeft: "1px solid var(--border-subtle)",
+        }}
+      >
+        {/* grab handle (só mobile) */}
+        <div className="md:hidden sticky top-0 z-10 pt-3 pb-1 flex justify-center bg-(--bg-surface)/90 backdrop-blur-md">
+          <div className="w-10 h-1 rounded-full bg-white/15" />
+        </div>
       {/* Ambient glow */}
       <div
         className="absolute top-0 left-0 right-0 h-20 pointer-events-none"
@@ -116,6 +132,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles }: 
           Excluir No
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

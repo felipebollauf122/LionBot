@@ -17,6 +17,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { NodePalette } from "./node-palette";
+import { MobileBlockSheet } from "./mobile-block-sheet";
 import { NodeConfigPanel } from "./node-config-panel";
 import { TriggerNode } from "./nodes/trigger-node";
 import { TextNode } from "./nodes/text-node";
@@ -87,6 +88,7 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false); // bottom sheet de blocos (mobile)
 
   const nodeTypes = useMemo(() => nodeTypeComponents, []);
 
@@ -113,29 +115,38 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
     event.dataTransfer.dropEffect = "move";
   }, []);
 
-  const onDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault();
-
-      const type = event.dataTransfer.getData("application/reactflow");
-      if (!type || !reactFlowWrapper.current) return;
-
-      const bounds = reactFlowWrapper.current.getBoundingClientRect();
-      const position = {
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top,
-      };
-
+  // cria um nó do tipo dado numa posição. Usado pelo drop (posição do mouse) e
+  // pelo toque no mobile (posição empilhada perto do centro, com leve jitter pra
+  // não sobrepor exatamente os blocos já criados).
+  const addNode = useCallback(
+    (type: string, position?: { x: number; y: number }) => {
+      const pos =
+        position ??
+        (() => {
+          const n = nodes.length;
+          return { x: 120 + (n % 3) * 40, y: 120 + n * 70 };
+        })();
       const newNode: FlowNode = {
         id: generateNodeId(type),
         type: type as NodeType,
-        position,
+        position: pos,
         data: { ...defaultNodeData[type] },
       };
-
       setNodes((nds) => [...nds, newNode]);
+      return newNode;
     },
-    [setNodes],
+    [nodes, setNodes],
+  );
+
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault();
+      const type = event.dataTransfer.getData("application/reactflow");
+      if (!type || !reactFlowWrapper.current) return;
+      const bounds = reactFlowWrapper.current.getBoundingClientRect();
+      addNode(type, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+    },
+    [addNode],
   );
 
   const handleUpdateNode = useCallback(
@@ -256,21 +267,21 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
 
         {/* Canvas */}
         <div ref={reactFlowWrapper} className="flex-1 flow-canvas relative">
-          {/* Mobile notice */}
-          <div
-            className="md:hidden absolute top-2 left-2 right-2 z-10 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium pointer-events-none"
+          {/* Botão "+" flutuante (mobile): abre o sheet de blocos. No celular não
+              dá pra arrastar, então adiciona por toque. */}
+          <button
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Adicionar bloco"
+            className="md:hidden absolute bottom-5 right-5 z-20 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform"
             style={{
-              background: "color-mix(in srgb, var(--amber) 12%, var(--bg-elevated))",
-              border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
-              color: "var(--amber)",
-              boxShadow: "var(--shadow-md)",
+              background: "linear-gradient(135deg, var(--accent), var(--purple))",
+              boxShadow: "0 8px 24px -6px var(--accent-glow), 0 0 0 1px rgba(255,255,255,0.08) inset",
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-              <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            Edicao de fluxos e melhor no desktop.
-          </div>
+          </button>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -312,6 +323,13 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
         onClose={() => setSelectedNode(null)}
         onDelete={handleDeleteNode}
         bundles={bundles}
+      />
+
+      {/* Mobile: sheet de blocos (toque pra adicionar) */}
+      <MobileBlockSheet
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onPick={(type) => addNode(type)}
       />
     </div>
   );

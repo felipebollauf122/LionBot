@@ -2,7 +2,7 @@
 
 import type { DragEvent } from "react";
 
-interface NodeTypeItem {
+export interface NodeTypeItem {
   type: string;
   label: string;
   icon: string;
@@ -10,7 +10,7 @@ interface NodeTypeItem {
   category: string;
 }
 
-const nodeTypes: NodeTypeItem[] = [
+export const paletteNodeTypes: NodeTypeItem[] = [
   { type: "trigger", label: "Gatilho", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", color: "var(--accent)", category: "Inicio" },
   { type: "text", label: "Texto", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", color: "var(--cyan)", category: "Mensagens" },
   { type: "image", label: "Imagem", icon: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z", color: "var(--cyan)", category: "Mensagens" },
@@ -23,7 +23,7 @@ const nodeTypes: NodeTypeItem[] = [
   { type: "payment_button", label: "Pagamento", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--amber)", category: "Pagamento" },
 ];
 
-const categories = ["Inicio", "Mensagens", "Logica", "Acoes", "Pagamento"];
+export const paletteCategories = ["Inicio", "Mensagens", "Logica", "Acoes", "Pagamento"];
 
 function onDragStart(event: DragEvent, nodeType: string) {
   event.dataTransfer.setData("application/reactflow", nodeType);
@@ -61,8 +61,8 @@ export function NodePalette() {
 
       {/* Categories */}
       <div className="flex-1 px-3 pt-3 pb-4 space-y-4">
-        {categories.map((cat) => {
-          const items = nodeTypes.filter((n) => n.category === cat);
+        {paletteCategories.map((cat) => {
+          const items = paletteNodeTypes.filter((n) => n.category === cat);
           if (items.length === 0) return null;
           return (
             <div key={cat}>

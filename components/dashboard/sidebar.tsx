@@ -51,7 +51,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-(--accent)/[0.03] to-transparent pointer-events-none" />
 
       {/* Logo */}
-      <div className="h-[72px] px-6 flex items-center relative">
+      <div className="h-[72px] pt-safe box-content px-6 flex items-center relative">
         <div className="flex items-center gap-2.5">
           <LionMark size={34} bare />
           <span className="text-base font-bold tracking-tight text-foreground page-title">

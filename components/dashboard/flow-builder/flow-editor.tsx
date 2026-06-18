@@ -194,9 +194,10 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
       <NodePalette />
 
       <div className="flex-1 flex flex-col">
-        {/* Top bar */}
+        {/* Top bar — pt-safe + box-content: os botões (voltar/logo/salvar) ficam
+            ABAIXO do notch/Dynamic Island no iPhone. */}
         <div
-          className="h-14 flex items-center justify-between px-5 relative"
+          className="h-14 pt-safe box-content flex items-center justify-between px-5 relative"
           style={{
             background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
             borderBottom: "1px solid var(--border-subtle)",

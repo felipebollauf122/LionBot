@@ -344,6 +344,34 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ═══ Safe area (iPhone notch / Dynamic Island) ══════
+   Faixa PRETA mínima no topo cobrindo a safe-area, pra o conteúdo nunca
+   vazar atrás do relógio/Dynamic Island ao rolar. Só aparece quando há inset
+   (iPhone em PWA/standalone); em desktop env() = 0, então some. */
+.safe-top-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: #000;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* headers fixos/sticky no topo: empurra o conteúdo deles pra baixo do notch */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+/* idem pra altura total de um header sticky top-0 */
+.top-safe {
+  top: env(safe-area-inset-top, 0px);
+}
+/* barras fixas embaixo (bottom tab) respeitam a home bar */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* ═══ Selection ══════════════════════════════════════ */
 
 ::selection {

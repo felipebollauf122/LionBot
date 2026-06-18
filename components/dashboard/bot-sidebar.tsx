@@ -53,7 +53,7 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, 
       <div className="absolute top-0 right-0 bottom-0 w-px bg-gradient-to-b from-transparent via-(--border-default) to-transparent" />
 
       {/* Header: back + avatar/username */}
-      <div className="h-16 flex items-center gap-2.5 px-3 relative shrink-0 overflow-hidden">
+      <div className="h-16 pt-safe box-content flex items-center gap-2.5 px-3 relative shrink-0 overflow-hidden">
         <a
           href={backUrl}
           aria-label="Voltar"

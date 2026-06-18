@@ -22,7 +22,7 @@ export function DashboardShell({ isAdmin, isOwner, children }: DashboardShellPro
   return (
     <div className="flex flex-col md:flex-row min-h-screen">
       {/* Mobile top bar with hamburger (hidden on desktop) */}
-      <header className="md:hidden sticky top-0 z-30 h-14 flex items-center gap-3 px-4 glass">
+      <header className="md:hidden sticky top-0 z-30 h-14 pt-safe box-content flex items-center gap-3 px-4 glass">
         <button
           onClick={() => setOpen(true)}
           aria-label="Abrir menu"

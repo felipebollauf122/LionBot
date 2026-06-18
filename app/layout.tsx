@@ -41,7 +41,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#07040d",
+  themeColor: "#000000",
+  // viewport-fit=cover faz o iOS EXPOR a safe-area (env(safe-area-inset-*)).
+  // Sem isso o conteúdo vaza por baixo do notch/Dynamic Island no iPhone.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

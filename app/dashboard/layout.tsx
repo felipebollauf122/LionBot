@@ -25,6 +25,9 @@ export default async function DashboardLayout({
 
   return (
     <div className="relative">
+      {/* Faixa preta mínima cobrindo a safe-area do topo (notch/Dynamic Island)
+          — nada vaza atrás do relógio ao rolar. Vale em toda a área logada. */}
+      <div className="safe-top-bar" aria-hidden />
       {/* Fundo de galáxia SUTIL — bem ao fundo (z-0, atrás de tudo), só estrelas
           + um toque de roxo/névoa, sem parallax pra ficar quieto na dashboard. */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">

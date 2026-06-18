@@ -45,8 +45,8 @@ export function BotShell({ botId, botUsername, avatarUrl, basePath, children }: 
 
       <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
-      {/* Mobile bottom-tab-bar */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 glass border-t border-(--border-subtle) flex items-stretch h-16 px-1">
+      {/* Mobile bottom-tab-bar — pb-safe: ícones acima da home bar do iPhone */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 glass border-t border-(--border-subtle) flex items-stretch h-16 pb-safe box-content px-1">
         {primaryItems.map((item) => {
           const href = `${base}/${item.segment}`;
           const active = pathname.startsWith(href);

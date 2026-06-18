@@ -21,24 +21,32 @@ export function PushToggle() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let settled = false;
+    const finish = (s: State) => { if (!settled) { settled = true; setState(s); } };
+    // Rede de segurança: se a checagem travar (ex: SW que nunca resolve no iOS),
+    // assume "off" em 3s pra o botão "Ativar" SEMPRE aparecer (nunca preso em loading).
+    const timer = setTimeout(() => finish("off"), 3000);
     (async () => {
       const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
       if (!supported) {
-        // iOS only supports push when installed to the home screen (standalone)
         const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
         const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
-        setState(isIOS && !standalone ? "ios-install" : "unsupported");
-        return;
+        return finish(isIOS && !standalone ? "ios-install" : "unsupported");
       }
-      if (Notification.permission === "denied") return setState("denied");
+      if (Notification.permission === "denied") return finish("denied");
       try {
-        const reg = await navigator.serviceWorker.ready;
+        // Registra o SW JÁ no carregamento (antes só registrava no enable()).
+        // Sem isso, navigator.serviceWorker.ready TRAVAVA pra sempre e o toggle
+        // nunca aparecia (ficava preso em "loading").
+        let reg = await navigator.serviceWorker.getRegistration("/sw.js");
+        if (!reg) reg = await navigator.serviceWorker.register("/sw.js");
         const existing = await reg.pushManager.getSubscription();
-        setState(existing ? "on" : "off");
+        finish(existing ? "on" : "off");
       } catch {
-        setState("off");
+        finish("off");
       }
     })();
+    return () => clearTimeout(timer);
   }, []);
 
   async function enable() {

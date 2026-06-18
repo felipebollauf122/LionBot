@@ -5,6 +5,8 @@ import {
   getTopBreakdowns,
   getSalesByWeekday,
   getFilterOptions,
+  getAudienceBreakdown,
+  getSaleTypeStats,
   type AnalyticsFilters,
   type Period,
 } from "@/lib/actions/analytics-actions";
@@ -13,7 +15,6 @@ import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { TopList } from "@/components/dashboard/analytics/top-list";
 import { Funnel } from "@/components/dashboard/analytics/funnel";
 import { WeekdayChart } from "@/components/dashboard/analytics/weekday-chart";
-import { ComingSoonCard } from "@/components/dashboard/analytics/coming-soon-card";
 import { FilterBar } from "@/components/dashboard/analytics/filter-bar";
 import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
 import { icons } from "@/components/dashboard/analytics/icons";
@@ -37,16 +38,27 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   };
 
   const revenue = await getRevenueStats(filters);
-  const [tracking, funnel, tops, weekday, options] = await Promise.all([
+  const [tracking, funnel, tops, weekday, options, audience, saleTypes] = await Promise.all([
     getTrackingStats(filters, revenue.sales),
     getFunnelStats(filters),
     getTopBreakdowns(filters),
     getSalesByWeekday(filters),
     getFilterOptions(),
+    getAudienceBreakdown(filters),
+    getSaleTypeStats(filters),
   ]);
 
   const topRows = (rows: { id: string; label: string; revenue: number; sales: number }[]) =>
     rows.map((r) => ({ id: r.id, label: r.label, value: brl(r.revenue), sub: `${r.sales} venda${r.sales !== 1 ? "s" : ""}` }));
+
+  // device/country/state: valor = % do total, sub = nº de visitas
+  const audienceRows = (rows: { id: string; label: string; count: number; pct: number }[]) =>
+    rows.map((r) => ({ id: r.id, label: r.label, value: `${(r.pct * 100).toFixed(0)}%`, sub: `${r.count} visita${r.count !== 1 ? "s" : ""}` }));
+
+  // tipos de venda: valor = % das vendas, sub = nº de vendas + receita
+  const saleTypeRows = saleTypes
+    .filter((s) => s.sales > 0)
+    .map((s) => ({ id: s.type, label: s.label, value: `${(s.pct * 100).toFixed(0)}%`, sub: `${s.sales} · ${brl(s.revenue)}` }));
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
@@ -114,11 +126,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         </CardShell>
       </div>
 
-      {/* Placeholders (🔴 no data source) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-4 animate-up-5">
-        <ComingSoonCard title="Geolocalização" subtitle="mapa de leads por estado" icon={icons.pin} note="Precisa de captura de localização — em breve." />
-        <ComingSoonCard title="Dispositivos" subtitle="distribuição por tipo" icon={icons.device} note="Captura de dispositivo em desenvolvimento." />
-        <ComingSoonCard title="Taxa Upsell / Downsell / OrderBump" subtitle="tipos de venda" icon={icons.arrowUp} note="Classificação de transações em breve." />
+      {/* Audiência + tipos de venda (dados reais) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 animate-up-5">
+        <TopList title="Países" subtitle="de onde vêm as visitas" accent="cyan" icon={icons.globe} rows={audienceRows(audience.countries)} emptyLabel="Sem dados de país ainda" />
+        <TopList title="Estados" subtitle="por região (Brasil)" accent="amber" icon={icons.pin} rows={audienceRows(audience.states)} emptyLabel="Sem dados de estado ainda" />
+        <TopList title="Dispositivos" subtitle="distribuição por tipo" accent="purple" icon={icons.device} rows={audienceRows(audience.devices)} emptyLabel="Sem dados de dispositivo ainda" />
+        <TopList title="Upsell / Downsell / OrderBump" subtitle="tipos de venda" accent="magenta" icon={icons.arrowUp} rows={saleTypeRows} emptyLabel="Marque o tipo nos nós de pagamento" />
       </div>
     </div>
   );

@@ -285,6 +285,8 @@ export async function handleProductPaymentCallback(
     amount: typedProduct.price,
     currency: typedProduct.currency,
     status: "pending",
+    // tipo de venda marcado no nó de pagamento (Análises): main/upsell/downsell/orderbump
+    sale_type: String(ctx.node.data.sale_type ?? "main"),
   }).select("id").single();
 
   // Fire checkout (Facebook InitiateCheckout) + Utmify waiting_payment

@@ -8,7 +8,7 @@
   --bg-overlay: #120b1d;
   --bg-input: rgba(177, 75, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.035);
-  --glass-bg: rgba(8, 4, 14, 0.80);
+  --glass-bg: rgba(8, 4, 14, 0.90);
 
   /* ═══ Gradient Surfaces ═════════════════════════════ */
   --gradient-surface: linear-gradient(145deg, rgba(255, 43, 214, 0.04) 0%, rgba(10, 6, 18, 0.95) 40%, rgba(10, 6, 18, 1) 100%);
@@ -77,7 +77,7 @@
 /* ── Matrix — neon terminal (green/cyan on pure black) ── */
 [data-theme="matrix"] {
   --bg-root: #010402;
-  --glass-bg: rgba(3, 12, 7, 0.84);
+  --glass-bg: rgba(3, 12, 7, 0.90);
   --bg-surface: #030c07;
   --bg-elevated: #04120a;
   --bg-overlay: #07190f;
@@ -126,7 +126,7 @@
 /* ── Inferno — molten (red/orange/amber on charcoal) ── */
 [data-theme="inferno"] {
   --bg-root: #090402;
-  --glass-bg: rgba(15, 6, 7, 0.84);
+  --glass-bg: rgba(15, 6, 7, 0.90);
   --bg-surface: #0e0606;
   --bg-elevated: #140909;
   --bg-overlay: #1c0e0e;
@@ -175,7 +175,7 @@
 /* ── Ice — cold (blue/cyan/white on night blue) ── */
 [data-theme="ice"] {
   --bg-root: #03050b;
-  --glass-bg: rgba(6, 10, 18, 0.84);
+  --glass-bg: rgba(6, 10, 18, 0.90);
   --bg-surface: #060912;
   --bg-elevated: #090e1a;
   --bg-overlay: #0d1524;
@@ -224,7 +224,7 @@
 /* ── Gold — luxo (dourado/âmbar/bronze sobre preto) ── */
 [data-theme="gold"] {
   --bg-root: #070503;
-  --glass-bg: rgba(11, 9, 4, 0.84);
+  --glass-bg: rgba(11, 9, 4, 0.90);
   --bg-surface: #0b0906;
   --bg-elevated: #110d07;
   --bg-overlay: #19130c;
@@ -273,7 +273,7 @@
 /* ── Mono — minimalista (branco/cinza sobre preto) ── */
 [data-theme="mono"] {
   --bg-root: #030303;
-  --glass-bg: rgba(8, 8, 8, 0.84);
+  --glass-bg: rgba(8, 8, 8, 0.90);
   --bg-surface: #080808;
   --bg-elevated: #0f0f0f;
   --bg-overlay: #161616;
@@ -375,7 +375,8 @@ body {
 /* ═══ Surface Cards ══════════════════════════════════ */
 
 .card {
-  background: var(--gradient-card);
+  /* base SÓLIDA ~90% opaca (galáxia só passa nos ~10% restantes) + gradiente colorido por cima */
+  background: var(--gradient-card), color-mix(in srgb, var(--bg-elevated) 90%, transparent);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   box-shadow: var(--shadow-sm);
@@ -406,14 +407,16 @@ body {
 }
 
 .card-elevated {
-  background: linear-gradient(165deg, color-mix(in srgb, var(--purple) 7%, transparent) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--purple) 7%, transparent) 0%, rgba(255, 255, 255, 0.02) 100%),
+    color-mix(in srgb, var(--bg-elevated) 90%, transparent);
   border: 1px solid var(--border-default);
   border-radius: 14px;
   box-shadow: var(--shadow-md);
 }
 
 .card-glow {
-  background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent) 0%, color-mix(in srgb, var(--cyan) 3%, transparent) 100%);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 8%, transparent) 0%, color-mix(in srgb, var(--cyan) 3%, transparent) 100%),
+    color-mix(in srgb, var(--bg-elevated) 90%, transparent);
   border: 1px solid var(--border-glow);
   border-radius: 14px;
   box-shadow: var(--shadow-glow);

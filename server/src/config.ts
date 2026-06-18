@@ -23,4 +23,9 @@ export const config = {
   // só loga warning e processa mesmo assim. Mantido tolerante por padrão até
   // confirmar que a assinatura tá calibrada com o que o Yvepay envia.
   evpayRequireSignature: envOptional("EVPAY_REQUIRE_SIGNATURE", "false") === "true",
+  // Web Push (VAPID) — push de venda nos dispositivos do tenant.
+  // Se as chaves não estiverem setadas, o push é silenciosamente desativado.
+  vapidPublicKey: envOptional("VAPID_PUBLIC_KEY", ""),
+  vapidPrivateKey: envOptional("VAPID_PRIVATE_KEY", ""),
+  vapidSubject: envOptional("VAPID_SUBJECT", "mailto:admin@lionbot.app"),
 } as const;

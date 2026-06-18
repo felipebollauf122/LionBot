@@ -53,7 +53,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
       {/* Logo */}
       <div className="h-[72px] px-6 flex items-center relative">
         <div className="flex items-center gap-2.5">
-          <LionMark size={34} />
+          <LionMark size={34} bare />
           <span className="text-base font-bold tracking-tight text-foreground page-title">
             Lion<span className="gradient-text">Bot</span>
           </span>

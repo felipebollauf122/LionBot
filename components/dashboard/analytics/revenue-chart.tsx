@@ -28,6 +28,7 @@ export function RevenueChart({ data }: { data: DayPoint[] }) {
       title="Seu Desempenho"
       subtitle="Receita · últimos 7 dias"
       accent="magenta"
+      className="h-full"
       right={<span className="stat-value text-sm text-(--accent)">{brl(total)}</span>}
       icon={
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -35,8 +36,8 @@ export function RevenueChart({ data }: { data: DayPoint[] }) {
         </svg>
       }
     >
-      <div className="relative">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-44" preserveAspectRatio="none">
+      <div className="relative h-full flex flex-col">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full flex-1 min-h-44" preserveAspectRatio="none">
           <defs>
             <linearGradient id="rev-area" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="color-mix(in srgb, var(--accent) 30%, transparent)" />

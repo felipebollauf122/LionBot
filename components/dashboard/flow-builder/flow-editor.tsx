@@ -70,7 +70,7 @@ const defaultNodeData: Record<string, Record<string, unknown>> = {
   input: { prompt: "Qual seu email?", variable: "email" },
   action: { action_type: "set_variable", variable: "", value: "" },
   video: { video_url: "", caption: "" },
-  payment_button: { bundle_id: "", payment_timeout_minutes: 15 },
+  payment_button: { bundle_id: "", payment_timeout_minutes: 15, sale_type: "main" },
 };
 
 let nodeIdCounter = 0;

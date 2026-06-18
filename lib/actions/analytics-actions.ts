@@ -443,6 +443,153 @@ export async function getActivityFeed(limit = 12): Promise<ActivityItem[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Audience breakdown — devices + countries (from tracking_events.event_data)
+//
+// O page_view (rota /t) grava event_data.user_agent e event_data.country
+// (cf-ipcountry da Cloudflare). Aqui agregamos esses dados que JÁ existem:
+// device = classificação do user-agent; country = código ISO do país.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AudienceRow {
+  id: string;
+  label: string;
+  count: number; // nº de page_views nesse bucket
+  pct: number; // 0..1 sobre o total com dado disponível
+}
+
+/** Classifica um user-agent em mobile / tablet / desktop (sem dependência externa). */
+function classifyDevice(ua: string | null | undefined): string {
+  if (!ua) return "Desconhecido";
+  const s = ua.toLowerCase();
+  if (/ipad|tablet|playbook|silk|(android(?!.*mobile))/.test(s)) return "Tablet";
+  if (/mobile|iphone|ipod|android|blackberry|iemobile|opera mini/.test(s)) return "Celular";
+  if (/windows|macintosh|mac os|linux|cros|x11/.test(s)) return "Computador";
+  if (/bot|crawler|spider|crawling/.test(s)) return "Bot/Crawler";
+  return "Outro";
+}
+
+const COUNTRY_NAMES: Record<string, string> = {
+  br: "Brasil", us: "Estados Unidos", pt: "Portugal", ar: "Argentina",
+  mx: "México", es: "Espanha", cl: "Chile", co: "Colômbia", pe: "Peru",
+  uy: "Uruguai", py: "Paraguai", gb: "Reino Unido", de: "Alemanha",
+  fr: "França", it: "Itália", ca: "Canadá", angola: "Angola", ao: "Angola",
+};
+
+function countryLabel(code: string): string {
+  const c = code.toLowerCase();
+  return COUNTRY_NAMES[c] ?? code.toUpperCase();
+}
+
+export async function getAudienceBreakdown(filters: AnalyticsFilters = {}): Promise<{
+  devices: AudienceRow[];
+  countries: AudienceRow[];
+  states: AudienceRow[];
+}> {
+  const supabase = await createClient();
+
+  let q = supabase.from("tracking_events").select("event_data").eq("event_type", "page_view");
+  q = applyFilters(q, filters);
+  const { data } = await q;
+  const rows = (data ?? []) as {
+    event_data: { user_agent?: string; country?: string; state?: string } | null;
+  }[];
+
+  const devMap = new Map<string, number>();
+  const ctyMap = new Map<string, number>();
+  const stMap = new Map<string, number>();
+  let devTotal = 0;
+  let ctyTotal = 0;
+  let stTotal = 0;
+
+  for (const r of rows) {
+    const ed = r.event_data ?? {};
+    const dev = classifyDevice(ed.user_agent);
+    devMap.set(dev, (devMap.get(dev) ?? 0) + 1);
+    devTotal += 1;
+
+    const country = (ed.country ?? "").trim();
+    if (country) {
+      const key = country.toLowerCase();
+      ctyMap.set(key, (ctyMap.get(key) ?? 0) + 1);
+      ctyTotal += 1;
+    }
+
+    const state = (ed.state ?? "").trim();
+    if (state) {
+      stMap.set(state, (stMap.get(state) ?? 0) + 1);
+      stTotal += 1;
+    }
+  }
+
+  const toRows = (map: Map<string, number>, total: number, labelOf: (k: string) => string): AudienceRow[] =>
+    [...map.entries()]
+      .map(([id, count]) => ({ id, label: labelOf(id), count, pct: total > 0 ? count / total : 0 }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+  return {
+    devices: toRows(devMap, devTotal, (k) => k),
+    countries: toRows(ctyMap, ctyTotal, countryLabel),
+    states: toRows(stMap, stTotal, (k) => k),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sale type breakdown — Upsell / Downsell / OrderBump (transactions.sale_type)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SaleTypeRow {
+  type: "main" | "upsell" | "downsell" | "orderbump";
+  label: string;
+  sales: number; // nº de vendas aprovadas desse tipo
+  revenue: number; // cents
+  pct: number; // 0..1 sobre o total de vendas aprovadas
+}
+
+const SALE_TYPE_LABEL: Record<string, string> = {
+  main: "Principal",
+  upsell: "Upsell",
+  downsell: "Downsell",
+  orderbump: "Order Bump",
+};
+
+export async function getSaleTypeStats(filters: AnalyticsFilters = {}): Promise<SaleTypeRow[]> {
+  const supabase = await createClient();
+
+  let q = supabase.from("transactions").select("sale_type,amount,status").eq("status", "approved");
+  q = applyFilters(q, filters);
+  if (filters.flowId) q = q.eq("flow_id", filters.flowId);
+  if (filters.gateway) q = q.eq("gateway", filters.gateway);
+
+  const { data } = await q;
+  const rows = (data ?? []) as { sale_type?: string; amount?: number }[];
+
+  const order: SaleTypeRow["type"][] = ["main", "upsell", "downsell", "orderbump"];
+  const acc = new Map<string, { sales: number; revenue: number }>();
+  for (const t of order) acc.set(t, { sales: 0, revenue: 0 });
+
+  let total = 0;
+  for (const r of rows) {
+    const type = (r.sale_type ?? "main");
+    const cur = acc.get(type) ?? acc.get("main")!;
+    cur.sales += 1;
+    cur.revenue += r.amount ?? 0;
+    total += 1;
+  }
+
+  return order.map((type) => {
+    const a = acc.get(type)!;
+    return {
+      type,
+      label: SALE_TYPE_LABEL[type],
+      sales: a.sales,
+      revenue: a.revenue,
+      pct: total > 0 ? a.sales / total : 0,
+    };
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Filter options (for the Análises filter bar)
 // ─────────────────────────────────────────────────────────────────────────────
 

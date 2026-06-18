@@ -7,6 +7,7 @@ import { completePurchase } from "../services/purchase-completer.js";
 import { isBlacklisted } from "../services/blacklist.js";
 import { botCache } from "../cache.js";
 import { config } from "../config.js";
+import { notifySale } from "../services/push.js";
 import type { Lead } from "../engine/types.js";
 
 interface Bot {
@@ -228,6 +229,27 @@ export async function processPaymentCallback(botId: string | null, body: Record<
     bot = botData as Bot;
     botCache.set(transaction.bot_id, botData as Record<string, unknown>);
   }
+
+  // Push de venda para os dispositivos do tenant — fire-and-forget, nunca
+  // bloqueia nem quebra o fluxo de pagamento (push desativa sozinho se as
+  // chaves VAPID não estiverem setadas).
+  void (async () => {
+    try {
+      const { data: prod } = await supabase
+        .from("products")
+        .select("name")
+        .eq("id", transaction.product_id)
+        .single();
+      const productName = (prod as { name?: string } | null)?.name ?? null;
+      await notifySale(transaction.tenant_id, {
+        amount: transaction.amount,
+        productName,
+        botName: (bot as unknown as { bot_username?: string }).bot_username ?? null,
+      });
+    } catch (err) {
+      console.error("[push] notifySale failed:", (err as Error).message);
+    }
+  })();
 
   if (!lead) return;
 

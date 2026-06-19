@@ -97,6 +97,39 @@ function applyFilters(query: any, filters: AnalyticsFilters, opts?: { createdCol
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Paginação — o Supabase corta toda query em 1000 linhas. Sem isto, qualquer
+// agregação sobre tabela grande (transactions 10k+, leads 24k+, tracking 4k+)
+// subconta. Regra: filtrar TUDO no servidor (status/event_type/período) ANTES.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Busca TODAS as linhas de um builder já filtrado, em lotes de 1000.
+ * `buildQuery` é uma FACTORY: cria um builder NOVO a cada lote — o
+ * PostgrestFilterBuilder é thenable de uso único, não pode ser reusado após await.
+ * Os builders devem ter um `.order(...)` estável (passado pelo chamador) pra a
+ * paginação não pular/repetir linhas.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAllPaged<T>(buildQuery: () => any, page = 1000): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += page) {
+    const { data, error } = await buildQuery().range(from, from + page - 1);
+    if (error || !data || data.length === 0) break;
+    out.push(...(data as T[]));
+    if (data.length < page) break; // última página
+  }
+  return out;
+}
+
+/** Contagem EXATA no servidor sem trazer linhas. buildQuery deve usar
+ *  .select("*", { count: "exact", head: true }). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function countRows(buildQuery: () => any): Promise<number> {
+  const { count } = await buildQuery();
+  return count ?? 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Revenue / sales KPIs
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -126,19 +159,33 @@ export interface RevenueStats {
 export async function getRevenueStats(filters: AnalyticsFilters = {}): Promise<RevenueStats> {
   const supabase = await createClient();
 
-  let txQ = supabase.from("transactions").select("amount,status,lead_id");
-  txQ = applyFilters(txQ, filters);
-  if (filters.flowId) txQ = txQ.eq("flow_id", filters.flowId);
-  if (filters.gateway) txQ = txQ.eq("gateway", filters.gateway);
+  // helper: aplica TODOS os filtros + order estável a um builder de transactions.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const txBuilder = (sel: string, count = false): any => {
+    let q = count
+      ? supabase.from("transactions").select(sel, { count: "exact", head: true })
+      : supabase.from("transactions").select(sel).order("id", { ascending: true });
+    q = applyFilters(q, filters);
+    if (filters.flowId) q = q.eq("flow_id", filters.flowId);
+    if (filters.gateway) q = q.eq("gateway", filters.gateway);
+    return q;
+  };
 
-  const { data: txs } = await txQ;
-  const rows = txs ?? [];
+  // APROVADAS (paginadas): receita, vendas, buyers, recorrência. Filtra status no
+  // servidor → traz só as ~1.1k aprovadas, não as 10k+ de qualquer status.
+  const approved = await fetchAllPaged<{ amount: number; lead_id: string | null }>(
+    () => txBuilder("amount,lead_id").eq("status", "approved"),
+  );
+  // RECEITA BRUTA (não recusadas/estornadas) — também paginada.
+  const grossRows = await fetchAllPaged<{ amount: number }>(
+    () => txBuilder("amount").not("status", "in", "(refused,refunded)"),
+  );
+  // totalTx (qualquer status) — contagem exata, sem trazer linhas.
+  const totalTx = await countRows(() => txBuilder("*", true));
 
-  const approved = rows.filter((t) => t.status === "approved");
   const revenue = approved.reduce((s, t) => s + (t.amount ?? 0), 0);
-  const grossRevenue = rows.filter((t) => t.status !== "refused" && t.status !== "refunded").reduce((s, t) => s + (t.amount ?? 0), 0);
+  const grossRevenue = grossRows.reduce((s, t) => s + (t.amount ?? 0), 0);
   const sales = approved.length;
-  const totalTx = rows.length;
   const approvalRate = totalTx > 0 ? sales / totalTx : 0;
   const avgTicket = sales > 0 ? Math.round(revenue / sales) : 0;
 
@@ -172,18 +219,21 @@ export interface TrackingStats {
 export async function getTrackingStats(filters: AnalyticsFilters = {}, approvedSales = 0): Promise<TrackingStats> {
   const supabase = await createClient();
 
-  let q = supabase.from("tracking_events").select("event_type");
-  q = applyFilters(q, filters);
-  if (filters.source) q = q.eq("utm_params->>source", filters.source);
+  // contagem EXATA por event_type no servidor (sem trazer linhas → sem limite de 1000).
+  const evCount = (type: string) =>
+    countRows(() => {
+      let q = supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", type);
+      q = applyFilters(q, filters);
+      if (filters.source) q = q.eq("utm_params->>source", filters.source);
+      return q;
+    });
 
-  const { data } = await q;
-  const events = data ?? [];
-
-  const count = (type: string) => events.filter((e) => e.event_type === type).length;
-  const visits = count("page_view");
-  const starts = count("bot_start");
-  const checkouts = count("checkout");
-  const purchases = count("purchase");
+  const [visits, starts, checkouts, purchases] = await Promise.all([
+    evCount("page_view"),
+    evCount("bot_start"),
+    evCount("checkout"),
+    evCount("purchase"),
+  ]);
 
   return {
     visits,
@@ -207,18 +257,12 @@ export interface FunnelStats {
 export async function getFunnelStats(filters: AnalyticsFilters = {}): Promise<FunnelStats> {
   const supabase = await createClient();
 
-  let evQ = supabase.from("tracking_events").select("event_type");
-  evQ = applyFilters(evQ, filters);
-  const { data: ev } = await evQ;
-  const events = ev ?? [];
-  const starts = events.filter((e) => e.event_type === "bot_start").length;
-  const checkouts = events.filter((e) => e.event_type === "checkout").length;
-
-  // paid = approved transactions in range
-  let txQ = supabase.from("transactions").select("status");
-  txQ = applyFilters(txQ, filters);
-  const { data: tx } = await txQ;
-  const paid = (tx ?? []).filter((t) => t.status === "approved").length;
+  // 3 contagens EXATAS no servidor (sem trazer linhas → sem limite de 1000).
+  const [starts, checkouts, paid] = await Promise.all([
+    countRows(() => applyFilters(supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", "bot_start"), filters)),
+    countRows(() => applyFilters(supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", "checkout"), filters)),
+    countRows(() => applyFilters(supabase.from("transactions").select("*", { count: "exact", head: true }).eq("status", "approved"), filters)),
+  ]);
 
   return {
     starts,
@@ -250,12 +294,17 @@ export async function getTopBreakdowns(filters: AnalyticsFilters = {}): Promise<
 }> {
   const supabase = await createClient();
 
-  let txQ = supabase
-    .from("transactions")
-    .select("amount,status,bot_id,flow_id,product_id,lead_id, bots(bot_username,redirect_display_name), flows(name), products(name,ghost_name)");
-  txQ = applyFilters(txQ, filters);
-  const { data } = await txQ;
-  const approved = (data ?? []).filter((t) => t.status === "approved");
+  // aprovadas (paginadas, status no servidor) com os joins.
+  const approved = await fetchAllPaged<Record<string, unknown>>(() =>
+    applyFilters(
+      supabase
+        .from("transactions")
+        .select("amount,status,bot_id,flow_id,product_id,lead_id, bots(bot_username,redirect_display_name), flows(name), products(name,ghost_name)")
+        .eq("status", "approved")
+        .order("id", { ascending: true }),
+      filters,
+    ),
+  );
 
   // Aggregate generic helper
   function agg<T extends Record<string, unknown>>(
@@ -295,11 +344,13 @@ export async function getTopBreakdowns(filters: AnalyticsFilters = {}): Promise<
   let campaigns: TopRow[] = [];
   let sources: TopRow[] = [];
   if (leadIds.length > 0) {
-    const { data: leads } = await supabase
-      .from("leads")
-      .select("id,utm_campaign,utm_source")
-      .in("id", leadIds);
-    const leadMap = new Map((leads ?? []).map((l) => [l.id, l]));
+    // chunk de 500 ids por query (.in com muitos ids estoura a URL + corta em 1000).
+    const leadMap = new Map<string, { id: string; utm_campaign?: string; utm_source?: string }>();
+    for (let i = 0; i < leadIds.length; i += 500) {
+      const chunk = leadIds.slice(i, i + 500);
+      const { data: leads } = await supabase.from("leads").select("id,utm_campaign,utm_source").in("id", chunk);
+      for (const l of leads ?? []) leadMap.set(l.id as string, l as { id: string; utm_campaign?: string; utm_source?: string });
+    }
     const withLead = rows.map((r) => ({
       ...r,
       _lead: leadMap.get((r as unknown as { lead_id: string }).lead_id),
@@ -329,27 +380,33 @@ export interface DayPoint {
   sales: number;
 }
 
+/** Dia-calendário (YYYY-MM-DD) de um ISO UTC, no fuso de Brasília. */
+function brDateKey(iso: string): string {
+  return new Date(new Date(iso).getTime() - BR_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
+}
+
 export async function getRevenue7d(): Promise<DayPoint[]> {
   const supabase = await createClient();
   const { start } = periodRange("7d");
-  let q = supabase.from("transactions").select("amount,status,created_at").eq("status", "approved");
-  if (start) q = q.gte("created_at", start);
-  const { data } = await q;
+  // paginado + status no servidor (não corta em pico de vendas).
+  const rows = await fetchAllPaged<{ amount: number; created_at: string }>(() => {
+    let q = supabase.from("transactions").select("amount,created_at").eq("status", "approved").order("id", { ascending: true });
+    if (start) q = q.gte("created_at", start);
+    return q;
+  });
 
+  // buckets dos últimos 7 dias EM HORÁRIO DE BRASÍLIA (consistente com periodRange).
   const buckets = new Map<string, DayPoint>();
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayStart = startOfTodayBR();
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const d = new Date(todayStart.getTime() - i * 86_400_000);
+    const key = brDateKey(d.toISOString());
     buckets.set(key, { date: key, revenue: 0, sales: 0 });
   }
-  for (const t of data ?? []) {
-    const key = (t.created_at as string).slice(0, 10);
-    const b = buckets.get(key);
+  for (const t of rows) {
+    const b = buckets.get(brDateKey(t.created_at));
     if (b) {
-      b.revenue += (t.amount as number) ?? 0;
+      b.revenue += t.amount ?? 0;
       b.sales += 1;
     }
   }
@@ -364,24 +421,24 @@ export interface WeekdayPoint {
 
 export async function getSalesByWeekday(filters: AnalyticsFilters = {}): Promise<WeekdayPoint[]> {
   const supabase = await createClient();
-  // pull last 14 days of approved tx and bucket into this week / last week by weekday
-  const { start } = periodRange("30d");
-  let q = supabase.from("transactions").select("created_at,status,bot_id").eq("status", "approved");
-  if (start) q = q.gte("created_at", start);
-  if (filters.botId) q = q.eq("bot_id", filters.botId);
-  const { data } = await q;
+  // semanas em horário de Brasília: início da semana atual e da anterior.
+  const todayStart = startOfTodayBR();
+  const dow = new Date(todayStart.getTime() - BR_OFFSET_MIN * 60_000).getUTCDay(); // 0=Dom..6=Sáb (BRT)
+  const startOfWeek = new Date(todayStart.getTime() - dow * 86_400_000);
+  const startOfPrevWeek = new Date(startOfWeek.getTime() - 7 * 86_400_000);
 
-  const now = new Date();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  startOfWeek.setHours(0, 0, 0, 0);
-  const startOfPrevWeek = new Date(startOfWeek);
-  startOfPrevWeek.setDate(startOfPrevWeek.getDate() - 7);
+  // só precisamos das 2 últimas semanas → janela de 14d, paginada, status no servidor.
+  const rows = await fetchAllPaged<{ created_at: string }>(() => {
+    let q = supabase.from("transactions").select("created_at").eq("status", "approved")
+      .gte("created_at", startOfPrevWeek.toISOString()).order("id", { ascending: true });
+    if (filters.botId) q = q.eq("bot_id", filters.botId);
+    return q;
+  });
 
   const points: WeekdayPoint[] = Array.from({ length: 7 }, (_, i) => ({ weekday: i, current: 0, previous: 0 }));
-  for (const t of data ?? []) {
-    const d = new Date(t.created_at as string);
-    const wd = d.getDay();
+  for (const t of rows) {
+    const d = new Date(t.created_at);
+    const wd = new Date(d.getTime() - BR_OFFSET_MIN * 60_000).getUTCDay(); // weekday em BRT
     if (d >= startOfWeek) points[wd].current += 1;
     else if (d >= startOfPrevWeek) points[wd].previous += 1;
   }
@@ -514,12 +571,14 @@ export async function getAudienceBreakdown(filters: AnalyticsFilters = {}): Prom
 }> {
   const supabase = await createClient();
 
-  let q = supabase.from("tracking_events").select("event_data").eq("event_type", "page_view");
-  q = applyFilters(q, filters);
-  const { data } = await q;
-  const rows = (data ?? []) as {
+  const rows = await fetchAllPaged<{
     event_data: { user_agent?: string; country?: string; state?: string } | null;
-  }[];
+  }>(() =>
+    applyFilters(
+      supabase.from("tracking_events").select("event_data").eq("event_type", "page_view").order("id", { ascending: true }),
+      filters,
+    ),
+  );
 
   const devMap = new Map<string, number>();
   const ctyMap = new Map<string, number>();
@@ -583,13 +642,13 @@ const SALE_TYPE_LABEL: Record<string, string> = {
 export async function getSaleTypeStats(filters: AnalyticsFilters = {}): Promise<SaleTypeRow[]> {
   const supabase = await createClient();
 
-  let q = supabase.from("transactions").select("sale_type,amount,status").eq("status", "approved");
-  q = applyFilters(q, filters);
-  if (filters.flowId) q = q.eq("flow_id", filters.flowId);
-  if (filters.gateway) q = q.eq("gateway", filters.gateway);
-
-  const { data } = await q;
-  const rows = (data ?? []) as { sale_type?: string; amount?: number }[];
+  const rows = await fetchAllPaged<{ sale_type?: string; amount?: number }>(() => {
+    let q = supabase.from("transactions").select("sale_type,amount,status").eq("status", "approved").order("id", { ascending: true });
+    q = applyFilters(q, filters);
+    if (filters.flowId) q = q.eq("flow_id", filters.flowId);
+    if (filters.gateway) q = q.eq("gateway", filters.gateway);
+    return q;
+  });
 
   const order: SaleTypeRow["type"][] = ["main", "upsell", "downsell", "orderbump"];
   const acc = new Map<string, { sales: number; revenue: number }>();
@@ -632,7 +691,7 @@ export async function getFilterOptions(): Promise<FilterOptions> {
   const [botsRes, flowsRes, leadsRes] = await Promise.all([
     supabase.from("bots").select("id,bot_username,redirect_display_name").order("created_at", { ascending: false }),
     supabase.from("flows").select("id,name").order("created_at", { ascending: false }),
-    supabase.from("leads").select("utm_source").not("utm_source", "is", null).limit(500),
+    supabase.from("leads").select("utm_source").not("utm_source", "is", null).limit(2000),
   ]);
 
   const bots = (botsRes.data ?? []).map((b) => ({

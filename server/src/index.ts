@@ -54,6 +54,21 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "eaglebot-engine" });
 });
 
+// Diagnóstico do Web Push: mostra QUAL chave pública o server carregou (do .env)
+// e se a privada está setada — SEM expor a privada. Pra conferir se a VPS está
+// com o par VAPID certo. (Endpoint de leitura, seguro.)
+app.get("/health/push", (_req, res) => {
+  const pub = config.vapidPublicKey || "";
+  res.json({
+    vapidPublicKey: pub, // pública pode ser exposta
+    vapidPublicKeyLen: pub.length,
+    vapidPrivateKeySet: Boolean(config.vapidPrivateKey),
+    vapidPrivateKeyLen: (config.vapidPrivateKey || "").length,
+    vapidSubject: config.vapidSubject || "",
+    pushEnabled: Boolean(config.vapidPublicKey && config.vapidPrivateKey),
+  });
+});
+
 // SigiloPay payment webhook — single global endpoint for the entire platform
 app.post("/webhook/payment", handlePaymentWebhookGlobal);
 // Legacy per-bot endpoint (kept for existing webhooks already registered at SigiloPay)

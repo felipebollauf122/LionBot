@@ -4,6 +4,17 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 
 export function PaymentButtonNode({ data, selected }: NodeProps) {
   const bundleId = String(data.bundle_id ?? "");
+  const saleType = String(data.sale_type ?? "main");
+  const isOffer = saleType === "upsell" || saleType === "downsell";
+  // botões de recusa/extras (cada um vira um handle de saída próprio).
+  // Padrão se não configurado: só "Recusar".
+  const offerButtons = (
+    isOffer
+      ? (Array.isArray(data.accept_reject_buttons) && data.accept_reject_buttons.length > 0
+          ? (data.accept_reject_buttons as { id?: string; label?: string }[])
+          : [{ id: "reject", label: "Recusar" }])
+      : []
+  ).filter((b) => String(b.id ?? "") !== "accept");
 
   return (
     <div
@@ -50,10 +61,22 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
           </span>
         )}
       </div>
+      {/* Upsell/Downsell: clicar no produto = Aceitar (segue por "Pagou").
+          "Recusar" e extras viram handles próprios pra ramificar. */}
+      {isOffer && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 justify-center px-1">
+          {offerButtons.map((b) => (
+            <div key={String(b.id)} className="flex flex-col items-center gap-0.5">
+              <Handle type="source" position={Position.Bottom} id={String(b.id)} style={{ position: "relative", background: "var(--purple)", width: 10, height: 10, border: "2px solid var(--bg-root)", transform: "none" }} />
+              <span className="text-(--purple) text-[9px] font-bold max-w-16 truncate">{String(b.label ?? b.id)}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex justify-between mt-2.5 px-2">
         <div className="flex flex-col items-center gap-0.5">
           <Handle type="source" position={Position.Bottom} id="paid" style={{ position: "relative", background: "var(--accent)", width: 10, height: 10, border: "2px solid var(--bg-root)", transform: "none" }} />
-          <span className="text-(--accent) text-[9px] font-bold">Pagou</span>
+          <span className="text-(--accent) text-[9px] font-bold">{isOffer ? "Aceitou/Pagou" : "Pagou"}</span>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <Handle type="source" position={Position.Bottom} id="not_paid" style={{ position: "relative", background: "var(--red)", width: 10, height: 10, border: "2px solid var(--bg-root)", transform: "none" }} />

@@ -21,6 +21,32 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
   ];
   const current = saleTypes.find((s) => s.value === saleType) ?? saleTypes[0];
 
+  // ── Botões Aceitar/Recusar (só upsell/downsell) ──
+  const isOffer = saleType === "upsell" || saleType === "downsell";
+  const layout = String(data.button_layout ?? "vertical");
+  type OfferBtn = { id: string; label: string };
+  const offerButtons: OfferBtn[] =
+    Array.isArray(data.accept_reject_buttons) && (data.accept_reject_buttons as OfferBtn[]).length > 0
+      ? (data.accept_reject_buttons as OfferBtn[])
+      : [{ id: "reject", label: "Recusar" }];
+
+  const setButtons = (next: OfferBtn[]) => onChange({ ...data, accept_reject_buttons: next });
+  const renameButton = (i: number, label: string) => {
+    const next = offerButtons.map((b, idx) => (idx === i ? { ...b, label } : b));
+    setButtons(next);
+  };
+  const addButton = () => {
+    // id estável e único (reject já existe por padrão; extras viram btn_N)
+    const used = new Set(offerButtons.map((b) => b.id));
+    let n = 0;
+    while (used.has(`btn_${n}`)) n++;
+    setButtons([...offerButtons, { id: `btn_${n}`, label: "Novo botão" }]);
+  };
+  const removeButton = (i: number) => {
+    const next = offerButtons.filter((_, idx) => idx !== i);
+    setButtons(next.length > 0 ? next : [{ id: "reject", label: "Recusar" }]);
+  };
+
   return (
     <div className="space-y-3">
       {/* Tipo de venda — destacado: define como esta venda aparece nas Análises */}
@@ -62,6 +88,71 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
           Define como as vendas deste botão aparecem no card <strong>Upsell / Downsell / Order Bump</strong> das Análises. Não muda o fluxo — só a classificação.
         </p>
       </div>
+
+      {/* Botões Aceitar/Recusar — só upsell/downsell */}
+      {isOffer && (
+        <div
+          className="rounded-xl p-3 space-y-2.5"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border-subtle)" }}
+        >
+          <div>
+            <label className="input-label mb-0!">Botões de oferta</label>
+            <p className="text-[10px] text-(--text-muted) mt-0.5 mb-2" style={{ opacity: 0.8 }}>
+              Clicar no <strong>produto</strong> = Aceitar (gera o Pix e segue por “Aceitou/Pagou”). Os botões abaixo viram saídas próprias no fluxo (ex: “Recusar” → conecte a um downsell).
+            </p>
+          </div>
+
+          {/* Layout */}
+          <div>
+            <span className="text-[10px] text-(--text-muted) uppercase tracking-wider">Layout</span>
+            <div className="mt-1 inline-flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
+              {[
+                { v: "vertical", l: "Vertical" },
+                { v: "horizontal", l: "Horizontal" },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => onChange({ ...data, button_layout: o.v })}
+                  className={`toggle-btn ${layout === o.v ? "on" : "off"}`}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Lista de botões editáveis */}
+          <div className="space-y-1.5">
+            {offerButtons.map((b, i) => (
+              <div key={b.id} className="flex items-center gap-1.5">
+                <input
+                  value={b.label}
+                  onChange={(e) => renameButton(i, e.target.value)}
+                  placeholder="Texto do botão"
+                  className="input text-xs py-1.5! flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeButton(i)}
+                  aria-label="Remover botão"
+                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addButton}
+            className="w-full text-xs py-2 rounded-lg border border-dashed border-(--border-default) text-(--text-secondary) hover:text-foreground hover:bg-white/[0.03] transition-colors flex items-center justify-center gap-1.5"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Adicionar botão
+          </button>
+        </div>
+      )}
 
       <div>
         <label className="input-label">Conjunto de Produtos</label>

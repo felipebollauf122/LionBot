@@ -89,7 +89,14 @@ export async function handlePaymentBundleNode(
   // Cada produto pode ter button_style ('danger', 'success', 'primary') que
   // colore o botão (Bot API 8.x+). Clientes Telegram antigos ignoram o campo
   // e mostram o botão na cor padrão — compatível.
-  const inlineKeyboard = items.map((item) => {
+  type InlineBtn = {
+    text: string;
+    callback_data: string;
+    style?: "danger" | "success" | "primary";
+  };
+
+  // Botões de PRODUTO (clicar = "Aceitar" → gera PIX). Um por linha por padrão.
+  const productButtons: InlineBtn[] = items.map((item) => {
     const product = item.products;
     // Cliente sempre vê o nome real. Ghost é só pra gateway (ver callback).
     const displayName = product.name;
@@ -98,17 +105,46 @@ export async function handlePaymentBundleNode(
       style: "currency",
       currency: product.currency,
     });
-    const btn: {
-      text: string;
-      callback_data: string;
-      style?: "danger" | "success" | "primary";
-    } = {
+    const btn: InlineBtn = {
       text: `${displayName} por ${priceFormatted}`,
       callback_data: `pay:${product.id}`,
     };
     if (product.button_style) btn.style = product.button_style;
-    return [btn];
+    return btn;
   });
+
+  // UPSELL/DOWNSELL: o produto é o "Aceitar"; somamos um "Recusar" (handle
+  // reject) + botões extras opcionais (handles btn_0, btn_1...). O usuário
+  // define os rótulos e o layout (horizontal/vertical) no editor.
+  const saleType = String(ctx.node.data.sale_type ?? "main");
+  const isOffer = saleType === "upsell" || saleType === "downsell";
+  const extraButtons: InlineBtn[] = [];
+  if (isOffer) {
+    const cfg = (Array.isArray(ctx.node.data.accept_reject_buttons)
+      ? ctx.node.data.accept_reject_buttons
+      : []) as { id?: string; label?: string }[];
+    // padrão: se nada configurado, usa só "Recusar"
+    const list = cfg.length > 0 ? cfg : [{ id: "reject", label: "Recusar" }];
+    for (const b of list) {
+      const id = String(b.id ?? "reject");
+      const label = String(b.label ?? "Recusar");
+      // o botão de produto já é o "accept"; ignoramos um eventual id "accept"
+      if (id === "accept") continue;
+      extraButtons.push({ text: label, callback_data: `${ctx.node.id}:${id}` });
+    }
+  }
+
+  // Layout: vertical = um botão por linha; horizontal = todos na mesma linha.
+  const layout = String(ctx.node.data.button_layout ?? "vertical");
+  let inlineKeyboard: InlineBtn[][];
+  if (isOffer && layout === "horizontal") {
+    // produtos cada um na sua linha (preço longo), extras juntos numa linha
+    inlineKeyboard = productButtons.map((b) => [b]);
+    if (extraButtons.length > 0) inlineKeyboard.push(extraButtons);
+  } else {
+    // vertical (padrão): tudo empilhado
+    inlineKeyboard = [...productButtons, ...extraButtons].map((b) => [b]);
+  }
 
   // Send single message with header text + all product buttons
   const messageIds: number[] = [];

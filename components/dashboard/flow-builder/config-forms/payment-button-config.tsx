@@ -13,24 +13,56 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
   const timeoutMinutes = Number(data.payment_timeout_minutes ?? 15);
   const saleType = String(data.sale_type ?? "main");
 
+  const saleTypes: { value: string; label: string; hint: string; color: string }[] = [
+    { value: "main", label: "Principal", hint: "Venda principal do funil", color: "var(--accent)" },
+    { value: "orderbump", label: "Order Bump", hint: "Oferta extra logo após a compra", color: "var(--amber)" },
+    { value: "upsell", label: "Upsell", hint: "Oferta MAIS cara depois da compra", color: "var(--cyan)" },
+    { value: "downsell", label: "Downsell", hint: "Oferta mais barata se recusar o upsell", color: "var(--purple)" },
+  ];
+  const current = saleTypes.find((s) => s.value === saleType) ?? saleTypes[0];
+
   return (
     <div className="space-y-3">
-      <div>
-        <label className="input-label">Tipo de Venda</label>
-        <select
-          value={saleType}
-          onChange={(e) => onChange({ ...data, sale_type: e.target.value })}
-          className="input"
-        >
-          <option value="main">Principal</option>
-          <option value="upsell">Upsell</option>
-          <option value="downsell">Downsell</option>
-          <option value="orderbump">Order Bump</option>
-        </select>
-        <p className="text-(--text-muted) text-[10px] mt-1" style={{ opacity: 0.7 }}>
-          Classifica as vendas deste botão nas Análises (Upsell / Downsell / Order Bump).
+      {/* Tipo de venda — destacado: define como esta venda aparece nas Análises */}
+      <div
+        className="rounded-xl p-3"
+        style={{
+          background: `linear-gradient(135deg, color-mix(in srgb, ${current.color} 8%, transparent), color-mix(in srgb, ${current.color} 2%, transparent))`,
+          border: `1px solid color-mix(in srgb, ${current.color} 28%, transparent)`,
+        }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={current.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" />
+          </svg>
+          <label className="input-label mb-0!" style={{ color: current.color }}>Tipo de Venda</label>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {saleTypes.map((s) => {
+            const active = s.value === saleType;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => onChange({ ...data, sale_type: s.value })}
+                className="text-left px-2.5 py-2 rounded-lg border transition-all active:scale-[0.98]"
+                style={{
+                  background: active ? `color-mix(in srgb, ${s.color} 16%, transparent)` : "rgba(255,255,255,0.02)",
+                  borderColor: active ? `color-mix(in srgb, ${s.color} 55%, transparent)` : "var(--border-subtle)",
+                  boxShadow: active ? `0 0 12px -5px ${s.color}` : "none",
+                }}
+              >
+                <span className="block text-xs font-semibold" style={{ color: active ? s.color : "var(--text-secondary)" }}>{s.label}</span>
+                <span className="block text-[9px] leading-tight mt-0.5 text-(--text-muted)">{s.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[10px] mt-2 text-(--text-muted)" style={{ opacity: 0.85 }}>
+          Define como as vendas deste botão aparecem no card <strong>Upsell / Downsell / Order Bump</strong> das Análises. Não muda o fluxo — só a classificação.
         </p>
       </div>
+
       <div>
         <label className="input-label">Conjunto de Produtos</label>
         <select

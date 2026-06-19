@@ -60,17 +60,16 @@ export async function sendPushToTenant(tenantId: string, payload: PushPayload): 
   );
 }
 
-/** Convenience: notify the tenant that a sale was approved. */
+/** Convenience: notify the tenant that a sale was approved.
+ *  Mensagem enxuta: SÓ "Venda aprovada" + a quantia (sem nome de produto/bot). */
 export async function notifySale(
   tenantId: string,
   opts: { amount: number; productName?: string | null; botName?: string | null },
 ): Promise<void> {
   const value = (opts.amount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const parts = [value];
-  if (opts.productName) parts.push(opts.productName);
   await sendPushToTenant(tenantId, {
     title: "💰 Venda aprovada!",
-    body: parts.join(" · ") + (opts.botName ? ` (@${opts.botName})` : ""),
+    body: value,
     url: "/dashboard",
     tag: "sale",
   });

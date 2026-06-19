@@ -25,41 +25,52 @@ export interface AnalyticsFilters {
   source?: string;
 }
 
+// Fuso de referência do negócio (Brasil = UTC-3). created_at é gravado em UTC;
+// o "dia" do usuário é no horário de Brasília, então convertemos explicitamente
+// (não dependemos do fuso do servidor, que na VPS costuma ser UTC).
+const BR_OFFSET_MIN = 180; // UTC-3 → +180 min pra ir de BRT pra UTC
+
+/** Início do dia (00:00 BRT) de "hoje", como Date em UTC. */
+function startOfTodayBR(): Date {
+  const now = new Date();
+  // "agora" deslocado pra BRT, pegamos a data-calendário em BRT
+  const br = new Date(now.getTime() - BR_OFFSET_MIN * 60_000);
+  // meia-noite BRT daquele dia, de volta em UTC
+  return new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate(), 0, 0, 0) + BR_OFFSET_MIN * 60_000);
+}
+
 /** Resolve a period into an inclusive ISO start (and optional exclusive end). */
 function periodRange(
   period: Period = "today",
   startDate?: string,
   endDate?: string,
 ): { start: string | null; end: string | null } {
-  // Server "now". We avoid Date.now() concerns by using a single Date instance.
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfToday = startOfTodayBR();
+  const DAY = 86_400_000;
 
   switch (period) {
     case "today":
       return { start: startOfToday.toISOString(), end: null };
     case "yesterday": {
-      const y = new Date(startOfToday);
-      y.setDate(y.getDate() - 1);
+      const y = new Date(startOfToday.getTime() - DAY);
       return { start: y.toISOString(), end: startOfToday.toISOString() };
     }
     case "7d": {
-      const s = new Date(startOfToday);
-      s.setDate(s.getDate() - 6); // last 7 calendar days incl. today
+      const s = new Date(startOfToday.getTime() - 6 * DAY); // últimos 7 dias incl. hoje
       return { start: s.toISOString(), end: null };
     }
     case "30d": {
-      const s = new Date(startOfToday);
-      s.setDate(s.getDate() - 29);
+      const s = new Date(startOfToday.getTime() - 29 * DAY);
       return { start: s.toISOString(), end: null };
     }
     case "custom": {
-      // intervalo personalizado: [startDate 00:00, endDate+1 00:00) — inclui o dia final
+      // [startDate 00:00 BRT, endDate+1 00:00 BRT) — inclui o dia final
       if (!startDate || !endDate) return { start: null, end: null };
-      const s = new Date(`${startDate}T00:00:00`);
-      const e = new Date(`${endDate}T00:00:00`);
-      e.setDate(e.getDate() + 1);
-      if (isNaN(s.getTime()) || isNaN(e.getTime())) return { start: null, end: null };
+      const sd = startDate.split("-").map(Number);
+      const ed = endDate.split("-").map(Number);
+      if (sd.length !== 3 || ed.length !== 3 || sd.some(isNaN) || ed.some(isNaN)) return { start: null, end: null };
+      const s = new Date(Date.UTC(sd[0], sd[1] - 1, sd[2], 0, 0, 0) + BR_OFFSET_MIN * 60_000);
+      const e = new Date(Date.UTC(ed[0], ed[1] - 1, ed[2], 0, 0, 0) + BR_OFFSET_MIN * 60_000 + DAY);
       return { start: s.toISOString(), end: e.toISOString() };
     }
     case "all":
@@ -643,7 +654,10 @@ export async function getTenantName(): Promise<string> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return "";
-  // tenant name may live on auth metadata or a tenants row; fall back to email handle.
+  // Nome editável vem de tenants.name; fallbacks: auth metadata → handle do email.
+  const { data: tenant } = await supabase.from("tenants").select("name").eq("id", user.id).single();
+  const dbName = (tenant?.name as string | undefined)?.trim();
+  if (dbName) return dbName;
   const meta = (user.user_metadata ?? {}) as { name?: string; full_name?: string };
   return meta.name || meta.full_name || (user.email ? user.email.split("@")[0] : "");
 }

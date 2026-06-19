@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { THEMES, getTheme, applyTheme, getCustomColors, saveCustomColors, type ThemeId, type CustomColors } from "@/lib/theme";
+import { updateProfileTheme } from "@/lib/actions/profile-actions";
 
 /** Grid of theme cards + a custom palette builder — applies instantly. */
 export function ThemeSwitcher() {
@@ -19,6 +20,8 @@ export function ThemeSwitcher() {
   function pick(id: ThemeId) {
     applyTheme(id);
     setActive(id);
+    // persiste no banco (fonte de verdade — sobrevive ao Brave limpar localStorage)
+    void updateProfileTheme(id, id === "custom" ? getCustomColors() : null);
   }
 
   function updateCustom(key: keyof CustomColors, value: string) {
@@ -29,6 +32,7 @@ export function ThemeSwitcher() {
       applyTheme("custom");
       setActive("custom");
     }
+    void updateProfileTheme("custom", next);
   }
 
   return (

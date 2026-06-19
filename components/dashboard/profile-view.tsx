@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CommandBar } from "@/components/dashboard/console/command-bar";
 import { ThemeSwitcher } from "@/components/dashboard/theme-switcher";
 import { PushToggle } from "@/components/dashboard/push-toggle";
+import { updateProfileName } from "@/lib/actions/profile-actions";
 
 interface ProfileViewProps {
   name: string;
@@ -19,7 +20,24 @@ const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function ProfileView({ name, email }: ProfileViewProps) {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<Section>("account");
+  const [displayName, setDisplayName] = useState(name);
+  const [savedName, setSavedName] = useState(name);
+  const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  async function saveName() {
+    const clean = displayName.trim();
+    if (!clean || clean === savedName) return;
+    setNameStatus("saving");
+    const res = await updateProfileName(clean);
+    if (res.ok) {
+      setSavedName(clean);
+      setNameStatus("saved");
+      setTimeout(() => setNameStatus("idle"), 2000);
+    } else {
+      setNameStatus("error");
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -44,18 +62,45 @@ export function ProfileView({ name, email }: ProfileViewProps) {
           {/* Section content */}
           <div className="flex-1 min-w-0">
             {section === "account" && (
-              <div className="card p-5 sm:p-6 animate-in space-y-4">
+              <div className="card p-5 sm:p-6 animate-in space-y-5">
                 <h2 className="text-foreground font-semibold tracking-tight page-title">Conta</h2>
-                <div className="flex items-center gap-4 py-2">
+                <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold stat-value shrink-0" style={{ background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }}>
-                    {(name || email || "?").slice(0, 1).toUpperCase()}
+                    {(savedName || email || "?").slice(0, 1).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-foreground font-semibold truncate">{name || "—"}</p>
+                    <p className="text-foreground font-semibold truncate">{savedName || "—"}</p>
                     <p className="text-(--text-muted) text-sm truncate">{email}</p>
                   </div>
                 </div>
-                <p className="text-[11px] text-(--text-ghost)">A edição de dados da conta estará disponível em breve.</p>
+
+                {/* Nome de exibição — editável (aparece na dashboard) */}
+                <div>
+                  <label className="input-label">Nome de exibição</label>
+                  <p className="text-[11px] text-(--text-muted) mb-2" style={{ opacity: 0.8 }}>
+                    É o nome que aparece na saudação da dashboard (“Bom dia, …”).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveName(); }}
+                      maxLength={60}
+                      placeholder="Seu nome"
+                      className="input flex-1"
+                    />
+                    <button
+                      onClick={saveName}
+                      disabled={nameStatus === "saving" || !displayName.trim() || displayName.trim() === savedName}
+                      className="btn-primary text-xs! py-2.5! px-4! disabled:opacity-50"
+                    >
+                      {nameStatus === "saving" ? "..." : nameStatus === "saved" ? "Salvo ✓" : "Salvar"}
+                    </button>
+                  </div>
+                  {nameStatus === "error" && <p className="text-[11px] text-(--red) mt-1.5">Erro ao salvar. Tente de novo.</p>}
+                </div>
+
+                <p className="text-[11px] text-(--text-ghost)">O e-mail não pode ser alterado por aqui.</p>
               </div>
             )}
 
@@ -63,7 +108,7 @@ export function ProfileView({ name, email }: ProfileViewProps) {
               <div className="card p-5 sm:p-6 animate-in space-y-4">
                 <div>
                   <h2 className="text-foreground font-semibold tracking-tight page-title">Tema</h2>
-                  <p className="text-[12px] text-(--text-muted) mt-1">Muda toda a paleta do site. A escolha fica salva neste navegador.</p>
+                  <p className="text-[12px] text-(--text-muted) mt-1">Muda toda a paleta do site. A escolha fica salva na sua conta e te acompanha em qualquer dispositivo.</p>
                 </div>
                 <ThemeSwitcher />
               </div>

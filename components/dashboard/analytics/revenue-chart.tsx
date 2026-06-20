@@ -7,8 +7,8 @@ function brl(cents: number) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-/** Smooth-ish area line of revenue over the last 7 days. Pure SVG. */
-export function RevenueChart({ data }: { data: DayPoint[] }) {
+/** Smooth-ish area line of revenue over a period. Pure SVG. */
+export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias" }: { data: DayPoint[]; subtitle?: string }) {
   const W = 600;
   const H = 200;
   const pad = 8;
@@ -26,7 +26,7 @@ export function RevenueChart({ data }: { data: DayPoint[] }) {
   return (
     <CardShell
       title="Seu Desempenho"
-      subtitle="Receita · últimos 7 dias"
+      subtitle={subtitle}
       accent="magenta"
       className="h-full"
       right={<span className="stat-value text-sm text-(--accent)">{brl(total)}</span>}

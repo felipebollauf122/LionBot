@@ -823,6 +823,7 @@ export interface DailyBucket {
   starts: number;        // bot_start
   checkouts: number;     // checkout
   purchases: number;     // purchase
+  viewOffers: number;    // view_offer (ofertas vistas)
   buyerIds: string[];    // lead_ids das vendas aprovadas do dia (p/ distintos no período)
 }
 
@@ -847,7 +848,7 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
   const ensure = (key: string): DailyBucket => {
     let d = dayMap.get(key);
     if (!d) {
-      d = { date: key, revenue: 0, grossRevenue: 0, sales: 0, totalTx: 0, visits: 0, starts: 0, checkouts: 0, purchases: 0, buyerIds: [] };
+      d = { date: key, revenue: 0, grossRevenue: 0, sales: 0, totalTx: 0, visits: 0, starts: 0, checkouts: 0, purchases: 0, viewOffers: 0, buyerIds: [] };
       dayMap.set(key, d);
     }
     return d;
@@ -871,6 +872,7 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     else if (e.event_type === "bot_start") d.starts += 1;
     else if (e.event_type === "checkout") d.checkouts += 1;
     else if (e.event_type === "purchase") d.purchases += 1;
+    else if (e.event_type === "view_offer") d.viewOffers += 1;
   }
 
   const days = [...dayMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));

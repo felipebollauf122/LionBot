@@ -60,37 +60,49 @@ export function DashboardClient({
     const range = periodDayRange(period, { startDate, endDate });
     const inRange = daily.days.filter((d) => dayInRange(d.date, range));
 
-    // KPIs agregados do período
+    // KPIs agregados DO PERÍODO (tudo segue o filtro).
     let revenue = 0, grossRevenue = 0, sales = 0, totalTx = 0;
-    let visits = 0, starts = 0, checkouts = 0, purchases = 0;
+    let visits = 0, starts = 0, checkouts = 0, purchases = 0, viewOffers = 0;
     const buyers = new Map<string, number>();
     for (const d of inRange) {
       revenue += d.revenue; grossRevenue += d.grossRevenue; sales += d.sales; totalTx += d.totalTx;
       visits += d.visits; starts += d.starts; checkouts += d.checkouts; purchases += d.purchases;
+      viewOffers += d.viewOffers ?? 0;
       for (const id of d.buyerIds) buyers.set(id, (buyers.get(id) ?? 0) + 1);
     }
     const approvalRate = totalTx > 0 ? sales / totalTx : 0;
     const avgTicket = sales > 0 ? Math.round(revenue / sales) : 0;
-    const conversionRate = starts > 0 ? checkouts / starts : 0;
-    const startsPerSale = sales > 0 ? starts / sales : 0;
 
-    // gráfico: receita por dia DENTRO do período (cap nos últimos 14 dias do range
-    // pra não ficar gigante; se o período for curto, mostra só ele).
-    const to = range.to ?? todayKeyBR();
-    const from = range.from ?? (inRange[0]?.date ?? to);
-    const chartDays: { date: string; revenue: number; sales: number }[] = [];
-    // limita a 14 buckets pra leitura
+    // Topo do funil: usa bot_start se existir; senão cai pra view_offer (oferta
+    // vista) — assim a métrica reflete o dado REAL que o bot grava.
+    const topFunnel = starts > 0 ? starts : viewOffers;
+    const topFunnelLabel = starts > 0 ? "starts" : "ofertas vistas";
+    // Conversão = vendas / topo-do-funil (checkout→pix quando há checkout).
+    const convNumerator = checkouts > 0 ? checkouts : sales;
+    const conversionRate = topFunnel > 0 ? convNumerator / topFunnel : 0;
+    const perSale = sales > 0 ? topFunnel / sales : 0;
+
+    // gráfico "Seu Desempenho": receita por dia, SEGUINDO O PERÍODO.
+    const to = range.to ?? (inRange.length ? inRange[inRange.length - 1].date : todayKeyBR());
+    const from = range.from ?? (inRange.length ? inRange[0].date : to);
     const dayByKey = new Map(inRange.map((d) => [d.date, d]));
-    const span = Math.min(14, Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1));
+    const totalSpan = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
+    const span = Math.min(31, totalSpan); // cap p/ legibilidade em períodos enormes
+    const chartDays: { date: string; revenue: number; sales: number }[] = [];
     for (let i = span - 1; i >= 0; i--) {
       const key = addDays(to, -i);
       const d = dayByKey.get(key);
       chartDays.push({ date: key, revenue: d?.revenue ?? 0, sales: d?.sales ?? 0 });
     }
 
-    return { revenue, grossRevenue, sales, totalTx, visits, starts, checkouts, purchases,
-      buyers: buyers.size, approvalRate, avgTicket, conversionRate, startsPerSale, chartDays };
+    return { revenue, grossRevenue, sales, totalTx, visits, starts, checkouts, purchases, viewOffers,
+      buyers: buyers.size, approvalRate, avgTicket, conversionRate, perSale, topFunnel, topFunnelLabel, chartDays };
   }, [daily, period, startDate, endDate]);
+
+  const periodLabel: Record<string, string> = {
+    today: "Receita · hoje", yesterday: "Receita · ontem", "7d": "Receita · últimos 7 dias",
+    "30d": "Receita · últimos 30 dias", all: "Receita · todo o período", custom: "Receita · período personalizado",
+  };
 
   // Top 5 Players = ranking PÚBLICO dos usuários do LionBot que mais faturam
   // (placar global, all-time — não depende do filtro de período pessoal).
@@ -124,27 +136,27 @@ export function DashboardClient({
 
       {/* KPI strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
-        <KpiCard label="Vendas Aprovadas" value="" numericValue={view.revenue} format="brl" hint={`${(view.approvalRate * 100).toFixed(0)}% aprov.`} accent="magenta" icon={icons.money} progress={view.approvalRate} revealIndex={1} />
-        <CardShell title="Taxa de Conversão" subtitle="start → pix" accent="cyan" icon={icons.activity} revealIndex={2}>
+        <KpiCard label="Vendas Aprovadas" value="" numericValue={view.revenue} format="brl" hint={`${view.sales} venda${view.sales !== 1 ? "s" : ""} · ${(view.approvalRate * 100).toFixed(0)}% aprov.`} accent="magenta" icon={icons.money} progress={view.approvalRate} revealIndex={1} />
+        <CardShell title="Taxa de Conversão" subtitle={view.starts > 0 ? "start → pix" : "oferta → venda"} accent="cyan" icon={icons.activity} revealIndex={2}>
           <div className="flex items-center justify-center py-1">
-            <Gauge value={view.conversionRate} label={`${view.checkouts} de ${view.starts} starts`} size={140} />
+            <Gauge value={view.conversionRate} label={`${view.sales} de ${view.topFunnel} ${view.topFunnelLabel}`} size={140} />
           </div>
         </CardShell>
-        <KpiCard label="Total Starts" value="" numericValue={view.starts} format="int" hint={`${view.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} revealIndex={3} />
-        <KpiCard label="Ticket Médio" value="" numericValue={view.avgTicket} format="brl" hint={`${view.checkouts} PIX gerados · ${view.sales} pagos`} accent="amber" icon={icons.ticket} revealIndex={4} />
+        <KpiCard label={view.starts > 0 ? "Total Starts" : "Ofertas Vistas"} value="" numericValue={view.topFunnel} format="int" hint={`${view.perSale.toFixed(0)} por venda`} accent="purple" icon={icons.bolt} revealIndex={3} />
+        <KpiCard label="Ticket Médio" value="" numericValue={view.avgTicket} format="brl" hint={`${view.sales} venda${view.sales !== 1 ? "s" : ""} no período`} accent="amber" icon={icons.ticket} revealIndex={4} />
       </div>
 
       {/* Revenue chart + activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 animate-up-2">
         <div className="lg:col-span-2">
-          <RevenueChart data={view.chartDays} />
+          <RevenueChart data={view.chartDays} subtitle={periodLabel[period] ?? "Receita"} />
         </div>
         <ActivityFeed items={activity} />
       </div>
 
       {/* Funnel + Top 5 Players (só admin por enquanto) + Premiações */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
-        <Funnel starts={view.starts} checkouts={view.checkouts} paid={view.sales} />
+        <Funnel starts={view.topFunnel} checkouts={view.checkouts > 0 ? view.checkouts : view.sales} paid={view.sales} />
         {showTopPlayers && (
           <TopList title="Top 5 Players" subtitle="quem mais fatura no LionBot" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas ainda" />
         )}

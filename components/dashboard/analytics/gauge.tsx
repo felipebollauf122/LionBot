@@ -4,15 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatedNumber } from "./animated-number";
 
 interface GaugeProps {
-  /** 0..1 */
-  value: number;
+  /** 0..1, ou null quando a métrica não se aplica (mostra "—"). */
+  value: number | null;
   label?: string;
   size?: number;
 }
 
 /** Semicircle/arc gauge in synthwave neon — fills on view. Pure SVG + JS. */
 export function Gauge({ value, label, size = 160 }: GaugeProps) {
-  const v = Math.min(1, Math.max(0, value));
+  const na = value === null || Number.isNaN(value);
+  const v = na ? 0 : Math.min(1, Math.max(0, value as number));
   const r = size / 2 - 14;
   const cx = size / 2;
   const cy = size / 2;
@@ -71,7 +72,7 @@ export function Gauge({ value, label, size = 160 }: GaugeProps) {
       </svg>
       <div className="-mt-[60%] text-center pointer-events-none">
         <p className="stat-value text-2xl text-foreground">
-          <AnimatedNumber value={v * 100} format="pct2" />
+          {na ? "—" : <AnimatedNumber value={v * 100} format="pct2" />}
         </p>
         {label && <p className="text-[11px] text-(--text-muted) mt-0.5">{label}</p>}
       </div>

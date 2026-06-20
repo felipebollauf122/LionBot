@@ -63,11 +63,14 @@ export function DashboardClient({
     // KPIs agregados DO PERÍODO (tudo segue o filtro).
     let revenue = 0, grossRevenue = 0, sales = 0, totalTx = 0;
     let visits = 0, starts = 0, checkouts = 0, purchases = 0, viewOffers = 0;
+    let overlapDays = 0; // dias com venda E topo-de-funil no mesmo dia
     const buyers = new Map<string, number>();
     for (const d of inRange) {
       revenue += d.revenue; grossRevenue += d.grossRevenue; sales += d.sales; totalTx += d.totalTx;
       visits += d.visits; starts += d.starts; checkouts += d.checkouts; purchases += d.purchases;
       viewOffers += d.viewOffers ?? 0;
+      const dayTop = d.starts > 0 ? d.starts : (d.viewOffers ?? 0);
+      if (d.sales > 0 && dayTop > 0) overlapDays += 1;
       for (const id of d.buyerIds) buyers.set(id, (buyers.get(id) ?? 0) + 1);
     }
     const approvalRate = totalTx > 0 ? sales / totalTx : 0;
@@ -77,10 +80,13 @@ export function DashboardClient({
     // vista) — assim a métrica reflete o dado REAL que o bot grava.
     const topFunnel = starts > 0 ? starts : viewOffers;
     const topFunnelLabel = starts > 0 ? "starts" : "ofertas vistas";
-    // Conversão = vendas / topo-do-funil (checkout→pix quando há checkout).
-    const convNumerator = checkouts > 0 ? checkouts : sales;
-    const conversionRate = topFunnel > 0 ? convNumerator / topFunnel : 0;
     const perSale = sales > 0 ? topFunnel / sales : 0;
+    // Conversão = vendas / topo-do-funil. Só faz sentido se houver SOBREPOSIÇÃO:
+    // dias em que ofertas vistas e vendas coexistem. Sem sobreposição, dividir
+    // vendas de um período por ofertas de outro dá um % ilusório → não mostra.
+    const convNumerator = checkouts > 0 ? checkouts : sales;
+    const conversionValid = topFunnel > 0 && sales > 0 && overlapDays > 0;
+    const conversionRate = conversionValid ? convNumerator / topFunnel : null;
 
     // gráfico "Seu Desempenho": receita por dia, SEGUINDO O PERÍODO.
     const to = range.to ?? (inRange.length ? inRange[inRange.length - 1].date : todayKeyBR());
@@ -96,7 +102,8 @@ export function DashboardClient({
     }
 
     return { revenue, grossRevenue, sales, totalTx, visits, starts, checkouts, purchases, viewOffers,
-      buyers: buyers.size, approvalRate, avgTicket, conversionRate, perSale, topFunnel, topFunnelLabel, chartDays };
+      buyers: buyers.size, approvalRate, avgTicket, conversionRate, perSale, topFunnel, topFunnelLabel,
+      chartDays, chartTruncated: span < totalSpan, chartSpan: span };
   }, [daily, period, startDate, endDate]);
 
   const periodLabel: Record<string, string> = {
@@ -136,10 +143,14 @@ export function DashboardClient({
 
       {/* KPI strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
-        <KpiCard label="Vendas Aprovadas" value="" numericValue={view.revenue} format="brl" hint={`${view.sales} venda${view.sales !== 1 ? "s" : ""} · ${(view.approvalRate * 100).toFixed(0)}% aprov.`} accent="magenta" icon={icons.money} progress={view.approvalRate} revealIndex={1} />
+        <KpiCard label="Vendas Aprovadas" value="" numericValue={view.revenue} format="brl" hint={`${view.sales} venda${view.sales !== 1 ? "s" : ""} · ${(view.approvalRate * 100).toFixed(1).replace(".", ",")}% aprov.`} accent="magenta" icon={icons.money} progress={view.approvalRate} revealIndex={1} />
         <CardShell title="Taxa de Conversão" subtitle={view.starts > 0 ? "start → pix" : "oferta → venda"} accent="cyan" icon={icons.activity} revealIndex={2}>
           <div className="flex items-center justify-center py-1">
-            <Gauge value={view.conversionRate} label={`${view.sales} de ${view.topFunnel} ${view.topFunnelLabel}`} size={140} />
+            <Gauge
+              value={view.conversionRate}
+              label={view.conversionRate === null ? "sem dados no mesmo período" : `${view.sales} de ${view.topFunnel} ${view.topFunnelLabel}`}
+              size={140}
+            />
           </div>
         </CardShell>
         <KpiCard label={view.starts > 0 ? "Total Starts" : "Ofertas Vistas"} value="" numericValue={view.topFunnel} format="int" hint={`${view.perSale.toFixed(0)} por venda`} accent="purple" icon={icons.bolt} revealIndex={3} />
@@ -149,14 +160,24 @@ export function DashboardClient({
       {/* Revenue chart + activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 animate-up-2">
         <div className="lg:col-span-2">
-          <RevenueChart data={view.chartDays} subtitle={periodLabel[period] ?? "Receita"} />
+          <RevenueChart
+            data={view.chartDays}
+            total={view.revenue}
+            subtitle={view.chartTruncated ? `${periodLabel[period] ?? "Receita"} · linha: últimos ${view.chartSpan} dias` : (periodLabel[period] ?? "Receita")}
+          />
         </div>
         <ActivityFeed items={activity} />
       </div>
 
       {/* Funnel + Top 5 Players (só admin por enquanto) + Premiações */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
-        <Funnel starts={view.topFunnel} checkouts={view.checkouts > 0 ? view.checkouts : view.sales} paid={view.sales} />
+        <Funnel
+          starts={view.topFunnel}
+          checkouts={view.checkouts}
+          paid={view.sales}
+          topLabel={view.starts > 0 ? "/START" : "OFERTAS VISTAS"}
+          showCheckout={view.checkouts > 0}
+        />
         {showTopPlayers && (
           <TopList title="Top 5 Players" subtitle="quem mais fatura no LionBot" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas ainda" />
         )}

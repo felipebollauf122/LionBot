@@ -15,8 +15,10 @@ function fullDate(key: string) {
   return new Date(key + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
 }
 
-/** Linha de receita por dia. Hover/clique nas bolinhas mostra o valor exato do dia. */
-export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias" }: { data: DayPoint[]; subtitle?: string }) {
+/** Linha de receita por dia. Hover/clique nas bolinhas mostra o valor exato do dia.
+ * `total` (opcional) é o total a exibir no canto — passe a receita AGREGADA do
+ * período quando a linha estiver capada (senão o canto somaria só os dias plotados). */
+export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias", total: totalProp }: { data: DayPoint[]; subtitle?: string; total?: number }) {
   const W = 600;
   const H = 200;
   const pad = 8;
@@ -33,7 +35,8 @@ export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias" }: 
   const linePath = points.length ? `M ${points.join(" L ")}` : "";
   const areaPath = points.length ? `M ${x(0)},${H - pad} L ${points.join(" L ")} L ${x(n - 1)},${H - pad} Z` : "";
 
-  const total = data.reduce((s, d) => s + d.revenue, 0);
+  // canto: usa o total do período (se passado); senão soma os pontos plotados.
+  const total = totalProp ?? data.reduce((s, d) => s + d.revenue, 0);
 
   // ponto ativo (hover / clique / toque).
   const [active, setActive] = useState<number | null>(null);
@@ -132,11 +135,16 @@ export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias" }: 
         </div>
 
         <div className="flex justify-between mt-1 px-1">
-          {data.map((d, i) => (
-            <span key={i} className={`text-[9px] transition-colors ${active === i ? "text-(--cyan)" : "text-(--text-ghost)"}`}>
-              {WD[new Date(d.date + "T12:00:00").getDay()]}
-            </span>
-          ))}
+          {data.map((d, i) => {
+            // rareia rótulos em períodos longos (≤ ~7 marcas) — senão 31 letras coladas.
+            const step = Math.max(1, Math.ceil(n / 7));
+            const show = active === i || i === n - 1 || i % step === 0;
+            return (
+              <span key={i} className={`text-[9px] transition-colors ${active === i ? "text-(--cyan)" : "text-(--text-ghost)"}`}>
+                {show ? WD[new Date(d.date + "T12:00:00").getDay()] : ""}
+              </span>
+            );
+          })}
         </div>
       </div>
     </CardShell>

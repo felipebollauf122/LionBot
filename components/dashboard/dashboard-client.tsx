@@ -13,8 +13,7 @@ import { TopList } from "@/components/dashboard/analytics/top-list";
 import { ComingSoonCard } from "@/components/dashboard/analytics/coming-soon-card";
 import { icons } from "@/components/dashboard/analytics/icons";
 import { periodDayRange, dayInRange, todayKeyBR, type PeriodKey } from "@/lib/period";
-import type { DashboardDaily } from "@/lib/actions/analytics-actions";
-import type { ActivityItem } from "@/lib/actions/analytics-actions";
+import type { DashboardDaily, ActivityItem, TopSeller } from "@/lib/actions/analytics-actions";
 
 function brl(cents: number) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -38,6 +37,7 @@ export function DashboardClient({
   name,
   todayLabel,
   activity,
+  topSellers,
   initialPeriod,
 }: {
   daily: DashboardDaily;
@@ -45,6 +45,7 @@ export function DashboardClient({
   name: string;
   todayLabel: string;
   activity: ActivityItem[];
+  topSellers: TopSeller[];
   initialPeriod?: string;
 }) {
   // estado local → trocar período é 100% client (instantâneo, sem round-trip).
@@ -85,23 +86,18 @@ export function DashboardClient({
       chartDays.push({ date: key, revenue: d?.revenue ?? 0, sales: d?.sales ?? 0 });
     }
 
-    // Top 5 Players = compradores (clientes) que mais gastaram no período.
-    const topPlayers = daily.players
-      .map((p) => {
-        let rev = 0, s = 0;
-        for (const [date, cell] of Object.entries(p.byDate)) {
-          if (dayInRange(date, range)) { rev += cell.revenue; s += cell.sales; }
-        }
-        return { id: p.id, label: p.label, revenue: rev, sales: s };
-      })
-      .filter((p) => p.revenue > 0)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5)
-      .map((p, i) => ({ id: p.id, label: `${medals[i] ?? `${i + 1}º`} ${p.label}`, value: brl(p.revenue), sub: `${p.sales} compra${p.sales !== 1 ? "s" : ""}` }));
-
     return { revenue, grossRevenue, sales, totalTx, visits, starts, checkouts, purchases,
-      buyers: buyers.size, approvalRate, avgTicket, conversionRate, startsPerSale, chartDays, topPlayers };
+      buyers: buyers.size, approvalRate, avgTicket, conversionRate, startsPerSale, chartDays };
   }, [daily, period, startDate, endDate]);
+
+  // Top 5 Players = ranking PÚBLICO dos usuários do LionBot que mais faturam
+  // (placar global, all-time — não depende do filtro de período pessoal).
+  const topPlayers = topSellers.map((p, i) => ({
+    id: p.id,
+    label: `${medals[i] ?? `${i + 1}º`} ${p.label}`,
+    value: brl(p.revenue),
+    sub: `${p.sales} venda${p.sales !== 1 ? "s" : ""}`,
+  }));
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
@@ -147,7 +143,7 @@ export function DashboardClient({
       {/* Funnel + Top 5 Players (ranking real) + Premiações (placeholder) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
         <Funnel starts={view.starts} checkouts={view.checkouts} paid={view.sales} />
-        <TopList title="Top 5 Players" subtitle="clientes que mais gastaram" accent="amber" icon={icons.trophy} rows={view.topPlayers} emptyLabel="Sem compradores no período" />
+        <TopList title="Top 5 Players" subtitle="quem mais fatura no LionBot" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas ainda" />
         <ComingSoonCard title="Premiações" subtitle="conquiste novas placas" icon={icons.trophy} note="Sistema de conquistas em breve." />
       </div>
     </div>

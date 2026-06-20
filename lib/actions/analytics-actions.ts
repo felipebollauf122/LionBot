@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 /**
  * Analytics aggregations for the Dashboard (home) and Análises screens.
@@ -825,16 +826,8 @@ export interface DailyBucket {
   buyerIds: string[];    // lead_ids das vendas aprovadas do dia (p/ distintos no período)
 }
 
-/** Um "player" = comprador (lead) com o quanto gastou por dia. */
-export interface PlayerDailyRevenue {
-  id: string;
-  label: string; // nome/username do comprador
-  byDate: Record<string, { revenue: number; sales: number }>;
-}
-
 export interface DashboardDaily {
   days: DailyBucket[];
-  players: PlayerDailyRevenue[];
 }
 
 export async function getDashboardDaily(): Promise<DashboardDaily> {
@@ -860,9 +853,6 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     return d;
   };
 
-  // agrega por PLAYER (comprador = lead_id) — gasto/compras por dia.
-  const playerAgg = new Map<string, PlayerDailyRevenue>();
-
   for (const t of txRows) {
     const key = brDateKey(t.created_at);
     const d = ensure(key);
@@ -871,14 +861,7 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     if (t.status === "approved") {
       d.revenue += t.amount ?? 0;
       d.sales += 1;
-      if (t.lead_id) {
-        d.buyerIds.push(t.lead_id);
-        let pa = playerAgg.get(t.lead_id);
-        if (!pa) { pa = { id: t.lead_id, label: "", byDate: {} }; playerAgg.set(t.lead_id, pa); }
-        const cell = (pa.byDate[key] ??= { revenue: 0, sales: 0 });
-        cell.revenue += t.amount ?? 0;
-        cell.sales += 1;
-      }
+      if (t.lead_id) d.buyerIds.push(t.lead_id);
     }
   }
 
@@ -890,22 +873,65 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     else if (e.event_type === "purchase") d.purchases += 1;
   }
 
-  // nomes dos compradores (só os que existem — chunk pra não estourar o .in).
-  const buyerIds = [...playerAgg.keys()];
-  for (let i = 0; i < buyerIds.length; i += 500) {
-    const chunk = buyerIds.slice(i, i + 500);
-    const { data: leads } = await supabase.from("leads").select("id,first_name,username").in("id", chunk);
-    for (const l of leads ?? []) {
-      const pa = playerAgg.get(l.id as string);
-      if (pa) {
-        const name = ((l.first_name as string) || "").trim();
-        const user = (l.username as string) || "";
-        pa.label = name || (user ? `@${user}` : "Cliente");
-      }
-    }
-  }
-  for (const pa of playerAgg.values()) if (!pa.label) pa.label = "Cliente";
-
   const days = [...dayMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
-  return { days, players: [...playerAgg.values()] };
+  return { days };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Top 5 Players = ranking PÚBLICO dos usuários do LionBot que mais faturam.
+// É um placar global (todos os tenants), então usa service-role (bypass RLS) e
+// retorna SÓ nome + total faturado (agregado, sem expor dados sensíveis).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TopSeller {
+  id: string;
+  label: string;   // nome do usuário (tenant)
+  revenue: number; // cents aprovados (all-time)
+  sales: number;
+}
+
+export async function getTopSellers(limit = 5): Promise<TopSeller[]> {
+  // service-role: precisa enxergar TODOS os tenants pro ranking global.
+  const svc = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  // soma o faturamento aprovado por tenant (paginado — são 10k+ transações).
+  const rows: { amount: number; tenant_id: string }[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await svc
+      .from("transactions")
+      .select("amount,tenant_id")
+      .eq("status", "approved")
+      .order("id", { ascending: true })
+      .range(from, from + 999);
+    if (error || !data || data.length === 0) break;
+    rows.push(...(data as { amount: number; tenant_id: string }[]));
+    if (data.length < 1000) break;
+  }
+
+  const agg = new Map<string, { revenue: number; sales: number }>();
+  for (const t of rows) {
+    if (!t.tenant_id) continue;
+    const cur = agg.get(t.tenant_id) ?? { revenue: 0, sales: 0 };
+    cur.revenue += t.amount ?? 0;
+    cur.sales += 1;
+    agg.set(t.tenant_id, cur);
+  }
+
+  const top = [...agg.entries()].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, limit);
+  if (top.length === 0) return [];
+
+  // nomes dos tenants do top
+  const ids = top.map(([id]) => id);
+  const { data: tenants } = await svc.from("tenants").select("id,name,email").in("id", ids);
+  const nameOf = new Map<string, string>();
+  for (const t of tenants ?? []) {
+    const name = ((t.name as string) || "").trim();
+    const email = (t.email as string) || "";
+    nameOf.set(t.id as string, name || (email ? email.split("@")[0] : "Vendedor"));
+  }
+
+  return top.map(([id, v]) => ({ id, label: nameOf.get(id) || "Vendedor", revenue: v.revenue, sales: v.sales }));
 }

@@ -1,4 +1,4 @@
-import { getTenantName, getActivityFeed, getDashboardDaily } from "@/lib/actions/analytics-actions";
+import { getTenantName, getActivityFeed, getDashboardDaily, getTopSellers } from "@/lib/actions/analytics-actions";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 
 export const dynamic = "force-dynamic";
@@ -14,15 +14,16 @@ function greeting(): string {
 export default async function DashboardPage() {
   // Carrega TUDO 1x (série diária pré-agregada — payload pequeno). A troca de
   // período é feita no cliente, instantânea, sem novo round-trip.
-  const [name, daily, activity] = await Promise.all([
+  const [name, daily, activity, topSellers] = await Promise.all([
     getTenantName(),
     getDashboardDaily(),
     getActivityFeed(12),
+    getTopSellers(5),
   ]);
 
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 
   return (
-    <DashboardClient daily={daily} greeting={greeting()} name={name} todayLabel={today} activity={activity} />
+    <DashboardClient daily={daily} greeting={greeting()} name={name} todayLabel={today} activity={activity} topSellers={topSellers} />
   );
 }

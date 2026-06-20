@@ -1,30 +1,7 @@
-import {
-  getRevenueStats,
-  getTrackingStats,
-  getRevenue7d,
-  getFunnelStats,
-  getActivityFeed,
-  getTenantName,
-  getTopBreakdowns,
-  type AnalyticsFilters,
-  type Period,
-} from "@/lib/actions/analytics-actions";
-import { PeriodFilter } from "@/components/dashboard/period-filter";
-import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
-import { RevenueChart } from "@/components/dashboard/analytics/revenue-chart";
-import { ActivityFeed } from "@/components/dashboard/analytics/activity-feed";
-import { Funnel } from "@/components/dashboard/analytics/funnel";
-import { Gauge } from "@/components/dashboard/analytics/gauge";
-import { CardShell } from "@/components/dashboard/analytics/card-shell";
-import { TopList } from "@/components/dashboard/analytics/top-list";
-import { ComingSoonCard } from "@/components/dashboard/analytics/coming-soon-card";
-import { icons } from "@/components/dashboard/analytics/icons";
+import { getTenantName, getActivityFeed, getDashboardDaily } from "@/lib/actions/analytics-actions";
+import { DashboardClient } from "@/components/dashboard/dashboard-client";
 
 export const dynamic = "force-dynamic";
-
-function brl(cents: number) {
-  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -34,88 +11,18 @@ function greeting(): string {
   return "Boa noite";
 }
 
-type SP = { [key: string]: string | string[] | undefined };
-
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const sp = await searchParams;
-  const filters: AnalyticsFilters = {
-    period: (typeof sp.period === "string" ? sp.period : "7d") as Period,
-    startDate: typeof sp.startDate === "string" ? sp.startDate : undefined,
-    endDate: typeof sp.endDate === "string" ? sp.endDate : undefined,
-  };
-
-  const [name, revenue] = await Promise.all([
+export default async function DashboardPage() {
+  // Carrega TUDO 1x (série diária pré-agregada — payload pequeno). A troca de
+  // período é feita no cliente, instantânea, sem novo round-trip.
+  const [name, daily, activity] = await Promise.all([
     getTenantName(),
-    getRevenueStats(filters),
-  ]);
-
-  const [tracking, series, funnel, activity, tops] = await Promise.all([
-    getTrackingStats(filters, revenue.sales),
-    getRevenue7d(),
-    getFunnelStats(filters),
+    getDashboardDaily(),
     getActivityFeed(12),
-    getTopBreakdowns(filters),
   ]);
 
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
-  const conversionRate = tracking.starts > 0 ? tracking.checkouts / tracking.starts : 0;
-
-  // Top 5 Players = ranking de bots por faturamento (medalha pros 3 primeiros).
-  const medals = ["🥇", "🥈", "🥉"];
-  const topPlayers = tops.bots.map((b, i) => ({
-    id: b.id,
-    label: `${medals[i] ?? `${i + 1}º`} ${b.label}`,
-    value: brl(b.revenue),
-    sub: `${b.sales} venda${b.sales !== 1 ? "s" : ""}`,
-  }));
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
-      {/* Greeting header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6 animate-up">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight page-title">
-            {greeting()}, <span className="gradient-text">{name || "vendedor"}</span>
-          </h1>
-          <p className="text-[11px] text-(--text-muted) tracking-[0.2em] uppercase mt-1 stat-value">{today}</p>
-        </div>
-        <a href="/dashboard/bots" className="btn-ghost self-start sm:self-auto">
-          Ver meus bots
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
-        </a>
-      </div>
-
-      {/* Filtro de período */}
-      <div className="mb-4 animate-up flex justify-end">
-        <PeriodFilter />
-      </div>
-
-      {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
-        <KpiCard label="Vendas Aprovadas" value="" numericValue={revenue.revenue} format="brl" hint={`${(revenue.approvalRate * 100).toFixed(0)}% aprov.`} accent="magenta" icon={icons.money} progress={revenue.approvalRate} revealIndex={1} />
-        <CardShell title="Taxa de Conversão" subtitle="start → pix" accent="cyan" icon={icons.activity} revealIndex={2}>
-          <div className="flex items-center justify-center py-1">
-            <Gauge value={conversionRate} label={`${tracking.checkouts} de ${tracking.starts} starts`} size={140} />
-          </div>
-        </CardShell>
-        <KpiCard label="Total Starts" value="" numericValue={tracking.starts} format="int" hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} revealIndex={3} />
-        <KpiCard label="Ticket Médio" value="" numericValue={revenue.avgTicket} format="brl" hint={`${funnel.checkouts} PIX gerados · ${funnel.paid} pagos`} accent="amber" icon={icons.ticket} revealIndex={4} />
-      </div>
-
-      {/* Revenue chart + activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 animate-up-2">
-        <div className="lg:col-span-2">
-          <RevenueChart data={series} />
-        </div>
-        <ActivityFeed items={activity} />
-      </div>
-
-      {/* Funnel + Top 5 Players (ranking real) + Premiações (placeholder) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
-        <Funnel starts={funnel.starts} checkouts={funnel.checkouts} paid={funnel.paid} />
-        <TopList title="Top 5 Players" subtitle="corrida de faturamento" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas no período" />
-        <ComingSoonCard title="Premiações" subtitle="conquiste novas placas" icon={icons.trophy} note="Sistema de conquistas em breve." />
-      </div>
-    </div>
+    <DashboardClient daily={daily} greeting={greeting()} name={name} todayLabel={today} activity={activity} />
   );
 }

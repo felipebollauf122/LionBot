@@ -805,3 +805,95 @@ export async function getBotsFleet(): Promise<BotFleetRow[]> {
     };
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard "carrega tudo 1x" — série PRÉ-AGREGADA POR DIA (horário de Brasília)
+// pra o cliente filtrar por período instantaneamente, sem novo round-trip.
+// Payload pequeno (~1 linha por dia), não as 10k+ transações cruas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DailyBucket {
+  date: string;          // YYYY-MM-DD (BRT)
+  revenue: number;       // cents aprovados
+  grossRevenue: number;  // cents não recusados/estornados
+  sales: number;         // aprovadas
+  totalTx: number;       // qualquer status
+  visits: number;        // page_view
+  starts: number;        // bot_start
+  checkouts: number;     // checkout
+  purchases: number;     // purchase
+  buyerIds: string[];    // lead_ids das vendas aprovadas do dia (p/ distintos no período)
+}
+
+export interface BotDailyRevenue {
+  id: string;
+  label: string;
+  byDate: Record<string, { revenue: number; sales: number }>;
+}
+
+export interface DashboardDaily {
+  days: DailyBucket[];
+  bots: BotDailyRevenue[];
+}
+
+export async function getDashboardDaily(): Promise<DashboardDaily> {
+  const supabase = await createClient();
+
+  // tudo paginado (RLS já restringe ao tenant). Sem filtro de data → histórico todo.
+  const [txRows, evRows, botRows] = await Promise.all([
+    fetchAllPaged<{ amount: number; status: string; lead_id: string | null; bot_id: string; created_at: string }>(
+      () => supabase.from("transactions").select("amount,status,lead_id,bot_id,created_at").order("id", { ascending: true }),
+    ),
+    fetchAllPaged<{ event_type: string; created_at: string }>(
+      () => supabase.from("tracking_events").select("event_type,created_at").order("id", { ascending: true }),
+    ),
+    supabase.from("bots").select("id,bot_username,redirect_display_name"),
+  ]);
+
+  const botLabel = new Map<string, string>();
+  for (const b of botRows.data ?? []) {
+    botLabel.set(b.id as string, (b.redirect_display_name as string) || (b.bot_username as string) || "Bot");
+  }
+
+  const dayMap = new Map<string, DailyBucket>();
+  const ensure = (key: string): DailyBucket => {
+    let d = dayMap.get(key);
+    if (!d) {
+      d = { date: key, revenue: 0, grossRevenue: 0, sales: 0, totalTx: 0, visits: 0, starts: 0, checkouts: 0, purchases: 0, buyerIds: [] };
+      dayMap.set(key, d);
+    }
+    return d;
+  };
+
+  const botAgg = new Map<string, BotDailyRevenue>();
+
+  for (const t of txRows) {
+    const key = brDateKey(t.created_at);
+    const d = ensure(key);
+    d.totalTx += 1;
+    if (t.status !== "refused" && t.status !== "refunded") d.grossRevenue += t.amount ?? 0;
+    if (t.status === "approved") {
+      d.revenue += t.amount ?? 0;
+      d.sales += 1;
+      if (t.lead_id) d.buyerIds.push(t.lead_id);
+      // por bot
+      const bid = t.bot_id;
+      let ba = botAgg.get(bid);
+      if (!ba) { ba = { id: bid, label: botLabel.get(bid) || "Bot", byDate: {} }; botAgg.set(bid, ba); }
+      const cell = (ba.byDate[key] ??= { revenue: 0, sales: 0 });
+      cell.revenue += t.amount ?? 0;
+      cell.sales += 1;
+    }
+  }
+
+  for (const e of evRows) {
+    const d = ensure(brDateKey(e.created_at));
+    if (e.event_type === "page_view") d.visits += 1;
+    else if (e.event_type === "bot_start") d.starts += 1;
+    else if (e.event_type === "checkout") d.checkouts += 1;
+    else if (e.event_type === "purchase") d.purchases += 1;
+  }
+
+  const days = [...dayMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { days, bots: [...botAgg.values()] };
+}

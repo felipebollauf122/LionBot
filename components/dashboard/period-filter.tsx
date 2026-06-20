@@ -18,40 +18,44 @@ const PRESETS: { key: string; label: string }[] = [
   { key: "custom", label: "Personalizado" },
 ];
 
-export function PeriodFilter() {
+export interface PeriodValue {
+  period: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * Dois modos:
+ * - CONTROLADO (Dashboard): recebe `value` + `onChange` → troca de período é
+ *   100% no cliente (instantânea, sem round-trip). Não toca na URL.
+ * - URL (Análises): sem props → lê/escreve searchParams via router (re-render server).
+ */
+export function PeriodFilter({ value, onChange }: { value?: PeriodValue; onChange?: (v: PeriodValue) => void } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const controlled = !!onChange;
 
-  const period = params.get("period") ?? "7d";
-  const startDate = params.get("startDate") ?? "";
-  const endDate = params.get("endDate") ?? "";
+  const period = controlled ? (value?.period ?? "7d") : (params.get("period") ?? "7d");
+  const startDate = controlled ? (value?.startDate ?? "") : (params.get("startDate") ?? "");
+  const endDate = controlled ? (value?.endDate ?? "") : (params.get("endDate") ?? "");
 
-  function pushParams(mut: (p: URLSearchParams) => void) {
-    const next = new URLSearchParams(params.toString());
-    mut(next);
-    const qs = next.toString();
+  function apply(next: PeriodValue) {
+    if (controlled) { onChange!(next); return; }
+    const p = new URLSearchParams(params.toString());
+    p.set("period", next.period);
+    if (next.startDate) p.set("startDate", next.startDate); else p.delete("startDate");
+    if (next.endDate) p.set("endDate", next.endDate); else p.delete("endDate");
+    const qs = p.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
   function selectPeriod(key: string) {
-    pushParams((p) => {
-      // "all" precisa ser EXPLÍCITO na URL — o default da página é "today", então
-      // deletar o param fazia "Tudo" cair em "hoje" (e mostrar zero).
-      p.set("period", key);
-      if (key !== "custom") {
-        p.delete("startDate");
-        p.delete("endDate");
-      }
-    });
+    apply(key === "custom" ? { period: "custom", startDate, endDate } : { period: key });
   }
 
-  function setDate(which: "startDate" | "endDate", value: string) {
-    pushParams((p) => {
-      p.set("period", "custom");
-      if (value) p.set(which, value);
-      else p.delete(which);
-    });
+  function setDate(which: "startDate" | "endDate", v: string) {
+    apply({ period: "custom", startDate: which === "startDate" ? v : startDate, endDate: which === "endDate" ? v : endDate });
   }
 
   return (

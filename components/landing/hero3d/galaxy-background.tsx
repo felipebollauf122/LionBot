@@ -273,13 +273,25 @@ export function GalaxyBackground({
 
     const DPR = Math.min(1.5, window.devicePixelRatio || 1);
     let W = 1, H = 1;
-    const resize = () => {
-      // mede pelo PAI (absolute inset-0, altura garantida); cai p/ a janela se
-      // o canvas ainda colapsou no 1º layout — assim nunca renderiza 1x1 (branco).
+    // Redimensionar o canvas LIMPA o WebGL (1 frame preto) → piscada. No mobile,
+    // a barra de endereço some/aparece ao rolar e muda SÓ a altura por ~50-120px,
+    // disparando resize a cada frame = piscada feia. Como a galáxia é "infinita"
+    // e o canvas estica via CSS, IGNORAMOS variações pequenas de altura (a barra
+    // do navegador): só redimensiona o buffer quando a LARGURA muda OU a altura
+    // varia muito (rotação/teclado), evitando o re-clear a cada frame de scroll.
+    const H_THRESHOLD = 160; // px de mudança de altura que justificam re-resize
+    let lastCssW = 0, lastCssH = 0;
+    const resize = (force = false) => {
       const host = canvas.parentElement;
       const rect = host ? host.getBoundingClientRect() : canvas.getBoundingClientRect();
       const cw = rect.width || window.innerWidth;
       const ch = rect.height || window.innerHeight;
+
+      const widthChanged = Math.abs(cw - lastCssW) > 0.5;
+      const heightJump = Math.abs(ch - lastCssH) > H_THRESHOLD;
+      if (!force && !widthChanged && !heightJump) return; // ignora o respiro da barra
+
+      lastCssW = cw; lastCssH = ch;
       W = Math.max(1, Math.floor(cw * DPR));
       H = Math.max(1, Math.floor(ch * DPR));
       if (canvas.width !== W || canvas.height !== H) {
@@ -287,11 +299,11 @@ export function GalaxyBackground({
         gl.viewport(0, 0, W, H);
       }
     };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
+    resize(true);
+    // observa o pai, mas só reage a mudança de LARGURA ou salto grande de altura.
+    const ro = new ResizeObserver(() => resize());
     if (canvas.parentElement) ro.observe(canvas.parentElement);
-    window.addEventListener("resize", resize, { passive: true });
+    window.addEventListener("orientationchange", () => resize(true), { passive: true });
 
     const onMove = (e: PointerEvent) => {
       mouse.current.tx = (e.clientX / window.innerWidth) * 2 - 1;

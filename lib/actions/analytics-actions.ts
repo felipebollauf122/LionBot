@@ -825,35 +825,30 @@ export interface DailyBucket {
   buyerIds: string[];    // lead_ids das vendas aprovadas do dia (p/ distintos no período)
 }
 
-export interface BotDailyRevenue {
+/** Um "player" = comprador (lead) com o quanto gastou por dia. */
+export interface PlayerDailyRevenue {
   id: string;
-  label: string;
+  label: string; // nome/username do comprador
   byDate: Record<string, { revenue: number; sales: number }>;
 }
 
 export interface DashboardDaily {
   days: DailyBucket[];
-  bots: BotDailyRevenue[];
+  players: PlayerDailyRevenue[];
 }
 
 export async function getDashboardDaily(): Promise<DashboardDaily> {
   const supabase = await createClient();
 
   // tudo paginado (RLS já restringe ao tenant). Sem filtro de data → histórico todo.
-  const [txRows, evRows, botRows] = await Promise.all([
-    fetchAllPaged<{ amount: number; status: string; lead_id: string | null; bot_id: string; created_at: string }>(
-      () => supabase.from("transactions").select("amount,status,lead_id,bot_id,created_at").order("id", { ascending: true }),
+  const [txRows, evRows] = await Promise.all([
+    fetchAllPaged<{ amount: number; status: string; lead_id: string | null; created_at: string }>(
+      () => supabase.from("transactions").select("amount,status,lead_id,created_at").order("id", { ascending: true }),
     ),
     fetchAllPaged<{ event_type: string; created_at: string }>(
       () => supabase.from("tracking_events").select("event_type,created_at").order("id", { ascending: true }),
     ),
-    supabase.from("bots").select("id,bot_username,redirect_display_name"),
   ]);
-
-  const botLabel = new Map<string, string>();
-  for (const b of botRows.data ?? []) {
-    botLabel.set(b.id as string, (b.redirect_display_name as string) || (b.bot_username as string) || "Bot");
-  }
 
   const dayMap = new Map<string, DailyBucket>();
   const ensure = (key: string): DailyBucket => {
@@ -865,7 +860,8 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     return d;
   };
 
-  const botAgg = new Map<string, BotDailyRevenue>();
+  // agrega por PLAYER (comprador = lead_id) — gasto/compras por dia.
+  const playerAgg = new Map<string, PlayerDailyRevenue>();
 
   for (const t of txRows) {
     const key = brDateKey(t.created_at);
@@ -875,14 +871,14 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     if (t.status === "approved") {
       d.revenue += t.amount ?? 0;
       d.sales += 1;
-      if (t.lead_id) d.buyerIds.push(t.lead_id);
-      // por bot
-      const bid = t.bot_id;
-      let ba = botAgg.get(bid);
-      if (!ba) { ba = { id: bid, label: botLabel.get(bid) || "Bot", byDate: {} }; botAgg.set(bid, ba); }
-      const cell = (ba.byDate[key] ??= { revenue: 0, sales: 0 });
-      cell.revenue += t.amount ?? 0;
-      cell.sales += 1;
+      if (t.lead_id) {
+        d.buyerIds.push(t.lead_id);
+        let pa = playerAgg.get(t.lead_id);
+        if (!pa) { pa = { id: t.lead_id, label: "", byDate: {} }; playerAgg.set(t.lead_id, pa); }
+        const cell = (pa.byDate[key] ??= { revenue: 0, sales: 0 });
+        cell.revenue += t.amount ?? 0;
+        cell.sales += 1;
+      }
     }
   }
 
@@ -894,6 +890,22 @@ export async function getDashboardDaily(): Promise<DashboardDaily> {
     else if (e.event_type === "purchase") d.purchases += 1;
   }
 
+  // nomes dos compradores (só os que existem — chunk pra não estourar o .in).
+  const buyerIds = [...playerAgg.keys()];
+  for (let i = 0; i < buyerIds.length; i += 500) {
+    const chunk = buyerIds.slice(i, i + 500);
+    const { data: leads } = await supabase.from("leads").select("id,first_name,username").in("id", chunk);
+    for (const l of leads ?? []) {
+      const pa = playerAgg.get(l.id as string);
+      if (pa) {
+        const name = ((l.first_name as string) || "").trim();
+        const user = (l.username as string) || "";
+        pa.label = name || (user ? `@${user}` : "Cliente");
+      }
+    }
+  }
+  for (const pa of playerAgg.values()) if (!pa.label) pa.label = "Cliente";
+
   const days = [...dayMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
-  return { days, bots: [...botAgg.values()] };
+  return { days, players: [...playerAgg.values()] };
 }

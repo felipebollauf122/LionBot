@@ -85,19 +85,19 @@ export function DashboardClient({
       chartDays.push({ date: key, revenue: d?.revenue ?? 0, sales: d?.sales ?? 0 });
     }
 
-    // Top 5 bots por receita no período
-    const topPlayers = daily.bots
-      .map((b) => {
+    // Top 5 Players = compradores (clientes) que mais gastaram no período.
+    const topPlayers = daily.players
+      .map((p) => {
         let rev = 0, s = 0;
-        for (const [date, cell] of Object.entries(b.byDate)) {
+        for (const [date, cell] of Object.entries(p.byDate)) {
           if (dayInRange(date, range)) { rev += cell.revenue; s += cell.sales; }
         }
-        return { id: b.id, label: b.label, revenue: rev, sales: s };
+        return { id: p.id, label: p.label, revenue: rev, sales: s };
       })
-      .filter((b) => b.revenue > 0)
+      .filter((p) => p.revenue > 0)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5)
-      .map((b, i) => ({ id: b.id, label: `${medals[i] ?? `${i + 1}º`} ${b.label}`, value: brl(b.revenue), sub: `${b.sales} venda${b.sales !== 1 ? "s" : ""}` }));
+      .map((p, i) => ({ id: p.id, label: `${medals[i] ?? `${i + 1}º`} ${p.label}`, value: brl(p.revenue), sub: `${p.sales} compra${p.sales !== 1 ? "s" : ""}` }));
 
     return { revenue, grossRevenue, sales, totalTx, visits, starts, checkouts, purchases,
       buyers: buyers.size, approvalRate, avgTicket, conversionRate, startsPerSale, chartDays, topPlayers };
@@ -147,7 +147,7 @@ export function DashboardClient({
       {/* Funnel + Top 5 Players (ranking real) + Premiações (placeholder) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
         <Funnel starts={view.starts} checkouts={view.checkouts} paid={view.sales} />
-        <TopList title="Top 5 Players" subtitle="corrida de faturamento" accent="amber" icon={icons.trophy} rows={view.topPlayers} emptyLabel="Sem vendas no período" />
+        <TopList title="Top 5 Players" subtitle="clientes que mais gastaram" accent="amber" icon={icons.trophy} rows={view.topPlayers} emptyLabel="Sem compradores no período" />
         <ComingSoonCard title="Premiações" subtitle="conquiste novas placas" icon={icons.trophy} note="Sistema de conquistas em breve." />
       </div>
     </div>

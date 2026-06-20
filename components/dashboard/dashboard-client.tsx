@@ -38,6 +38,7 @@ export function DashboardClient({
   todayLabel,
   activity,
   topSellers,
+  showTopPlayers = true,
   initialPeriod,
 }: {
   daily: DashboardDaily;
@@ -46,6 +47,7 @@ export function DashboardClient({
   todayLabel: string;
   activity: ActivityItem[];
   topSellers: TopSeller[];
+  showTopPlayers?: boolean;
   initialPeriod?: string;
 }) {
   // estado local → trocar período é 100% client (instantâneo, sem round-trip).
@@ -140,11 +142,16 @@ export function DashboardClient({
         <ActivityFeed items={activity} />
       </div>
 
-      {/* Funnel + Top 5 Players (ranking real) + Premiações (placeholder) */}
+      {/* Funnel + Top 5 Players (só admin por enquanto) + Premiações */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
         <Funnel starts={view.starts} checkouts={view.checkouts} paid={view.sales} />
-        <TopList title="Top 5 Players" subtitle="quem mais fatura no LionBot" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas ainda" />
+        {showTopPlayers && (
+          <TopList title="Top 5 Players" subtitle="quem mais fatura no LionBot" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas ainda" />
+        )}
         <ComingSoonCard title="Premiações" subtitle="conquiste novas placas" icon={icons.trophy} note="Sistema de conquistas em breve." />
+        {!showTopPlayers && (
+          <ComingSoonCard title="Metas" subtitle="acompanhe seus objetivos" icon={icons.trophy} note="Sistema de metas em breve." />
+        )}
       </div>
     </div>
   );

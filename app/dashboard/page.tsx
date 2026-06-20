@@ -1,7 +1,12 @@
 import { getTenantName, getActivityFeed, getDashboardDaily, getTopSellers } from "@/lib/actions/analytics-actions";
+import { isAdmin } from "@/lib/actions/admin-actions";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 
 export const dynamic = "force-dynamic";
+
+// Visibilidade do "Top 5 Players" (ranking de quem mais fatura no LionBot).
+// Hoje: só admin. Pra religar pro PÚBLICO depois, troque para true.
+const TOP_PLAYERS_PUBLIC = false;
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -14,16 +19,29 @@ function greeting(): string {
 export default async function DashboardPage() {
   // Carrega TUDO 1x (série diária pré-agregada — payload pequeno). A troca de
   // período é feita no cliente, instantânea, sem novo round-trip.
-  const [name, daily, activity, topSellers] = await Promise.all([
+  const [name, daily, activity, admin] = await Promise.all([
     getTenantName(),
     getDashboardDaily(),
     getActivityFeed(12),
-    getTopSellers(5),
+    isAdmin(),
   ]);
+
+  // Top 5 Players: visível só pra admin (ou pra todos, se TOP_PLAYERS_PUBLIC).
+  // Só roda a query (pesada, service-role) quando vai realmente mostrar.
+  const canSeeTopPlayers = TOP_PLAYERS_PUBLIC || admin;
+  const topSellers = canSeeTopPlayers ? await getTopSellers(5) : [];
 
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 
   return (
-    <DashboardClient daily={daily} greeting={greeting()} name={name} todayLabel={today} activity={activity} topSellers={topSellers} />
+    <DashboardClient
+      daily={daily}
+      greeting={greeting()}
+      name={name}
+      todayLabel={today}
+      activity={activity}
+      topSellers={topSellers}
+      showTopPlayers={canSeeTopPlayers}
+    />
   );
 }

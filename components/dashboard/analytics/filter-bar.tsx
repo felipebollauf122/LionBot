@@ -16,11 +16,14 @@ export function FilterBar({ options }: { options: FilterOptions }) {
   const pathname = usePathname();
   const params = useSearchParams();
 
-  const period = params.get("period") ?? "today";
+  const period = params.get("period") ?? "7d";
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params.toString());
-    if (!value || value === "all") next.delete(key);
+    // period="all" precisa ir EXPLÍCITO (o default da página é "today", então
+    // deletar fazia "Tudo" virar "hoje"). Pros dropdowns, "all"/vazio = limpar.
+    if (key === "period") next.set(key, value || "today");
+    else if (!value || value === "all") next.delete(key);
     else next.set(key, value);
     router.push(`${pathname}?${next.toString()}`);
   }

@@ -30,7 +30,9 @@ type SP = { [key: string]: string | string[] | undefined };
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const filters: AnalyticsFilters = {
-    period: (typeof sp.period === "string" ? sp.period : "today") as Period,
+    period: (typeof sp.period === "string" ? sp.period : "7d") as Period,
+    startDate: typeof sp.startDate === "string" ? sp.startDate : undefined,
+    endDate: typeof sp.endDate === "string" ? sp.endDate : undefined,
     botId: typeof sp.botId === "string" ? sp.botId : undefined,
     flowId: typeof sp.flowId === "string" ? sp.flowId : undefined,
     gateway: typeof sp.gateway === "string" ? sp.gateway : undefined,

@@ -5,6 +5,7 @@ import {
   getFunnelStats,
   getActivityFeed,
   getTenantName,
+  getTopBreakdowns,
   type AnalyticsFilters,
   type Period,
 } from "@/lib/actions/analytics-actions";
@@ -15,6 +16,7 @@ import { ActivityFeed } from "@/components/dashboard/analytics/activity-feed";
 import { Funnel } from "@/components/dashboard/analytics/funnel";
 import { Gauge } from "@/components/dashboard/analytics/gauge";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
+import { TopList } from "@/components/dashboard/analytics/top-list";
 import { ComingSoonCard } from "@/components/dashboard/analytics/coming-soon-card";
 import { icons } from "@/components/dashboard/analytics/icons";
 
@@ -37,7 +39,7 @@ type SP = { [key: string]: string | string[] | undefined };
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const filters: AnalyticsFilters = {
-    period: (typeof sp.period === "string" ? sp.period : "today") as Period,
+    period: (typeof sp.period === "string" ? sp.period : "7d") as Period,
     startDate: typeof sp.startDate === "string" ? sp.startDate : undefined,
     endDate: typeof sp.endDate === "string" ? sp.endDate : undefined,
   };
@@ -47,15 +49,25 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     getRevenueStats(filters),
   ]);
 
-  const [tracking, series, funnel, activity] = await Promise.all([
+  const [tracking, series, funnel, activity, tops] = await Promise.all([
     getTrackingStats(filters, revenue.sales),
     getRevenue7d(),
     getFunnelStats(filters),
     getActivityFeed(12),
+    getTopBreakdowns(filters),
   ]);
 
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
   const conversionRate = tracking.starts > 0 ? tracking.checkouts / tracking.starts : 0;
+
+  // Top 5 Players = ranking de bots por faturamento (medalha pros 3 primeiros).
+  const medals = ["🥇", "🥈", "🥉"];
+  const topPlayers = tops.bots.map((b, i) => ({
+    id: b.id,
+    label: `${medals[i] ?? `${i + 1}º`} ${b.label}`,
+    value: brl(b.revenue),
+    sub: `${b.sales} venda${b.sales !== 1 ? "s" : ""}`,
+  }));
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
@@ -98,11 +110,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <ActivityFeed items={activity} />
       </div>
 
-      {/* Funnel + gamification placeholders */}
+      {/* Funnel + Top 5 Players (ranking real) + Premiações (placeholder) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-up-3">
         <Funnel starts={funnel.starts} checkouts={funnel.checkouts} paid={funnel.paid} />
+        <TopList title="Top 5 Players" subtitle="corrida de faturamento" accent="amber" icon={icons.trophy} rows={topPlayers} emptyLabel="Sem vendas no período" />
         <ComingSoonCard title="Premiações" subtitle="conquiste novas placas" icon={icons.trophy} note="Sistema de conquistas em breve." />
-        <ComingSoonCard title="Top 5 Players" subtitle="corrida de faturamento" icon={icons.trophy} note="Ranking competitivo em breve." />
       </div>
     </div>
   );

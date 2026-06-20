@@ -23,7 +23,7 @@ export function PeriodFilter() {
   const pathname = usePathname();
   const params = useSearchParams();
 
-  const period = params.get("period") ?? "today";
+  const period = params.get("period") ?? "7d";
   const startDate = params.get("startDate") ?? "";
   const endDate = params.get("endDate") ?? "";
 
@@ -36,8 +36,9 @@ export function PeriodFilter() {
 
   function selectPeriod(key: string) {
     pushParams((p) => {
-      if (key === "all") p.delete("period");
-      else p.set("period", key);
+      // "all" precisa ser EXPLÍCITO na URL — o default da página é "today", então
+      // deletar o param fazia "Tudo" cair em "hoje" (e mostrar zero).
+      p.set("period", key);
       if (key !== "custom") {
         p.delete("startDate");
         p.delete("endDate");

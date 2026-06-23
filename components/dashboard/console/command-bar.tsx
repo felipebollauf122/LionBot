@@ -22,8 +22,8 @@ interface CommandBarProps {
  */
 export function CommandBar({ title, subtitle, search, filters, kpis, action }: CommandBarProps) {
   return (
-    <div className="sticky top-0 z-20 glass border-b border-(--border-subtle) px-4 sm:px-6 py-3 pt-safe">
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5">
+    <div className="sticky top-0 z-20 glass border-b border-(--border-subtle) px-4 sm:px-6 py-3 pt-safe overflow-hidden">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5 min-w-0">
         {/* Title */}
         <div className="min-w-0 shrink-0">
           {typeof title === "string" ? (
@@ -44,7 +44,7 @@ export function CommandBar({ title, subtitle, search, filters, kpis, action }: C
 
         {/* Right: KPIs + action */}
         <div className="flex items-center gap-3 shrink-0 ml-auto">
-          {kpis && <div className="hidden md:flex items-center gap-2">{kpis}</div>}
+          {kpis && <div className="hidden lg:flex items-center gap-2">{kpis}</div>}
           {action}
         </div>
       </div>

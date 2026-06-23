@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { LionMark } from "@/components/brand/lion-mark";
 import { CommandBar, CommandSearch, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
 import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
@@ -8,6 +9,14 @@ import type { BotFleetRow } from "@/lib/actions/analytics-actions";
 
 function brl(cents: number) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/** Versão compacta p/ telas estreitas: R$ 12.999,90 → "R$ 13,0k", R$ 1,2M → "R$ 1,2M". */
+function brlCompact(cents: number) {
+  const v = cents / 100;
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}M`;
+  if (v >= 10_000) return `R$ ${(v / 1_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`;
+  return brl(cents);
 }
 
 type Filter = "all" | "active" | "inactive";
@@ -61,10 +70,10 @@ export function BotsFleet({ bots }: { bots: BotFleetRow[] }) {
           </>
         }
         action={
-          <a href="/dashboard/bots/new" className="btn-primary">
+          <Link href="/dashboard/bots/new" className="btn-primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             Novo Bot
-          </a>
+          </Link>
         }
       />
 
@@ -78,10 +87,10 @@ export function BotsFleet({ bots }: { bots: BotFleetRow[] }) {
             <p className="text-(--text-muted) text-sm mb-6 max-w-xs mx-auto">
               {bots.length === 0 ? "Crie seu primeiro bot para começar a vender no Telegram" : "Tente outro filtro ou busca"}
             </p>
-            {bots.length === 0 && <a href="/dashboard/bots/new" className="btn-primary">Criar primeiro bot</a>}
+            {bots.length === 0 && <Link href="/dashboard/bots/new" className="btn-primary">Criar primeiro bot</Link>}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 lg:space-y-4">
             {filtered.map((b, i) => (
               <FleetPanel key={b.id} bot={b} index={i} />
             ))}
@@ -97,13 +106,13 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
   const href = `/dashboard/bots/${bot.id}/flows`;
 
   return (
-    <a
+    <Link
       href={href}
-      className="card-interactive card group flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6 p-4 sm:p-5 reveal"
+      className="card-interactive card group flex flex-col items-stretch lg:flex-row lg:items-center gap-4 lg:gap-6 p-4 sm:p-5 reveal min-w-0 overflow-hidden"
       style={{ animationDelay: `${Math.min(index, 8) * 0.05}s` }}
     >
       {/* Crest + identity */}
-      <div className="flex items-center gap-3.5 lg:w-64 shrink-0">
+      <div className="flex items-center gap-3.5 min-w-0 lg:w-64 lg:shrink-0">
         <div className="relative shrink-0">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden" style={{ background: "color-mix(in srgb, var(--accent) 10%, transparent)" }}>
             {bot.avatar_url ? (
@@ -121,9 +130,11 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
       </div>
 
       {/* Metrics */}
-      <div className="flex-1 grid grid-cols-3 gap-3">
+      <div className="flex-1 grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
         <Metric label="Receita" accent="magenta">
-          <AnimatedNumber value={bot.revenue} format="brl" />
+          {/* mobile: compacto (cabe valores grandes); ≥sm: valor cheio */}
+          <span className="sm:hidden">{brlCompact(bot.revenue)}</span>
+          <span className="hidden sm:inline"><AnimatedNumber value={bot.revenue} format="brl" /></span>
         </Metric>
         <Metric label="Vendas" accent="cyan">
           <AnimatedNumber value={bot.sales} format="int" />
@@ -134,8 +145,8 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
       </div>
 
       {/* Capabilities + status */}
-      <div className="flex items-center justify-between lg:justify-end gap-4 lg:w-56 shrink-0">
-        <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between lg:justify-end gap-4 min-w-0 lg:w-56 lg:shrink-0">
+        <div className="flex flex-col gap-2">
           <Capability on={bot.has_tracking} label="Tracking" />
           <Capability on={bot.has_payment} label="Pagamento" />
         </div>
@@ -144,16 +155,16 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
         </span>
         <svg className="hidden lg:block w-4 h-4 text-(--text-muted) group-hover:text-(--accent) group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
       </div>
-    </a>
+    </Link>
   );
 }
 
 function Metric({ label, accent, children }: { label: string; accent: "magenta" | "cyan" | "purple"; children: React.ReactNode }) {
   const color = { magenta: "var(--accent)", cyan: "var(--cyan)", purple: "var(--purple)" }[accent];
   return (
-    <div className="rounded-lg bg-white/[0.02] border border-(--border-subtle) px-3 py-2">
-      <p className="stat-value text-base num-pop" style={{ color }}>{children}</p>
-      <p className="text-[9px] uppercase tracking-wider text-(--text-ghost) mt-0.5">{label}</p>
+    <div className="min-w-0 rounded-lg bg-white/[0.02] border border-(--border-subtle) px-2 py-2 sm:px-3">
+      <p className="stat-value text-[13px] sm:text-base num-pop leading-tight" style={{ color }}>{children}</p>
+      <p className="text-[9px] uppercase tracking-wider text-(--text-ghost) mt-0.5 truncate">{label}</p>
     </div>
   );
 }

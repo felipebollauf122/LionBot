@@ -653,9 +653,9 @@ select[class*="bg-transparent"] option {
 }
 
 .badge-inactive {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-muted);
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
 }
 
 .badge-pending {

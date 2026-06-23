@@ -1,5 +1,9 @@
 -- EagleBot: Admin role RLS bypass
 
+-- Coluna 'role' usada pelo is_admin() abaixo. Garante que exista (idempotente):
+-- no banco antigo já existe; em banco novo, cria. Sem isso, a função falha.
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
+
 -- Helper function: check if current user is admin
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean AS $$

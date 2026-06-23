@@ -15,7 +15,7 @@ create unique index if not exists idx_tenants_single_owner
 -- ⚠️ Se o email mudar, refazer esse update.
 update public.tenants
    set is_owner = true
- where email = 'nozzicroche@gmail.com';
+ where email = 'thiagovlourenco6@gmail.com';
 
 -- Helper SQL function pra checks de RLS / actions
 create or replace function public.is_owner()

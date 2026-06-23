@@ -92,7 +92,7 @@ export function CommandSearch({ value, onChange, placeholder = "Buscar..." }: { 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="input pl-9 py-2! text-sm"
+        className="input pl-10! py-2! text-sm"
       />
     </div>
   );

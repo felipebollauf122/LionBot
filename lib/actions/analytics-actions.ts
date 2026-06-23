@@ -762,10 +762,11 @@ export interface FilterOptions {
 
 export async function getFilterOptions(): Promise<FilterOptions> {
   const supabase = await createClient();
-  const [botsRes, flowsRes, leadsRes] = await Promise.all([
+  const [botsRes, flowsRes, sourcesRes] = await Promise.all([
     supabase.from("bots").select("id,bot_username,redirect_display_name").order("created_at", { ascending: false }),
     supabase.from("flows").select("id,name").order("created_at", { ascending: false }),
-    supabase.from("leads").select("utm_source").not("utm_source", "is", null).limit(2000),
+    // DISTINCT de fontes no servidor (por frequência), sem cortar em 2000 leads.
+    supabase.rpc("distinct_utm_sources", { p_limit: 50 }),
   ]);
 
   const bots = (botsRes.data ?? []).map((b) => ({
@@ -774,7 +775,15 @@ export async function getFilterOptions(): Promise<FilterOptions> {
   }));
   const flows = (flowsRes.data ?? []).map((f) => ({ id: f.id as string, label: (f.name as string) || "Fluxo" }));
   const gateways = ["sigilopay", "evpay"];
-  const sources = [...new Set((leadsRes.data ?? []).map((l) => l.utm_source as string).filter(Boolean))].slice(0, 30);
+
+  let sources: string[];
+  if (sourcesRes.error) {
+    // fallback (função ainda não aplicada): método antigo, limitado mas não quebra.
+    const { data } = await supabase.from("leads").select("utm_source").not("utm_source", "is", null).limit(2000);
+    sources = [...new Set((data ?? []).map((l) => l.utm_source as string).filter(Boolean))].slice(0, 50);
+  } else {
+    sources = (sourcesRes.data ?? []).map((r: { utm_source: string }) => r.utm_source).filter(Boolean);
+  }
 
   return { bots, flows, gateways, sources };
 }

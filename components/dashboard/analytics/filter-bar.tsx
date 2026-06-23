@@ -9,6 +9,7 @@ const PERIODS: { key: string; label: string }[] = [
   { key: "7d", label: "Semana" },
   { key: "30d", label: "Mês" },
   { key: "all", label: "Tudo" },
+  { key: "custom", label: "Personalizado" },
 ];
 
 export function FilterBar({ options }: { options: FilterOptions }) {
@@ -17,6 +18,8 @@ export function FilterBar({ options }: { options: FilterOptions }) {
   const params = useSearchParams();
 
   const period = params.get("period") ?? "7d";
+  const startDate = params.get("startDate") ?? "";
+  const endDate = params.get("endDate") ?? "";
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(params.toString());
@@ -25,6 +28,21 @@ export function FilterBar({ options }: { options: FilterOptions }) {
     if (key === "period") next.set(key, value || "today");
     else if (!value || value === "all") next.delete(key);
     else next.set(key, value);
+    // ao sair do custom, limpa as datas pra não ficarem penduradas na URL.
+    if (key === "period" && value !== "custom") {
+      next.delete("startDate");
+      next.delete("endDate");
+    }
+    router.push(`${pathname}?${next.toString()}`);
+  }
+
+  function setCustomDate(which: "startDate" | "endDate", value: string) {
+    const next = new URLSearchParams(params.toString());
+    next.set("period", "custom");
+    if (value) next.set(which, value); else next.delete(which);
+    const otherKey = which === "startDate" ? "endDate" : "startDate";
+    const other = which === "startDate" ? endDate : startDate;
+    if (other) next.set(otherKey, other);
     router.push(`${pathname}?${next.toString()}`);
   }
 
@@ -37,8 +55,29 @@ export function FilterBar({ options }: { options: FilterOptions }) {
   return (
     <div className="space-y-3">
       {/* Period toggle */}
-      <div className="flex justify-end">
-        <div className="inline-flex gap-1 p-1 rounded-xl bg-white/[0.02] border border-(--border-subtle)">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+        {period === "custom" && (
+          <div className="flex items-center gap-2 order-2 sm:order-1">
+            <input
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(e) => setCustomDate("startDate", e.target.value)}
+              className="input text-xs py-2! w-auto"
+              aria-label="Data inicial"
+            />
+            <span className="text-(--text-muted) text-xs">até</span>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(e) => setCustomDate("endDate", e.target.value)}
+              className="input text-xs py-2! w-auto"
+              aria-label="Data final"
+            />
+          </div>
+        )}
+        <div className="inline-flex flex-wrap gap-1 p-1 rounded-xl bg-white/[0.02] border border-(--border-subtle) order-1 sm:order-2">
           {PERIODS.map((p) => (
             <button
               key={p.key}

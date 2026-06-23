@@ -84,13 +84,13 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <KpiCard label="Visitas" value="" numericValue={tracking.visits} format="int" hint={`${(tracking.startRate * 100).toFixed(1)}% viraram starts`} accent="cyan" icon={icons.eye} revealIndex={1} />
         <KpiCard label="Starts" value="" numericValue={tracking.starts} format="int" hint={`${tracking.startsPerSale.toFixed(0)} starts por venda`} accent="purple" icon={icons.bolt} revealIndex={2} />
         <KpiCard label="Receita Gerada" value="" numericValue={revenue.grossRevenue} format="brl" hint={`ticket médio ${brl(revenue.avgTicket)}`} accent="magenta" icon={icons.money} revealIndex={3} />
-        <KpiCard label="Receita Confirmada" value="" numericValue={revenue.revenue} format="brl" hint={`${(revenue.approvalRate * 100).toFixed(0)}% de aprovação`} accent="cyan" delta={`${(revenue.approvalRate * 100).toFixed(0)}%`} deltaUp icon={icons.check} progress={revenue.approvalRate} revealIndex={4} />
+        <KpiCard label="Receita Confirmada" value="" numericValue={revenue.revenue} format="brl" hint={`${(revenue.approvalRate * 100).toFixed(1).replace(".", ",")}% de aprovação`} accent="cyan" icon={icons.check} progress={revenue.approvalRate} revealIndex={4} />
       </div>
 
       {/* Weekday + funnel row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 animate-up-3">
         <div className="lg:col-span-2">
-          <WeekdayChart data={weekday} />
+          <WeekdayChart data={weekday.points} todayIdx={weekday.todayIdx} />
         </div>
         <Funnel starts={funnel.starts} checkouts={funnel.checkouts} paid={funnel.paid} />
       </div>

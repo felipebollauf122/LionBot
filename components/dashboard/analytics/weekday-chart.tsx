@@ -3,9 +3,8 @@ import type { WeekdayPoint } from "@/lib/actions/analytics-actions";
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-export function WeekdayChart({ data }: { data: WeekdayPoint[] }) {
+export function WeekdayChart({ data, todayIdx = -1 }: { data: WeekdayPoint[]; todayIdx?: number }) {
   const max = Math.max(1, ...data.flatMap((d) => [d.current, d.previous]));
-  const todayIdx = new Date().getDay();
   const thisWeek = data.reduce((s, d) => s + d.current, 0);
   const lastWeek = data.reduce((s, d) => s + d.previous, 0);
   const diff = lastWeek > 0 ? ((thisWeek - lastWeek) / lastWeek) * 100 : thisWeek > 0 ? 100 : 0;

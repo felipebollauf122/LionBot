@@ -97,6 +97,45 @@ function applyFilters(query: any, filters: AnalyticsFilters, opts?: { createdCol
   return q;
 }
 
+/**
+ * Filtros para a tabela TRANSACTIONS: período + bot + flow + gateway.
+ * (source não vive em transactions — é resolvido via lead_id, ver resolveSourceLeadIds.)
+ * Use isto em TODA query de transactions pra os cards seguirem os filtros.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyTxFilters(query: any, filters: AnalyticsFilters): any {
+  let q = applyFilters(query, filters);
+  if (filters.flowId) q = q.eq("flow_id", filters.flowId);
+  if (filters.gateway) q = q.eq("gateway", filters.gateway);
+  return q;
+}
+
+/**
+ * Aplica o filtro de FONTE a uma query de tracking_events (que tem utm_params).
+ * A fonte é gravada em utm_params.utm_source (NÃO em .source).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyEventSource(query: any, filters: AnalyticsFilters): any {
+  if (filters.source) return query.eq("utm_params->>utm_source", filters.source);
+  return query;
+}
+
+/**
+ * Resolve os lead_ids de uma fonte (leads.utm_source = source), paginado.
+ * Usado pra filtrar transactions por fonte (que não tem a coluna utm_source).
+ * Retorna [] se a fonte não tem leads → o chamador deve tratar como "sem resultados".
+ */
+async function resolveSourceLeadIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  source: string,
+): Promise<string[]> {
+  const rows = await fetchAllPaged<{ id: string }>(() =>
+    supabase.from("leads").select("id").eq("utm_source", source).order("id", { ascending: true }),
+  );
+  return rows.map((r) => r.id);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Paginação — o Supabase corta toda query em 1000 linhas. Sem isto, qualquer
 // agregação sobre tabela grande (transactions 10k+, leads 24k+, tracking 4k+)
@@ -160,15 +199,21 @@ export interface RevenueStats {
 export async function getRevenueStats(filters: AnalyticsFilters = {}): Promise<RevenueStats> {
   const supabase = await createClient();
 
-  // helper: aplica TODOS os filtros + order estável a um builder de transactions.
+  // Filtro de fonte: transactions não tem utm_source → resolve os lead_ids da
+  // fonte e restringe por lead_id. Lista vazia = nenhum lead → resultado vazio
+  // (NÃO ignorar o filtro, senão "vazio" viraria "tudo").
+  const sourceLeadIds = filters.source ? await resolveSourceLeadIds(supabase, filters.source) : null;
+
+  // helper: aplica TODOS os filtros (period+bot+flow+gateway+source) + order estável.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const txBuilder = (sel: string, count = false): any => {
     let q = count
       ? supabase.from("transactions").select(sel, { count: "exact", head: true })
       : supabase.from("transactions").select(sel).order("id", { ascending: true });
-    q = applyFilters(q, filters);
-    if (filters.flowId) q = q.eq("flow_id", filters.flowId);
-    if (filters.gateway) q = q.eq("gateway", filters.gateway);
+    q = applyTxFilters(q, filters);
+    if (sourceLeadIds) {
+      q = sourceLeadIds.length > 0 ? q.in("lead_id", sourceLeadIds) : q.eq("lead_id", "00000000-0000-0000-0000-000000000000");
+    }
     return q;
   };
 
@@ -225,7 +270,7 @@ export async function getTrackingStats(filters: AnalyticsFilters = {}, approvedS
     countRows(() => {
       let q = supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", type);
       q = applyFilters(q, filters);
-      if (filters.source) q = q.eq("utm_params->>source", filters.source);
+      q = applyEventSource(q, filters);
       return q;
     });
 
@@ -258,20 +303,33 @@ export interface FunnelStats {
 export async function getFunnelStats(filters: AnalyticsFilters = {}): Promise<FunnelStats> {
   const supabase = await createClient();
 
+  // source em transactions (paid) → via lead_id, como em getRevenueStats.
+  const sourceLeadIds = filters.source ? await resolveSourceLeadIds(supabase, filters.source) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const paidBuilder = (): any => {
+    let q = applyTxFilters(supabase.from("transactions").select("*", { count: "exact", head: true }).eq("status", "approved"), filters);
+    if (sourceLeadIds) q = sourceLeadIds.length > 0 ? q.in("lead_id", sourceLeadIds) : q.eq("lead_id", "00000000-0000-0000-0000-000000000000");
+    return q;
+  };
+
   // 3 contagens EXATAS no servidor (sem trazer linhas → sem limite de 1000).
+  // starts/checkouts seguem source via utm_params (mesma chave de getTrackingStats).
   const [starts, checkouts, paid] = await Promise.all([
-    countRows(() => applyFilters(supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", "bot_start"), filters)),
-    countRows(() => applyFilters(supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", "checkout"), filters)),
-    countRows(() => applyFilters(supabase.from("transactions").select("*", { count: "exact", head: true }).eq("status", "approved"), filters)),
+    countRows(() => applyEventSource(applyFilters(supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", "bot_start"), filters), filters)),
+    countRows(() => applyEventSource(applyFilters(supabase.from("tracking_events").select("*", { count: "exact", head: true }).eq("event_type", "checkout"), filters), filters)),
+    countRows(paidBuilder),
   ]);
 
+  // clamp em 100%: paid (transactions) e starts/checkouts (tracking_events) vêm de
+  // universos diferentes; uma venda sem bot_start rastreado faria a taxa passar de 100%.
+  const clamp = (x: number) => Math.min(1, x);
   return {
     starts,
     checkouts,
     paid,
-    startToCheckout: starts > 0 ? checkouts / starts : 0,
-    checkoutToPaid: checkouts > 0 ? paid / checkouts : 0,
-    startToPaid: starts > 0 ? paid / starts : 0,
+    startToCheckout: starts > 0 ? clamp(checkouts / starts) : 0,
+    checkoutToPaid: checkouts > 0 ? clamp(paid / checkouts) : 0,
+    startToPaid: starts > 0 ? clamp(paid / starts) : 0,
   };
 }
 
@@ -295,17 +353,22 @@ export async function getTopBreakdowns(filters: AnalyticsFilters = {}): Promise<
 }> {
   const supabase = await createClient();
 
-  // aprovadas (paginadas, status no servidor) com os joins.
-  const approved = await fetchAllPaged<Record<string, unknown>>(() =>
-    applyFilters(
+  // source → resolve lead_ids (transactions não tem utm_source).
+  const sourceLeadIds = filters.source ? await resolveSourceLeadIds(supabase, filters.source) : null;
+
+  // aprovadas (paginadas, status no servidor) com os joins + TODOS os filtros.
+  const approved = await fetchAllPaged<Record<string, unknown>>(() => {
+    let q = applyTxFilters(
       supabase
         .from("transactions")
         .select("amount,status,bot_id,flow_id,product_id,lead_id, bots(bot_username,redirect_display_name), flows(name), products(name,ghost_name)")
         .eq("status", "approved")
         .order("id", { ascending: true }),
       filters,
-    ),
-  );
+    );
+    if (sourceLeadIds) q = sourceLeadIds.length > 0 ? q.in("lead_id", sourceLeadIds) : q.eq("lead_id", "00000000-0000-0000-0000-000000000000");
+    return q;
+  });
 
   // Aggregate generic helper
   function agg<T extends Record<string, unknown>>(
@@ -420,7 +483,7 @@ export interface WeekdayPoint {
   previous: number; // sales count last week
 }
 
-export async function getSalesByWeekday(filters: AnalyticsFilters = {}): Promise<WeekdayPoint[]> {
+export async function getSalesByWeekday(filters: AnalyticsFilters = {}): Promise<{ points: WeekdayPoint[]; todayIdx: number }> {
   const supabase = await createClient();
   // semanas em horário de Brasília: início da semana atual e da anterior.
   const todayStart = startOfTodayBR();
@@ -432,7 +495,11 @@ export async function getSalesByWeekday(filters: AnalyticsFilters = {}): Promise
   const rows = await fetchAllPaged<{ created_at: string }>(() => {
     let q = supabase.from("transactions").select("created_at").eq("status", "approved")
       .gte("created_at", startOfPrevWeek.toISOString()).order("id", { ascending: true });
+    // janela fixa de 14d é intencional (compara semana atual vs anterior); mas
+    // segue as dimensões selecionadas (bot/flow/gateway).
     if (filters.botId) q = q.eq("bot_id", filters.botId);
+    if (filters.flowId) q = q.eq("flow_id", filters.flowId);
+    if (filters.gateway) q = q.eq("gateway", filters.gateway);
     return q;
   });
 
@@ -443,7 +510,8 @@ export async function getSalesByWeekday(filters: AnalyticsFilters = {}): Promise
     if (d >= startOfWeek) points[wd].current += 1;
     else if (d >= startOfPrevWeek) points[wd].previous += 1;
   }
-  return points;
+  // todayIdx (dow) já está em BRT — o componente usa pra destacar a coluna de hoje.
+  return { points, todayIdx: dow };
 }
 
 export interface HourPoint {
@@ -575,8 +643,11 @@ export async function getAudienceBreakdown(filters: AnalyticsFilters = {}): Prom
   const rows = await fetchAllPaged<{
     event_data: { user_agent?: string; country?: string; state?: string } | null;
   }>(() =>
-    applyFilters(
-      supabase.from("tracking_events").select("event_data").eq("event_type", "page_view").order("id", { ascending: true }),
+    applyEventSource(
+      applyFilters(
+        supabase.from("tracking_events").select("event_data").eq("event_type", "page_view").order("id", { ascending: true }),
+        filters,
+      ),
       filters,
     ),
   );
@@ -643,11 +714,13 @@ const SALE_TYPE_LABEL: Record<string, string> = {
 export async function getSaleTypeStats(filters: AnalyticsFilters = {}): Promise<SaleTypeRow[]> {
   const supabase = await createClient();
 
+  const sourceLeadIds = filters.source ? await resolveSourceLeadIds(supabase, filters.source) : null;
   const rows = await fetchAllPaged<{ sale_type?: string; amount?: number }>(() => {
-    let q = supabase.from("transactions").select("sale_type,amount,status").eq("status", "approved").order("id", { ascending: true });
-    q = applyFilters(q, filters);
-    if (filters.flowId) q = q.eq("flow_id", filters.flowId);
-    if (filters.gateway) q = q.eq("gateway", filters.gateway);
+    let q = applyTxFilters(
+      supabase.from("transactions").select("sale_type,amount,status,lead_id").eq("status", "approved").order("id", { ascending: true }),
+      filters,
+    );
+    if (sourceLeadIds) q = sourceLeadIds.length > 0 ? q.in("lead_id", sourceLeadIds) : q.eq("lead_id", "00000000-0000-0000-0000-000000000000");
     return q;
   });
 

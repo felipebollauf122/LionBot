@@ -17,6 +17,32 @@ interface BotSettingsFormProps {
 
 type SectionKey = "info" | "facebook" | "utmify" | "gateway" | "tracking" | "advanced" | "danger";
 
+/**
+ * Faz fetch ao servidor do bot e devolve JSON de forma SEGURA. Se a resposta não
+ * for JSON (ex: servidor fora do ar → o proxy devolve uma página HTML de erro, ou
+ * NEXT_PUBLIC_BOT_SERVER_URL caiu no fallback localhost), em vez de quebrar com
+ * "Failed to execute 'json'... Unexpected token '<'", lança um erro legível.
+ */
+async function fetchJson(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new Error("Não foi possível falar com o servidor do bot. Verifique se ele está no ar.");
+  }
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) {
+    // resposta HTML/texto = quase sempre 404/502 do proxy ou URL errada do servidor.
+    throw new Error(
+      res.status >= 500
+        ? "O servidor do bot está indisponível no momento. Tente de novo em instantes."
+        : `Resposta inesperada do servidor (HTTP ${res.status}). Confira a URL do servidor do bot.`,
+    );
+  }
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { ok: res.ok, status: res.status, data };
+}
+
 const sections = [
   { key: "info", label: "Informacoes do Bot", desc: "Status e configuracao geral", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", color: "var(--accent)" },
   { key: "facebook", label: "Facebook Ads", desc: "Pixel e Conversions API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--cyan)" },
@@ -135,16 +161,20 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
     setActivating(true);
     setActivateError(null);
     try {
-      const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(/\/+$/, "");
+      const rawUrl = process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001";
+      // Em produção, se a env var não foi embutida no build, cairia em localhost
+      // (que serve HTML → quebra o .json()). Avisa claro em vez de falhar feio.
+      if (typeof window !== "undefined" && window.location.hostname !== "localhost" && rawUrl.includes("localhost")) {
+        throw new Error("Configuração do servidor do bot ausente (NEXT_PUBLIC_BOT_SERVER_URL). Avise o admin.");
+      }
+      const serverUrl = rawUrl.replace(/\/+$/, "");
       if (!isActive) {
-        const res = await fetch(`${serverUrl}/api/bots/${bot.id}/register-webhook`, { method: "POST" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Erro ao ativar bot");
+        const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/register-webhook`, { method: "POST" });
+        if (!ok) throw new Error((data.error as string) ?? "Erro ao ativar bot");
         setIsActive(true);
       } else {
-        const res = await fetch(`${serverUrl}/api/bots/${bot.id}/deactivate`, { method: "POST" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Erro ao desativar bot");
+        const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/deactivate`, { method: "POST" });
+        if (!ok) throw new Error((data.error as string) ?? "Erro ao desativar bot");
         setIsActive(false);
       }
     } catch (e) {
@@ -432,9 +462,12 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                         type="button"
                         onClick={async () => {
                           const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
-                          const r = await fetch(`${serverUrl}/api/bots/${bot.id}/setup-evpay-webhook`, { method: "POST" });
-                          const j = await r.json();
-                          alert(r.ok ? `Webhook registrado: ${j.webhook_url}` : `Erro: ${j.error}`);
+                          try {
+                            const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/setup-evpay-webhook`, { method: "POST" });
+                            alert(ok ? `Webhook registrado: ${data.webhook_url}` : `Erro: ${data.error}`);
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "Erro inesperado");
+                          }
                         }}
                         className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5"
                       >
@@ -444,9 +477,12 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                         type="button"
                         onClick={async () => {
                           const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
-                          const r = await fetch(`${serverUrl}/api/bots/${bot.id}/evpay-webhook-status`);
-                          const j = await r.json();
-                          alert(JSON.stringify(j, null, 2));
+                          try {
+                            const { data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/evpay-webhook-status`);
+                            alert(JSON.stringify(data, null, 2));
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "Erro inesperado");
+                          }
                         }}
                         className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5"
                       >

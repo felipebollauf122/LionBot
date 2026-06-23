@@ -85,27 +85,7 @@ export function CreateBotForm({ isOwner = false }: { isOwner?: boolean }) {
   };
 
   return (
-    <div className="p-8 max-w-lg animate-up">
-      {/* Back */}
-      <a
-        href="/dashboard"
-        className="inline-flex items-center gap-2 text-(--text-muted) hover:text-foreground text-sm transition-all mb-8 group"
-      >
-        <div className="w-7 h-7 rounded-lg bg-white/4 flex items-center justify-center group-hover:bg-white/8 transition-colors">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-        </div>
-        Voltar
-      </a>
-
-      <h1 className="text-2xl font-bold text-foreground tracking-tight page-title mb-2">
-        Novo Bot
-      </h1>
-      <p className="text-(--text-secondary) text-sm mb-8">
-        Conecte um bot do Telegram para comecar a automatizar vendas
-      </p>
-
+    <div className="animate-up">
       {error && (
         <div className="mb-6 px-4 py-3 rounded-xl border border-(--red)/15 text-(--red) text-sm animate-in flex items-center gap-3" style={{ background: "linear-gradient(135deg, var(--red-muted) 0%, rgba(255,59,107,0.04) 100%)" }}>
           <div className="w-5 h-5 rounded-full bg-(--red)/20 flex items-center justify-center shrink-0">

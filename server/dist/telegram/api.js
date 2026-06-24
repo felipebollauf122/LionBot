@@ -1,0 +1,193 @@
+export class TelegramApi {
+    token;
+    baseUrl;
+    protectContent;
+    constructor(token, options = {}) {
+        this.token = token;
+        this.baseUrl = `https://api.telegram.org/bot${token}`;
+        this.protectContent = options.protectContent ?? false;
+    }
+    get botToken() {
+        return this.token;
+    }
+    async sendMessage(params) {
+        const text = params.text?.trim();
+        if (!text) {
+            console.warn("[telegram] Skipping sendMessage: empty text");
+            return null;
+        }
+        const body = {
+            chat_id: params.chatId,
+            text,
+            parse_mode: "HTML",
+        };
+        if (params.replyMarkup) {
+            body.reply_markup = params.replyMarkup;
+        }
+        if (this.protectContent) {
+            body.protect_content = true;
+        }
+        const result = await this.request("sendMessage", body);
+        return result;
+    }
+    async sendPhoto(params) {
+        if (!params.photo?.trim()) {
+            console.warn("[telegram] Skipping sendPhoto: empty photo URL");
+            return null;
+        }
+        const body = {
+            chat_id: params.chatId,
+            photo: params.photo,
+            parse_mode: "HTML",
+        };
+        if (params.caption) {
+            body.caption = params.caption;
+        }
+        if (params.replyMarkup) {
+            body.reply_markup = params.replyMarkup;
+        }
+        if (this.protectContent) {
+            body.protect_content = true;
+        }
+        const result = await this.request("sendPhoto", body);
+        return result;
+    }
+    async sendVideo(params) {
+        if (!params.video?.trim()) {
+            console.warn("[telegram] Skipping sendVideo: empty video URL");
+            return null;
+        }
+        const body = {
+            chat_id: params.chatId,
+            video: params.video,
+            parse_mode: "HTML",
+        };
+        if (params.caption) {
+            body.caption = params.caption;
+        }
+        if (params.replyMarkup) {
+            body.reply_markup = params.replyMarkup;
+        }
+        if (this.protectContent) {
+            body.protect_content = true;
+        }
+        const result = await this.request("sendVideo", body);
+        return result;
+    }
+    async deleteMessage(chatId, messageId) {
+        try {
+            await this.request("deleteMessage", {
+                chat_id: chatId,
+                message_id: messageId,
+            });
+            return true;
+        }
+        catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            // These are expected and harmless — silence them:
+            //  - "message to delete not found": user already deleted it, or 48h window passed
+            //  - "message can't be deleted": admin msgs, service msgs, etc.
+            if (/message to delete not found|message can't be deleted/i.test(msg)) {
+                return false;
+            }
+            console.error(`[telegram] Failed to delete message ${messageId}:`, error);
+            return false;
+        }
+    }
+    async setWebhook(url) {
+        await this.request("setWebhook", { url });
+    }
+    async editMessageText(params) {
+        const body = {
+            chat_id: params.chatId,
+            message_id: params.messageId,
+            text: params.text,
+            parse_mode: "HTML",
+        };
+        if (params.replyMarkup)
+            body.reply_markup = params.replyMarkup;
+        try {
+            await this.request("editMessageText", body);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            // "message is not modified" é benign — só ignoramos
+            if (/message is not modified/i.test(msg))
+                return;
+            throw err;
+        }
+    }
+    async sendMessageWithReplyKeyboard(params) {
+        const body = {
+            chat_id: params.chatId,
+            text: params.text,
+            parse_mode: "HTML",
+            reply_markup: {
+                keyboard: params.keyboard,
+                resize_keyboard: true,
+                one_time_keyboard: params.oneTime ?? true,
+            },
+        };
+        if (this.protectContent)
+            body.protect_content = true;
+        const result = await this.request("sendMessage", body);
+        return result;
+    }
+    async removeReplyKeyboard(chatId, text) {
+        const body = {
+            chat_id: chatId,
+            text,
+            parse_mode: "HTML",
+            reply_markup: { remove_keyboard: true },
+        };
+        const result = await this.request("sendMessage", body);
+        return result;
+    }
+    async answerCallbackQuery(callbackQueryId, text) {
+        await this.request("answerCallbackQuery", {
+            callback_query_id: callbackQueryId,
+            text: text ?? undefined,
+        });
+    }
+    async deleteWebhook() {
+        await this.request("deleteWebhook", {});
+    }
+    async request(method, body) {
+        const MAX_RETRIES = 3;
+        const TIMEOUT_MS = 15_000;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const response = await fetch(`${this.baseUrl}/${method}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                    signal: AbortSignal.timeout(TIMEOUT_MS),
+                });
+                const data = await response.json();
+                if (!data.ok) {
+                    // Telegram 429 (rate limit) — wait and retry
+                    if (response.status === 429 && attempt < MAX_RETRIES) {
+                        const retryAfter = data.parameters?.retry_after ?? 1;
+                        console.warn(`[telegram] Rate limited on ${method}, retrying in ${retryAfter}s (attempt ${attempt}/${MAX_RETRIES})`);
+                        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+                        continue;
+                    }
+                    throw new Error(`Telegram API error (${method}): ${data.description ?? "Unknown error"}`);
+                }
+                return data.result;
+            }
+            catch (error) {
+                const isNetworkError = error instanceof TypeError ||
+                    (error instanceof DOMException && error.name === "TimeoutError");
+                if (isNetworkError && attempt < MAX_RETRIES) {
+                    const delay = attempt * 1000; // 1s, 2s
+                    console.warn(`[telegram] ${method} failed (${error.message}), retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})`);
+                    await new Promise((r) => setTimeout(r, delay));
+                    continue;
+                }
+                throw error;
+            }
+        }
+        throw new Error(`Telegram API ${method}: all ${MAX_RETRIES} attempts failed`);
+    }
+}

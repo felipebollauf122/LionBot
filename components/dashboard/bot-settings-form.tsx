@@ -79,6 +79,10 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
 
   const [pixelId, setPixelId] = useState(bot.facebook_pixel_id ?? "");
   const [accessToken, setAccessToken] = useState(bot.facebook_access_token ?? "");
+  // Pixel reserva (aquecimento de conta) — recebe cópia dos mesmos eventos.
+  const [backupEnabled, setBackupEnabled] = useState(bot.facebook_backup_enabled ?? false);
+  const [pixelIdBackup, setPixelIdBackup] = useState(bot.facebook_pixel_id_backup ?? "");
+  const [accessTokenBackup, setAccessTokenBackup] = useState(bot.facebook_access_token_backup ?? "");
   const [utmifyKey, setUtmifyKey] = useState(bot.utmify_api_key ?? "");
   const [paymentGateway, setPaymentGateway] = useState<"sigilopay" | "evpay">(
     (bot.payment_gateway === "evpay" ? "evpay" : "sigilopay"),
@@ -103,6 +107,9 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
       await saveBotSettings(bot.id, {
         facebook_pixel_id: pixelId,
         facebook_access_token: accessToken,
+        facebook_pixel_id_backup: pixelIdBackup,
+        facebook_access_token_backup: accessTokenBackup,
+        facebook_backup_enabled: backupEnabled,
         utmify_api_key: utmifyKey,
         payment_gateway: paymentGateway,
         sigilopay_public_key: sigiloPublicKey,
@@ -393,12 +400,51 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
               <SectionHeader sKey="facebook" />
               <div className="space-y-4">
                 <div>
-                  <label className="input-label">Pixel ID</label>
+                  <label className="input-label">Pixel ID <span className="text-(--text-ghost) font-normal">(principal)</span></label>
                   <input type="text" value={pixelId} onChange={(e) => setPixelId(e.target.value)} placeholder="123456789012345" className="input" />
                 </div>
                 <div>
-                  <label className="input-label">Conversions API Token</label>
+                  <label className="input-label">Conversions API Token <span className="text-(--text-ghost) font-normal">(principal)</span></label>
                   <input type="text" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="EAAx..." className="input" />
+                </div>
+
+                {/* ── Pixel reserva (aquecimento) ───────────────────── */}
+                <div className="pt-4 mt-2 border-t border-(--border-subtle)">
+                  <label className="flex items-center justify-between gap-3 cursor-pointer select-none mb-1">
+                    <div>
+                      <div className="text-foreground text-sm font-medium flex items-center gap-2">
+                        🔥 Pixel reserva
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${backupEnabled ? "bg-(--cyan)/15 text-(--cyan)" : "bg-white/5 text-(--text-ghost)"}`}>
+                          {backupEnabled ? "ativo" : "desligado"}
+                        </span>
+                      </div>
+                      <div className="text-(--text-muted) text-xs mt-0.5 leading-relaxed max-w-md">
+                        Envia uma <b>cópia de todos os eventos</b> pra um 2º pixel — pra aquecer uma conta nova em paralelo, sem pausa, pronta pra assumir quando você precisar trocar.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={backupEnabled}
+                      onClick={() => setBackupEnabled((v) => !v)}
+                      className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${backupEnabled ? "bg-(--cyan)" : "bg-white/10"}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${backupEnabled ? "translate-x-5" : ""}`} />
+                    </button>
+                  </label>
+
+                  {backupEnabled && (
+                    <div className="space-y-4 mt-4 animate-in">
+                      <div>
+                        <label className="input-label">Pixel ID <span className="text-(--cyan) font-normal">(reserva)</span></label>
+                        <input type="text" value={pixelIdBackup} onChange={(e) => setPixelIdBackup(e.target.value)} placeholder="987654321098765" className="input" />
+                      </div>
+                      <div>
+                        <label className="input-label">Conversions API Token <span className="text-(--cyan) font-normal">(reserva)</span></label>
+                        <input type="text" value={accessTokenBackup} onChange={(e) => setAccessTokenBackup(e.target.value)} placeholder="EAAx..." className="input" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

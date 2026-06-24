@@ -27,6 +27,9 @@ interface Bot {
   evpay_project_id: string | null;
   facebook_pixel_id: string | null;
   facebook_access_token: string | null;
+  facebook_pixel_id_backup: string | null;
+  facebook_access_token_backup: string | null;
+  facebook_backup_enabled: boolean | null;
   utmify_api_key: string | null;
 }
 

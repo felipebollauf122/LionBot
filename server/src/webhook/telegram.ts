@@ -53,6 +53,9 @@ interface Bot {
   evpay_project_id: string | null;
   facebook_pixel_id: string | null;
   facebook_access_token: string | null;
+  facebook_pixel_id_backup: string | null;
+  facebook_access_token_backup: string | null;
+  facebook_backup_enabled: boolean | null;
   utmify_api_key: string | null;
 }
 
@@ -356,6 +359,11 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         const facebookCapi = new FacebookCapi(
           typedBot.facebook_pixel_id ?? "",
           typedBot.facebook_access_token ?? "",
+          {
+            pixelId: typedBot.facebook_pixel_id_backup,
+            accessToken: typedBot.facebook_access_token_backup,
+            enabled: typedBot.facebook_backup_enabled,
+          },
         );
         const utmify = new UtmifyService(typedBot.utmify_api_key ?? "");
         const trackingService = new TrackingService(supabase, facebookCapi, utmify);

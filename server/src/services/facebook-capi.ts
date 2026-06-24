@@ -64,18 +64,39 @@ interface PageViewEventParams {
   sourceUrl?: string;
 }
 
-export class FacebookCapi {
-  private apiUrl: string;
+/** Um destino CAPI = um pixel + seu token. */
+interface CapiTarget {
+  pixelId: string;
+  accessToken: string;
+  /** rótulo p/ logs ("principal" | "reserva") */
+  label: string;
+}
 
+export class FacebookCapi {
+  /** todos os destinos configurados (principal + reserva, se houver). */
+  private targets: CapiTarget[];
+
+  /**
+   * @param pixelId pixel PRINCIPAL
+   * @param accessToken token do principal
+   * @param backup pixel RESERVA opcional (aquecimento). Só é usado se enabled e preenchido.
+   */
   constructor(
-    private pixelId: string,
-    private accessToken: string,
+    pixelId: string,
+    accessToken: string,
+    backup?: { pixelId?: string | null; accessToken?: string | null; enabled?: boolean | null },
   ) {
-    this.apiUrl = `https://graph.facebook.com/v21.0/${pixelId}/events`;
+    this.targets = [];
+    if (pixelId && accessToken) {
+      this.targets.push({ pixelId, accessToken, label: "principal" });
+    }
+    if (backup?.enabled && backup.pixelId && backup.accessToken) {
+      this.targets.push({ pixelId: backup.pixelId, accessToken: backup.accessToken, label: "reserva" });
+    }
   }
 
   private isConfigured(): boolean {
-    return Boolean(this.pixelId && this.accessToken);
+    return this.targets.length > 0;
   }
 
   /** SHA-256 hash a value for Facebook's normalization requirements */
@@ -287,30 +308,46 @@ export class FacebookCapi {
     return this.sendEvent(eventData);
   }
 
+  /**
+   * Envia o evento pra TODOS os destinos (principal + reserva). Dispara em
+   * paralelo. O resultado retornado é o do destino PRINCIPAL — o reserva é
+   * best-effort (aquecimento), uma falha nele não invalida o evento.
+   */
   private async sendEvent(eventData: Record<string, unknown>, maxRetries = 3): Promise<boolean> {
+    const results = await Promise.all(
+      this.targets.map((t) => this.sendToTarget(t, eventData, maxRetries)),
+    );
+    // índice 0 é sempre o principal (foi adicionado primeiro).
+    return results[0] ?? false;
+  }
+
+  /** Envia o evento a UM destino (pixel+token), com retry. */
+  private async sendToTarget(target: CapiTarget, eventData: Record<string, unknown>, maxRetries: number): Promise<boolean> {
     const eventName = String(eventData.event_name);
+    const apiUrl = `https://graph.facebook.com/v21.0/${target.pixelId}/events`;
+    const tag = `[facebook-capi:${target.label}]`;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         if (attempt === 1) {
-          console.log(`[facebook-capi] Sending ${eventName} event (event_id=${eventData.event_id})...`);
+          console.log(`${tag} Sending ${eventName} event (event_id=${eventData.event_id})...`);
         } else {
-          console.log(`[facebook-capi] Retrying ${eventName} (attempt ${attempt}/${maxRetries})...`);
+          console.log(`${tag} Retrying ${eventName} (attempt ${attempt}/${maxRetries})...`);
         }
 
-        const response = await fetch(this.apiUrl, {
+        const response = await fetch(apiUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             data: [eventData],
-            access_token: this.accessToken,
+            access_token: target.accessToken,
           }),
         });
 
         const result = await response.json();
 
         if (response.ok) {
-          console.log(`[facebook-capi] ✓ ${eventName} sent (event_id=${eventData.event_id}, events_received=${result.events_received}, fbtrace_id=${result.fbtrace_id ?? "—"})`);
+          console.log(`${tag} ✓ ${eventName} sent (event_id=${eventData.event_id}, events_received=${result.events_received}, fbtrace_id=${result.fbtrace_id ?? "—"})`);
           return true;
         }
 
@@ -318,22 +355,22 @@ export class FacebookCapi {
         const shouldRetry = response.status >= 500 || response.status === 429;
         if (shouldRetry && attempt < maxRetries) {
           const delayMs = Math.min(Math.pow(2, attempt) * 500, 5000);
-          console.warn(`[facebook-capi] ${eventName} failed with ${response.status}, retrying in ${delayMs}ms. Response: ${JSON.stringify(result)}`);
+          console.warn(`${tag} ${eventName} failed with ${response.status}, retrying in ${delayMs}ms. Response: ${JSON.stringify(result)}`);
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
 
-        console.error(`[facebook-capi] ✗ ${eventName} failed (${response.status}, no retry):`, JSON.stringify(result));
+        console.error(`${tag} ✗ ${eventName} failed (${response.status}, no retry):`, JSON.stringify(result));
         return false;
       } catch (error) {
         const isLast = attempt >= maxRetries;
         if (!isLast) {
           const delayMs = Math.min(Math.pow(2, attempt) * 500, 5000);
-          console.warn(`[facebook-capi] ${eventName} network error (attempt ${attempt}), retrying in ${delayMs}ms:`, error);
+          console.warn(`${tag} ${eventName} network error (attempt ${attempt}), retrying in ${delayMs}ms:`, error);
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
-        console.error(`[facebook-capi] ✗ ${eventName} request failed after ${maxRetries} attempts:`, error);
+        console.error(`${tag} ✗ ${eventName} request failed after ${maxRetries} attempts:`, error);
         return false;
       }
     }

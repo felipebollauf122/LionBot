@@ -21,6 +21,9 @@ interface Bot {
   payment_gateway: string | null;
   facebook_pixel_id: string | null;
   facebook_access_token: string | null;
+  facebook_pixel_id_backup: string | null;
+  facebook_access_token_backup: string | null;
+  facebook_backup_enabled: boolean | null;
   utmify_api_key: string | null;
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
@@ -141,7 +144,11 @@ export async function completePurchase(
     if (alreadySent) {
       console.log(`[purchase-completer] tx ${transaction.id} já enviada ao Facebook — pulando CAPI (entrega segue normal)`);
     } else {
-      const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "");
+      const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "", {
+        pixelId: bot.facebook_pixel_id_backup,
+        accessToken: bot.facebook_access_token_backup,
+        enabled: bot.facebook_backup_enabled,
+      });
       const utmify = new UtmifyService(bot.utmify_api_key ?? "");
       const trackingService = new TrackingService(db, facebookCapi, utmify);
       const { data: product } = await db

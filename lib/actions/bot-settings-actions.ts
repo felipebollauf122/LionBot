@@ -7,6 +7,9 @@ import { invalidateBotCache } from "@/lib/actions/cache-actions";
 interface BotSettings {
   facebook_pixel_id: string;
   facebook_access_token: string;
+  facebook_pixel_id_backup: string;
+  facebook_access_token_backup: string;
+  facebook_backup_enabled: boolean;
   utmify_api_key: string;
   payment_gateway: "sigilopay" | "evpay";
   sigilopay_public_key: string;
@@ -52,6 +55,9 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
     .update({
       facebook_pixel_id: settings.facebook_pixel_id || null,
       facebook_access_token: settings.facebook_access_token || null,
+      facebook_pixel_id_backup: settings.facebook_pixel_id_backup || null,
+      facebook_access_token_backup: settings.facebook_access_token_backup || null,
+      facebook_backup_enabled: settings.facebook_backup_enabled,
       utmify_api_key: settings.utmify_api_key || null,
       payment_gateway: settings.payment_gateway,
       sigilopay_public_key: settings.sigilopay_public_key || null,

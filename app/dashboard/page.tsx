@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 const TOP_PLAYERS_PUBLIC = false;
 
 function greeting(): string {
-  const h = new Date().getHours();
+  // Hora em Brasília (UTC-3). A page roda no servidor (Vercel = UTC), então
+  // new Date().getHours() daria a hora UTC e erraria a saudação por 3h.
+  const h = new Date(Date.now() - 180 * 60_000).getUTCHours();
   if (h < 5) return "Boa madrugada";
   if (h < 12) return "Bom dia";
   if (h < 18) return "Boa tarde";

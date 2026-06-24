@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { THEMES, getTheme, applyTheme, getCustomColors, saveCustomColors, type ThemeId, type CustomColors } from "@/lib/theme";
 import { updateProfileTheme } from "@/lib/actions/profile-actions";
 
@@ -8,6 +8,11 @@ import { updateProfileTheme } from "@/lib/actions/profile-actions";
 export function ThemeSwitcher() {
   const [active, setActive] = useState<ThemeId>("synthwave");
   const [custom, setCustom] = useState<CustomColors>({ bg: "#0a0612", accent: "#ff2bd6", cyan: "#00e5ff", purple: "#b14bff" });
+  // debounce do save do tema personalizado: arrastar o color picker dispara
+  // onChange dezenas de vezes/seg. Salvar a cada uma = enxurrada de requisições
+  // + race (uma intermediária chega depois e sobrescreve a cor final). Salvamos
+  // só ~600ms depois da ÚLTIMA mudança → 1 request, sempre com a cor final.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -17,22 +22,33 @@ export function ThemeSwitcher() {
     return () => cancelAnimationFrame(id);
   }, []);
 
+  // limpa o timer pendente ao desmontar (evita salvar depois de sair da tela).
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+
   function pick(id: ThemeId) {
     applyTheme(id);
     setActive(id);
-    // persiste no banco (fonte de verdade — sobrevive ao Brave limpar localStorage)
+    // troca de preset salva NA HORA (cancela qualquer save de cor pendente).
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     void updateProfileTheme(id, id === "custom" ? getCustomColors() : null);
   }
 
   function updateCustom(key: keyof CustomColors, value: string) {
     const next = { ...custom, [key]: value };
     setCustom(next);
-    saveCustomColors(next);
+    saveCustomColors(next);     // localStorage na hora (preview instantâneo)
     if (active !== "custom") {
       applyTheme("custom");
       setActive("custom");
+    } else {
+      applyTheme("custom");     // re-aplica as cores novas sem trocar de tema
     }
-    void updateProfileTheme("custom", next);
+    // banco: debounced — só salva quando o usuário PARA de mexer na cor.
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void updateProfileTheme("custom", next);
+      saveTimer.current = null;
+    }, 600);
   }
 
   return (

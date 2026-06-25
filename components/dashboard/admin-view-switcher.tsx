@@ -28,7 +28,8 @@ export function AdminViewSwitcher({ users, currentView }: { users: ViewableUser[
 
   function setView(view: string) {
     const next = new URLSearchParams(params.toString());
-    if (view === "all") next.delete("view");
+    // "mine" é o DEFAULT (sem ?view) → remove o param. "all"/usuário = explícito.
+    if (view === "mine") next.delete("view");
     else next.set("view", view);
     const qs = next.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);

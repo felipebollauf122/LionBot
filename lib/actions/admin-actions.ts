@@ -261,9 +261,10 @@ export async function resolveViewScope(requested?: string): Promise<ViewScope> {
     return { tenantId: user.id, mode: "mine", isAdmin: false };
   }
 
-  // admin:
-  if (!requested || requested === "all") return { tenantId: null, mode: "all", isAdmin: true };
-  if (requested === "mine") return { tenantId: user.id, mode: "mine", isAdmin: true };
+  // admin: DEFAULT é "minha" (sem ?view) — abre sempre na dashboard pessoal.
+  // "Todos" só quando explicitamente pedido (?view=all).
+  if (!requested || requested === "mine") return { tenantId: user.id, mode: "mine", isAdmin: true };
+  if (requested === "all") return { tenantId: null, mode: "all", isAdmin: true };
   // requested é um tenantId específico
   return { tenantId: requested, mode: "user", isAdmin: true };
 }

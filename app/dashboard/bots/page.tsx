@@ -22,7 +22,7 @@ export default async function BotsPage({ searchParams }: { searchParams: Promise
       bots={bots}
       isAdmin={scope.isAdmin}
       viewUsers={viewUsers}
-      currentView={requestedView ?? "all"}
+      currentView={requestedView ?? "mine"}
     />
   );
 }

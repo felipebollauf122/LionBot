@@ -52,7 +52,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       showTopPlayers={canSeeTopPlayers}
       isAdmin={scope.isAdmin}
       viewUsers={users}
-      currentView={requestedView ?? "all"}
+      currentView={requestedView ?? "mine"}
     />
   );
 }

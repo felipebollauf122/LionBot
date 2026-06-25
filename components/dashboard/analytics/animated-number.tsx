@@ -39,43 +39,51 @@ interface AnimatedNumberProps {
 export function AnimatedNumber({ value, format = "int", durationMs = 1100, className, style }: AnimatedNumberProps) {
   const ref = useRef<HTMLSpanElement>(null);
   const [display, setDisplay] = useState(0);
-  const started = useRef(false);
+  const hasAnimatedIn = useRef(false); // já animou de 0 na 1ª vez que entrou em view?
+  const fromRef = useRef(0);           // valor de onde a animação atual parte
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      const id = requestAnimationFrame(() => setDisplay(value));
-      return () => cancelAnimationFrame(id);
-    }
 
-    const run = () => {
-      if (started.current) return;
-      started.current = true;
+    // anima de `from` até `value`. Cancela qualquer animação em andamento.
+    const animate = (from: number) => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (reduce) { setDisplay(value); fromRef.current = value; return; }
       const start = performance.now();
       const tick = (now: number) => {
         const t = Math.min(1, (now - start) / durationMs);
         const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
-        setDisplay(value * eased);
-        if (t < 1) requestAnimationFrame(tick);
-        else setDisplay(value);
+        const cur = from + (value - from) * eased;
+        setDisplay(cur);
+        if (t < 1) rafRef.current = requestAnimationFrame(tick);
+        else { setDisplay(value); fromRef.current = value; rafRef.current = null; }
       };
-      requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(tick);
     };
 
+    // Já animou a entrada → o valor MUDOU (troca de filtro): re-anima do atual.
+    if (hasAnimatedIn.current) {
+      animate(fromRef.current);
+      return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+    }
+
+    // 1ª vez: anima de 0 quando entra em view.
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
-          run();
+          hasAnimatedIn.current = true;
+          animate(0);
           io.disconnect();
         }
       },
       { threshold: 0.3 },
     );
     io.observe(el);
-    return () => io.disconnect();
+    return () => { io.disconnect(); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [value, durationMs]);
 
   return (

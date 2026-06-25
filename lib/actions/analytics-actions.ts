@@ -447,6 +447,10 @@ export interface DayPoint {
   date: string; // YYYY-MM-DD
   revenue: number; // cents
   sales: number;
+  /** rótulo curto p/ o eixo X (ex: "14h"). Se ausente, usa o dia-da-semana. */
+  label?: string;
+  /** rótulo completo p/ o tooltip (ex: "14:00–15:00"). Se ausente, usa a data. */
+  fullLabel?: string;
 }
 
 /** Dia-calendário (YYYY-MM-DD) de um ISO UTC, no fuso de Brasília. */
@@ -923,8 +927,17 @@ export interface DailyBucket {
   buyerIds: string[];    // lead_ids das vendas aprovadas do dia (p/ distintos no período)
 }
 
+/** Receita/vendas de UMA hora de UM dia (BRT). Pra o gráfico no modo Hoje/Ontem. */
+export interface HourBucket {
+  date: string;   // YYYY-MM-DD (BRT)
+  hour: number;   // 0..23 (BRT)
+  revenue: number;
+  sales: number;
+}
+
 export interface DashboardDaily {
   days: DailyBucket[];
+  hours: HourBucket[]; // só horas com venda aprovada (payload pequeno)
 }
 
 export async function getDashboardDaily(viewTenantId?: string | null): Promise<DashboardDaily> {
@@ -955,6 +968,10 @@ export async function getDashboardDaily(viewTenantId?: string | null): Promise<D
     return d;
   };
 
+  // hora-do-dia em BRT, só p/ vendas aprovadas (gráfico no modo Hoje/Ontem).
+  const hourMap = new Map<string, HourBucket>();
+  const brHour = (iso: string): number => new Date(new Date(iso).getTime() - BR_OFFSET_MIN * 60_000).getUTCHours();
+
   for (const t of txRows) {
     const key = brDateKey(t.created_at);
     const d = ensure(key);
@@ -964,6 +981,13 @@ export async function getDashboardDaily(viewTenantId?: string | null): Promise<D
       d.revenue += t.amount ?? 0;
       d.sales += 1;
       if (t.lead_id) d.buyerIds.push(t.lead_id);
+      // bucket por hora
+      const h = brHour(t.created_at);
+      const hk = `${key}-${h}`;
+      let hb = hourMap.get(hk);
+      if (!hb) { hb = { date: key, hour: h, revenue: 0, sales: 0 }; hourMap.set(hk, hb); }
+      hb.revenue += t.amount ?? 0;
+      hb.sales += 1;
     }
   }
 
@@ -977,7 +1001,8 @@ export async function getDashboardDaily(viewTenantId?: string | null): Promise<D
   }
 
   const days = [...dayMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
-  return { days };
+  const hours = [...hourMap.values()];
+  return { days, hours };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

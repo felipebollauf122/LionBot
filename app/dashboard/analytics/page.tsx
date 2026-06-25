@@ -82,7 +82,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <p className="text-(--text-secondary) text-sm mt-1 border-l-2 border-(--accent) pl-2">Métricas e relatórios</p>
         </div>
         {scope.isAdmin && (
-          <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "all"} />
+          <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "mine"} />
         )}
       </div>
 

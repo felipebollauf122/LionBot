@@ -96,22 +96,53 @@ export function DashboardClient({
     const conversionValid = topFunnel > 0 && sales > 0 && overlapDays > 0;
     const conversionRate = conversionValid ? convNumerator / topFunnel : null;
 
-    // gráfico "Seu Desempenho": receita por dia, SEGUINDO O PERÍODO.
+    // gráfico "Seu Desempenho": SEGUE O PERÍODO.
     const to = range.to ?? (inRange.length ? inRange[inRange.length - 1].date : todayKeyBR());
     const from = range.from ?? (inRange.length ? inRange[0].date : to);
-    const dayByKey = new Map(inRange.map((d) => [d.date, d]));
     const totalSpan = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
-    const span = Math.min(31, totalSpan); // cap p/ legibilidade em períodos enormes
-    const chartDays: { date: string; revenue: number; sales: number }[] = [];
-    for (let i = span - 1; i >= 0; i--) {
-      const key = addDays(to, -i);
-      const d = dayByKey.get(key);
-      chartDays.push({ date: key, revenue: d?.revenue ?? 0, sales: d?.sales ?? 0 });
+
+    type Point = { date: string; revenue: number; sales: number; label?: string; fullLabel?: string };
+    let chartDays: Point[];
+    let chartTruncated = false;
+    let chartSpan: number;
+    let hourly = false;
+
+    if (totalSpan === 1) {
+      // 1 dia só (Hoje/Ontem ou custom de 1 dia) → mostra POR HORA (24 buckets).
+      hourly = true;
+      const dayKey = from; // = to
+      const byHour = new Map<number, { revenue: number; sales: number }>();
+      for (const h of daily.hours ?? []) {
+        if (h.date === dayKey) byHour.set(h.hour, { revenue: h.revenue, sales: h.sales });
+      }
+      chartDays = Array.from({ length: 24 }, (_, h) => {
+        const c = byHour.get(h);
+        return {
+          date: `${dayKey}T${String(h).padStart(2, "0")}`,
+          revenue: c?.revenue ?? 0,
+          sales: c?.sales ?? 0,
+          label: `${h}h`,
+          fullLabel: `${String(h).padStart(2, "0")}:00–${String((h + 1) % 24).padStart(2, "0")}:00`,
+        };
+      });
+      chartSpan = 24;
+    } else {
+      // múltiplos dias → por dia (cap 31 p/ legibilidade).
+      const dayByKey = new Map(inRange.map((d) => [d.date, d]));
+      const span = Math.min(31, totalSpan);
+      chartSpan = span;
+      chartTruncated = span < totalSpan;
+      chartDays = [];
+      for (let i = span - 1; i >= 0; i--) {
+        const key = addDays(to, -i);
+        const d = dayByKey.get(key);
+        chartDays.push({ date: key, revenue: d?.revenue ?? 0, sales: d?.sales ?? 0 });
+      }
     }
 
     return { revenue, grossRevenue, sales, totalTx, visits, starts, checkouts, purchases, viewOffers,
       buyers: buyers.size, approvalRate, avgTicket, conversionRate, perSale, topFunnel, topFunnelLabel,
-      chartDays, chartTruncated: span < totalSpan, chartSpan: span };
+      chartDays, chartTruncated, chartSpan, hourly };
   }, [daily, period, startDate, endDate]);
 
   const periodLabel: Record<string, string> = {
@@ -178,7 +209,13 @@ export function DashboardClient({
           <RevenueChart
             data={view.chartDays}
             total={view.revenue}
-            subtitle={view.chartTruncated ? `${periodLabel[period] ?? "Receita"} · linha: últimos ${view.chartSpan} dias` : (periodLabel[period] ?? "Receita")}
+            subtitle={
+              view.hourly
+                ? `${periodLabel[period] ?? "Receita"} · por hora`
+                : view.chartTruncated
+                  ? `${periodLabel[period] ?? "Receita"} · linha: últimos ${view.chartSpan} dias`
+                  : (periodLabel[period] ?? "Receita")
+            }
           />
         </div>
         <ActivityFeed items={activity} />

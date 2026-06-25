@@ -824,6 +824,7 @@ export interface BotFleetRow {
   is_active: boolean;
   has_tracking: boolean;
   has_payment: boolean;
+  has_utmify: boolean; // tem Utmify configurada → link com UTM params
   revenue: number; // approved cents (all-time)
   sales: number;
   leads: number;
@@ -837,7 +838,7 @@ export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFle
   // já são restringidas via .in("bot_id", ids), então herdam o recorte.
   let botsQuery = supabase
     .from("bots")
-    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,created_at")
+    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,utmify_api_key,created_at")
     .order("created_at", { ascending: false });
   if (viewTenantId) botsQuery = botsQuery.eq("tenant_id", viewTenantId);
   const { data: bots } = await botsQuery;
@@ -893,6 +894,7 @@ export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFle
       is_active: !!b.is_active,
       has_tracking: !!b.facebook_pixel_id,
       has_payment: hasPayment,
+      has_utmify: !!b.utmify_api_key,
       revenue: r.revenue,
       sales: r.sales,
       leads: leadCount.get(b.id as string) ?? 0,

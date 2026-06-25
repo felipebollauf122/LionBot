@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { LionMark } from "@/components/brand/lion-mark";
+import { buildTrackingLink } from "@/lib/tracking-link";
 import type { Bot } from "@/lib/types/database";
 
 interface BotCardProps {
@@ -12,9 +13,7 @@ export function BotCard({ bot }: BotCardProps) {
   const [copied, setCopied] = useState(false);
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  const trackingUrl = bot.utmify_api_key
-    ? `bot=${bot.id}&utm_source=FB&utm_campaign={{campaign.name}}|{{campaign.id}}&utm_medium={{adset.name}}|{{adset.id}}&utm_content={{ad.name}}|{{ad.id}}&utm_term={{placement}}`
-    : `${baseUrl}/t?bot=${bot.id}`;
+  const trackingUrl = buildTrackingLink(bot.id, !!bot.utmify_api_key, baseUrl);
 
   function handleCopyTracking(e: React.MouseEvent) {
     e.preventDefault();

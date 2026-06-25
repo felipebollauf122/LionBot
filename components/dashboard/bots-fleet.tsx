@@ -6,6 +6,7 @@ import { LionMark } from "@/components/brand/lion-mark";
 import { CommandBar, CommandSearch, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
 import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
 import { AdminViewSwitcher } from "@/components/dashboard/admin-view-switcher";
+import { buildTrackingLink } from "@/lib/tracking-link";
 import type { BotFleetRow } from "@/lib/actions/analytics-actions";
 import type { ViewableUser } from "@/lib/actions/admin-actions";
 
@@ -157,8 +158,8 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
         </Metric>
       </div>
 
-      {/* Capabilities + status */}
-      <div className="flex items-center justify-between lg:justify-end gap-4 min-w-0 lg:w-56 lg:shrink-0">
+      {/* Capabilities + status + ações */}
+      <div className="flex items-center justify-between lg:justify-end gap-3 min-w-0 lg:w-72 lg:shrink-0">
         <div className="flex flex-col gap-2">
           <Capability on={bot.has_tracking} label="Tracking" />
           <Capability on={bot.has_payment} label="Pagamento" />
@@ -166,9 +167,49 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
         <span className={`badge ${bot.is_active ? "badge-active" : "badge-inactive"} shrink-0`}>
           {bot.is_active ? "Ativo" : "Inativo"}
         </span>
+        <CopyLinkButton botId={bot.id} hasUtmify={bot.has_utmify} />
         <svg className="hidden lg:block w-4 h-4 text-(--text-muted) group-hover:text-(--accent) group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
       </div>
     </Link>
+  );
+}
+
+/** Botão "Copiar link" do bot. Para o clique no card (que navega pros flows). */
+function CopyLinkButton({ botId, hasUtmify }: { botId: string; hasUtmify: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    navigator.clipboard.writeText(buildTrackingLink(botId, hasUtmify, origin));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={hasUtmify ? "Copiar link com UTMs (Utmify)" : "Copiar link do bot"}
+      className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+        copied
+          ? "border-(--cyan)/40 text-(--cyan) bg-(--cyan)/10"
+          : "border-(--border-subtle) text-(--text-secondary) hover:text-foreground hover:border-(--accent)/40 hover:bg-white/5"
+      }`}
+    >
+      {copied ? (
+        <>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          Copiado
+        </>
+      ) : (
+        <>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+          Link
+        </>
+      )}
+    </button>
   );
 }
 

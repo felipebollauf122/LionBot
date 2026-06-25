@@ -33,8 +33,6 @@ function generateFbp(): string {
 /**
  * Build fbc (Facebook Click ID) no formato exato da Meta.
  * Formato: fb.1.<click_unix_ms>.<fbclid>
- * Esse é o valor que vai pro user_data.fbc no CAPI e tb pro cookie _fbc
- * que o Pixel JS salvaria normalmente.
  */
 function buildFbc(fbclid: string, clickTimeMs: number): string {
   return `fb.1.${clickTimeMs}.${fbclid}`;
@@ -95,16 +93,12 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   const userAgent = hdrs.get("user-agent") ?? null;
   const acceptLanguage = hdrs.get("accept-language") ?? null;
   const referer = hdrs.get("referer") ?? hdrs.get("referrer") ?? null;
-  // geo-IP do Cloudflare (#14) — código ISO 2 letras, lowercase. Fallback br.
   const country = (hdrs.get("cf-ipcountry") ?? "br").toLowerCase();
 
   // timestamp do clique (1 por request — usado no fbc, no event e no rodapé).
-  // Server component renderiza 1x por request, então é estável e correto.
   // eslint-disable-next-line react-hooks/purity
   const clickTime = Date.now();
 
-  // _fbc real do browser — se já tem cookie do Meta, prevalece;
-  // senão, deriva de fbclid+timestamp atual no formato oficial Meta.
   const existingFbc = cookieStore.get("_fbc")?.value;
   const fbcCookie = existingFbc || (fbclid ? buildFbc(fbclid, clickTime) : "");
 
@@ -117,8 +111,6 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   const sourceUrl = host ? `${proto}://${host}/t${queryString.toString() ? "?" + queryString.toString() : ""}` : null;
 
   const tid = `tid_${nanoid(16)}`;
-  // event_id do PageView — o Pixel JS no browser (#12) dispara PageView com
-  // ESSE id, e o server pode reusar pra dedup browser+server.
   const pageViewEventId = `pv_${tid}`;
 
   await supabase.from("tracking_events").insert({
@@ -152,323 +144,151 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   });
 
   // Botão aponta pro NOSSO domínio (/go) que redireciona pro Telegram — o
-  // Facebook vê destino transparente, não o t.me direto (que ele marca como
-  // link enganoso). O tid carrega o tracking do clique até o /start.
+  // Facebook vê destino transparente, não o t.me direto.
   const redirectUrl = `/go?bot=${encodeURIComponent(typedBot.id)}&tid=${encodeURIComponent(tid)}`;
-  const displayName = typedBot.redirect_display_name?.trim() || `@${typedBot.bot_username}`;
+  const displayName = typedBot.redirect_display_name?.trim() || typedBot.bot_username || "Bot";
   const avatar = typedBot.avatar_url ?? null;
+  const year = new Date(clickTime).getUTCFullYear();
 
-  // Texto explicativo: personalizado por bot OU genérico (conteúdo "substancial"
-  // que o Facebook exige — página de ponte vazia é marcada como baixa qualidade).
   const introText = typedBot.tracking_page_intro?.trim() || DEFAULT_INTRO;
   const introParagraphs = introText.split(/\n{2,}|\n/).map((s) => s.trim()).filter(Boolean);
+
+  // ── NEON VAULT — direção after-dark magenta/cyan ──────────────────────────
+  const C = {
+    bg: "#0a0410",
+    accent: "#ff2bd6",   // magenta neon
+    cyan: "#22e0ff",
+    gold: "#ffb84d",
+    ink: "#f4e9ff",
+  };
 
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100svh",
         position: "relative",
         overflow: "hidden",
-        background: "radial-gradient(1200px 800px at 20% 0%, #0b2a5c 0%, transparent 55%), radial-gradient(900px 700px at 90% 100%, #0a1f4a 0%, transparent 50%), linear-gradient(180deg, #030815 0%, #050a1c 50%, #020614 100%)",
-        color: "#e8ecff",
+        background: C.bg,
+        color: C.ink,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
+        padding: "40px 20px 32px",
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
       }}
     >
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage:
-            "linear-gradient(rgba(96,165,250,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(96,165,250,0.06) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-          maskImage: "radial-gradient(ellipse at center, black 40%, transparent 80%)",
-          WebkitMaskImage: "radial-gradient(ellipse at center, black 40%, transparent 80%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          top: "-10%",
-          left: "30%",
-          width: "520px",
-          height: "520px",
-          background: "#3b82f6",
-          borderRadius: "9999px",
-          filter: "blur(140px)",
-          opacity: 0.18,
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          bottom: "-10%",
-          right: "10%",
-          width: "420px",
-          height: "420px",
-          background: "#60a5fa",
-          borderRadius: "9999px",
-          filter: "blur(120px)",
-          opacity: 0.14,
-          pointerEvents: "none",
-        }}
-      />
+      {/* Atmosfera: névoa neon ambiente */}
+      <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(680px 480px at 18% -8%, rgba(255,43,214,0.22) 0%, transparent 60%), radial-gradient(620px 520px at 92% 8%, rgba(34,224,255,0.16) 0%, transparent 58%), radial-gradient(700px 700px at 50% 120%, rgba(177,75,255,0.18) 0%, transparent 60%)` }} />
+      {/* Grão/grade sutil */}
+      <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: 0.5, backgroundImage: "linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(ellipse 80% 60% at 50% 30%, black 30%, transparent 75%)", WebkitMaskImage: "radial-gradient(ellipse 80% 60% at 50% 30%, black 30%, transparent 75%)" }} />
 
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: "420px",
-          borderRadius: "28px",
-          padding: "40px 32px 32px",
-          background:
-            "linear-gradient(180deg, rgba(20,30,60,0.85) 0%, rgba(10,18,40,0.9) 100%)",
-          border: "1px solid rgba(96,165,250,0.18)",
-          boxShadow:
-            "0 0 0 1px rgba(59,130,246,0.08) inset, 0 30px 80px -20px rgba(37,99,235,0.45), 0 0 120px -30px rgba(59,130,246,0.5)",
-          backdropFilter: "blur(12px)",
-          WebkitBackdropFilter: "blur(12px)",
-          textAlign: "center",
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            borderRadius: "28px",
-            padding: "1px",
-            background:
-              "linear-gradient(135deg, rgba(96,165,250,0.5) 0%, transparent 40%, transparent 60%, rgba(147,197,253,0.35) 100%)",
-            WebkitMask:
-              "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-            WebkitMaskComposite: "xor",
-            maskComposite: "exclude",
-            pointerEvents: "none",
-          }}
-        />
+      <main style={{ position: "relative", width: "100%", maxWidth: 440, display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
+        {/* Eyebrow */}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 14px", fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.accent, background: "rgba(255,43,214,0.08)", border: "1px solid rgba(255,43,214,0.28)", borderRadius: 999, marginBottom: 30, marginTop: 8, boxShadow: "0 0 24px -8px rgba(255,43,214,0.6)" }}>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: C.accent, boxShadow: `0 0 10px ${C.accent}`, animation: "lvPulse 1.6s ease-in-out infinite" }} />
+          Acesso liberado
+        </span>
 
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "6px 12px",
-            fontSize: "11px",
-            fontWeight: 600,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            color: "#93c5fd",
-            background: "rgba(59,130,246,0.10)",
-            border: "1px solid rgba(96,165,250,0.25)",
-            borderRadius: "999px",
-            marginBottom: "28px",
-          }}
-        >
-          <span
-            style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "999px",
-              background: "#60a5fa",
-              boxShadow: "0 0 10px #60a5fa",
-            }}
-          />
-          Acesso via Telegram
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: "24px" }}>
-          <div
-            style={{
-              position: "relative",
-              width: "104px",
-              height: "104px",
-              borderRadius: "28px",
-              background:
-                "linear-gradient(135deg, #1d4ed8 0%, #3b82f6 50%, #60a5fa 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow:
-                "0 18px 50px -10px rgba(59,130,246,0.55), 0 0 0 1px rgba(147,197,253,0.3), inset 0 1px 0 rgba(255,255,255,0.25)",
-              overflow: "hidden",
-            }}
-          >
-            {avatar ? (
-              <img
-                src={avatar}
-                alt={displayName}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : (
-              <svg width="52" height="52" viewBox="0 0 24 24" fill="#ffffff" aria-hidden>
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" />
-              </svg>
-            )}
+        {/* ── SIGNATURE: foto do bot no portal de luz neon girando ── */}
+        <div style={{ position: "relative", width: 188, height: 188, marginBottom: 26, animation: "lvRise 0.7s cubic-bezier(0.16,1,0.3,1) both" }}>
+          {/* anel girando (conic) */}
+          <div aria-hidden style={{ position: "absolute", inset: -7, borderRadius: 34, background: `conic-gradient(from 0deg, ${C.accent}, ${C.cyan}, ${C.gold}, ${C.accent})`, filter: "blur(2px)", animation: "lvSpin 4.5s linear infinite", opacity: 0.95 }} />
+          {/* halo difuso */}
+          <div aria-hidden style={{ position: "absolute", inset: -26, borderRadius: 48, background: `conic-gradient(from 0deg, ${C.accent}, ${C.cyan}, ${C.accent})`, filter: "blur(34px)", animation: "lvSpin 6s linear infinite", opacity: 0.5 }} />
+          {/* moldura interna preta (revela o anel como borda) */}
+          <div style={{ position: "absolute", inset: 0, borderRadius: 28, padding: 4, background: C.bg }}>
+            <div style={{ width: "100%", height: "100%", borderRadius: 24, overflow: "hidden", background: "linear-gradient(150deg, #2a0f3d 0%, #150720 100%)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 40px rgba(255,43,214,0.18)" }}>
+              {avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatar} alt={displayName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <svg width="74" height="74" viewBox="0 0 24 24" fill={C.accent} aria-hidden style={{ filter: `drop-shadow(0 0 16px ${C.accent})` }}>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" />
+                </svg>
+              )}
+            </div>
           </div>
         </div>
 
-        <p
-          style={{
-            fontSize: "13px",
-            color: "rgba(226,232,255,0.55)",
-            marginBottom: "8px",
-            fontWeight: 500,
-          }}
-        >
-          Você está prestes a acessar
-        </p>
-        <h1
-          style={{
-            fontSize: "28px",
-            fontWeight: 800,
-            letterSpacing: "-0.02em",
-            lineHeight: 1.15,
-            margin: 0,
-            marginBottom: "6px",
-            color: "#ffffff",
-            textShadow: "0 2px 20px rgba(59,130,246,0.35)",
-          }}
-        >
+        {/* Nome do bot — display pesado com glow */}
+        <h1 style={{ fontSize: "clamp(28px, 8vw, 38px)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.05, textAlign: "center", margin: 0, color: "#fff", textShadow: `0 0 28px rgba(255,43,214,0.55), 0 2px 12px rgba(0,0,0,0.5)`, animation: "lvRise 0.7s 0.06s cubic-bezier(0.16,1,0.3,1) both" }}>
           {displayName}
         </h1>
-        <p
-          style={{
-            fontSize: "13px",
-            color: "rgba(147,197,253,0.85)",
-            fontWeight: 500,
-            marginBottom: "22px",
-          }}
-        >
+        <p style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em", color: C.cyan, margin: "9px 0 0", fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', textShadow: `0 0 14px rgba(34,224,255,0.5)`, animation: "lvRise 0.7s 0.1s cubic-bezier(0.16,1,0.3,1) both" }}>
           @{typedBot.bot_username}
         </p>
 
-        {/* Conteúdo explicativo — contexto legítimo (anti "baixa qualidade") */}
-        <div style={{ textAlign: "left", marginBottom: "22px" }}>
-          {introParagraphs.map((para, i) => (
-            <p
-              key={i}
-              style={{
-                fontSize: "13.5px",
-                lineHeight: 1.65,
-                color: "rgba(226,232,255,0.78)",
-                margin: i === 0 ? "0 0 12px" : "0 0 12px",
-              }}
-            >
-              {para}
-            </p>
-          ))}
-          <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0" }}>
-            {TRUST_BULLETS.map((b, i) => (
-              <li
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "9px",
-                  fontSize: "12.5px",
-                  color: "rgba(226,232,255,0.72)",
-                  marginBottom: "9px",
-                  lineHeight: 1.4,
-                }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: "1px" }} aria-hidden>
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
+        {/* ── BOTÃO: o CTA dominante ── */}
         <a
           href={redirectUrl}
           style={{
+            position: "relative",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: "10px",
+            gap: 11,
             width: "100%",
-            padding: "16px 24px",
-            borderRadius: "16px",
-            fontWeight: 700,
-            fontSize: "15px",
+            marginTop: 30,
+            padding: "19px 24px",
+            borderRadius: 18,
+            fontWeight: 800,
+            fontSize: 16,
             letterSpacing: "0.01em",
-            color: "#ffffff",
-            background:
-              "linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%)",
-            border: "1px solid rgba(147,197,253,0.5)",
-            boxShadow:
-              "0 15px 40px -10px rgba(37,99,235,0.7), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.2)",
+            color: "#fff",
             textDecoration: "none",
-            transition: "transform 120ms ease, box-shadow 120ms ease",
+            background: `linear-gradient(120deg, ${C.accent} 0%, #c026d3 45%, ${C.cyan} 130%)`,
+            border: "1px solid rgba(255,255,255,0.22)",
+            boxShadow: `0 18px 50px -12px rgba(255,43,214,0.75), 0 0 0 1px rgba(255,43,214,0.25), inset 0 1px 0 rgba(255,255,255,0.4)`,
+            overflow: "hidden",
+            animation: "lvRise 0.7s 0.16s cubic-bezier(0.16,1,0.3,1) both, lvGlow 2.4s ease-in-out infinite",
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          {/* shimmer */}
+          <span aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(110deg, transparent 20%, rgba(255,255,255,0.45) 50%, transparent 80%)", transform: "translateX(-120%)", animation: "lvShimmer 3.2s ease-in-out infinite" }} />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden style={{ position: "relative" }}>
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" />
           </svg>
-          <span>Acessar no Telegram</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <span style={{ position: "relative" }}>Acessar no Telegram</span>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ position: "relative" }}>
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </a>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            marginTop: "20px",
-            padding: "12px 14px",
-            borderRadius: "12px",
-            background: "rgba(59,130,246,0.06)",
-            border: "1px solid rgba(96,165,250,0.12)",
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <span style={{ fontSize: "11.5px", color: "rgba(226,232,255,0.7)", textAlign: "left", lineHeight: 1.4 }}>
-            Link oficial protegido. Ao clicar, o Telegram abrirá com o bot verificado.
-          </span>
-        </div>
-      </div>
+        <p style={{ fontSize: 11.5, color: "rgba(244,233,255,0.45)", margin: "14px 0 0", display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.cyan} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+          Link oficial verificado · abre direto no Telegram
+        </p>
 
-      {/* Rodapé legal — o Facebook exige Política/Termos/identificação comercial
-          pra não tratar a página como link enganoso (phishing). */}
-      <footer
-        style={{
-          position: "relative",
-          marginTop: "30px",
-          maxWidth: "420px",
-          textAlign: "center",
-          fontSize: "11px",
-          color: "rgba(226,232,255,0.45)",
-          lineHeight: 1.7,
-        }}
-      >
+        {/* ── Conteúdo explicativo (anti-bloqueio FB) — discreto ── */}
+        <section style={{ width: "100%", marginTop: 30, padding: "20px 20px 4px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)", textAlign: "left", animation: "lvRise 0.7s 0.24s cubic-bezier(0.16,1,0.3,1) both" }}>
+          {introParagraphs.map((para, i) => (
+            <p key={i} style={{ fontSize: 13, lineHeight: 1.62, color: "rgba(244,233,255,0.72)", margin: "0 0 12px" }}>{para}</p>
+          ))}
+          <ul style={{ listStyle: "none", padding: 0, margin: "4px 0 16px" }}>
+            {TRUST_BULLETS.map((b, i) => (
+              <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 12.5, color: "rgba(244,233,255,0.66)", marginBottom: 9, lineHeight: 1.4 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }} aria-hidden><polyline points="20 6 9 17 4 12" /></svg>
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </main>
+
+      {/* Rodapé legal */}
+      <footer style={{ position: "relative", marginTop: 26, maxWidth: 440, textAlign: "center", fontSize: 11, color: "rgba(244,233,255,0.4)", lineHeight: 1.7 }}>
         <p style={{ margin: 0 }}>
-          <b style={{ color: "rgba(226,232,255,0.6)" }}>LionBot Assistentes Digitais</b>
+          <b style={{ color: "rgba(244,233,255,0.6)", letterSpacing: "0.04em" }}>LionBot Assistentes Digitais</b>
         </p>
         <p style={{ margin: "5px 0 0" }}>
-          <a href="/privacidade" style={{ color: "rgba(147,197,253,0.8)" }}>Política de Privacidade</a>
+          <a href="/privacidade" style={{ color: "rgba(255,43,214,0.75)" }}>Política de Privacidade</a>
           {" · "}
-          <a href="/termos" style={{ color: "rgba(147,197,253,0.8)" }}>Termos de Uso</a>
+          <a href="/termos" style={{ color: "rgba(255,43,214,0.75)" }}>Termos de Uso</a>
         </p>
-        <p style={{ margin: "8px 0 0", fontSize: "10px", color: "rgba(226,232,255,0.3)" }}>
-          © {new Date(clickTime).getUTCFullYear()} LionBot · contato@lionbot.app
-        </p>
+        <p style={{ margin: "8px 0 0", fontSize: 10, color: "rgba(244,233,255,0.28)" }}>© {year} LionBot · contato@lionbot.app</p>
       </footer>
 
+      {/* cookies _fbp/_fbc no browser (não muda otimização) */}
       <script
         dangerouslySetInnerHTML={{
           __html: `try{
@@ -479,23 +299,17 @@ ${fbcCookie ? `var f=document.cookie.split('; ').find(function(c){return c.index
         }}
       />
 
-      {/* Meta Pixel JS (#12) DESLIGADO 2026-06-03: junto com os eventos de
-          funil no CAPI, o PageView no browser introduziu sinal novo que
-          coincidiu com a queda nas vendas. Revertido pro estado que vendia.
-          Os cookies _fbp/_fbc continuam sendo setados acima (não mudam
-          otimização). Pra religar e testar dedup browser+server no futuro,
-          troque PIXEL_BROWSER_ENABLED pra true. */}
-      {false && typedBot.facebook_pixel_id ? (
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{
-!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-fbq('init','${typedBot.facebook_pixel_id}');
-fbq('track','PageView',{},{eventID:'${pageViewEventId}'});
-}catch(e){}`,
-          }}
-        />
-      ) : null}
+      <style>{`
+        @keyframes lvSpin { to { transform: rotate(360deg); } }
+        @keyframes lvPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+        @keyframes lvShimmer { 0%{transform:translateX(-120%)} 55%,100%{transform:translateX(220%)} }
+        @keyframes lvGlow { 0%,100%{box-shadow:0 18px 50px -12px rgba(255,43,214,0.75),0 0 0 1px rgba(255,43,214,0.25),inset 0 1px 0 rgba(255,255,255,0.4)} 50%{box-shadow:0 22px 64px -10px rgba(255,43,214,0.95),0 0 0 1px rgba(34,224,255,0.4),inset 0 1px 0 rgba(255,255,255,0.5)} }
+        @keyframes lvRise { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        a[href^="/go"]:active { transform: scale(0.98); }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -504,17 +318,17 @@ function InvalidLink() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100svh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(180deg, #030815 0%, #020614 100%)",
-        color: "rgba(226,232,255,0.5)",
-        fontSize: "14px",
+        background: "#0a0410",
+        color: "rgba(244,233,255,0.5)",
+        fontSize: 14,
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto',
       }}
     >
-      Link invalido
+      Link inválido ou expirado.
     </div>
   );
 }

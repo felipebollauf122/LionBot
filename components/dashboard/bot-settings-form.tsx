@@ -99,6 +99,7 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
   const [imageUrl, setImageUrl] = useState(bot.prelander_image_url ?? "");
   const [ctaText, setCtaText] = useState(bot.prelander_cta_text ?? "");
   const [redirectDisplayName, setRedirectDisplayName] = useState(bot.redirect_display_name ?? "");
+  const [trackingPageIntro, setTrackingPageIntro] = useState(bot.tracking_page_intro ?? "");
 
   const handleSave = async () => {
     setSaving(true);
@@ -124,6 +125,7 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
         prelander_image_url: imageUrl,
         prelander_cta_text: ctaText,
         redirect_display_name: redirectDisplayName,
+        tracking_page_intro: trackingPageIntro,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -600,18 +602,33 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                 </div>
 
                 {trackingMode === "redirect" && (
-                  <div className="animate-in">
-                    <label className="input-label">Nome exibido no redirect</label>
-                    <input
-                      type="text"
-                      value={redirectDisplayName}
-                      onChange={(e) => setRedirectDisplayName(e.target.value)}
-                      placeholder="Ex: Oferta VIP"
-                      className="input"
-                    />
-                    <p className="text-(--text-muted) text-xs mt-2">
-                      Nome amigável que aparece na pagina antes do Telegram abrir. Deixe em branco para usar o @username do bot.
-                    </p>
+                  <div className="space-y-4 animate-in">
+                    <div>
+                      <label className="input-label">Nome exibido no redirect</label>
+                      <input
+                        type="text"
+                        value={redirectDisplayName}
+                        onChange={(e) => setRedirectDisplayName(e.target.value)}
+                        placeholder="Ex: Oferta VIP"
+                        className="input"
+                      />
+                      <p className="text-(--text-muted) text-xs mt-2">
+                        Nome amigável que aparece na pagina antes do Telegram abrir. Deixe em branco para usar o @username do bot.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="input-label">Texto da página de acesso</label>
+                      <textarea
+                        value={trackingPageIntro}
+                        onChange={(e) => setTrackingPageIntro(e.target.value)}
+                        rows={5}
+                        placeholder="Escreva 2 parágrafos que despertem a curiosidade do cliente e expliquem o que ele vai encontrar no bot. Ex: 'Você está a um clique de receber...'"
+                        className="input resize-none"
+                      />
+                      <p className="text-(--text-muted) text-xs mt-2">
+                        Conteúdo que aparece na página antes do botão. Ajuda a <b>evitar bloqueio do Facebook</b> (página sem texto é marcada como link enganoso). Deixe em branco para usar um texto genérico padrão.
+                      </p>
+                    </div>
                   </div>
                 )}
 

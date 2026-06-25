@@ -65,6 +65,7 @@ export interface Bot {
   prelander_cta_text: string | null;
   avatar_url: string | null;
   redirect_display_name: string | null;
+  tracking_page_intro: string | null;
   black_enabled: boolean;
   protect_content: boolean;
   created_at: string;

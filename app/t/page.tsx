@@ -7,6 +7,24 @@ interface TrackingPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
+/** Texto genérico (instiga curiosidade + dá contexto legítimo) usado quando o
+ *  bot não tem um texto próprio configurado. Vira o conteúdo "substancial" da
+ *  página que o Facebook escaneia pra não marcar como link de baixa qualidade. */
+const DEFAULT_INTRO =
+  "Você está a um clique de acessar nosso assistente virtual exclusivo no Telegram. " +
+  "Lá dentro, você recebe o conteúdo que veio buscar de forma rápida, segura e direta — " +
+  "sem cadastros complicados e sem enrolação.\n\n" +
+  "Nosso assistente foi criado para te atender em poucos segundos: é só iniciar a conversa " +
+  "e seguir as instruções na tela. Tudo acontece dentro do Telegram, o aplicativo de mensagens " +
+  "mais seguro e prático do mundo. Toque no botão abaixo para começar agora mesmo.";
+
+/** Bullets de apoio (reforçam legitimidade e contexto pro robô do Facebook). */
+const TRUST_BULLETS = [
+  "Acesso imediato, direto no seu Telegram",
+  "Conteúdo entregue de forma automática e segura",
+  "Suporte e instruções passo a passo no próprio chat",
+];
+
 function generateFbp(): string {
   const rand = Math.floor(Math.random() * 1e10);
   return `fb.1.${Date.now()}.${rand}`;
@@ -80,10 +98,15 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   // geo-IP do Cloudflare (#14) — código ISO 2 letras, lowercase. Fallback br.
   const country = (hdrs.get("cf-ipcountry") ?? "br").toLowerCase();
 
+  // timestamp do clique (1 por request — usado no fbc, no event e no rodapé).
+  // Server component renderiza 1x por request, então é estável e correto.
+  // eslint-disable-next-line react-hooks/purity
+  const clickTime = Date.now();
+
   // _fbc real do browser — se já tem cookie do Meta, prevalece;
   // senão, deriva de fbclid+timestamp atual no formato oficial Meta.
   const existingFbc = cookieStore.get("_fbc")?.value;
-  const fbcCookie = existingFbc || (fbclid ? buildFbc(fbclid, Date.now()) : "");
+  const fbcCookie = existingFbc || (fbclid ? buildFbc(fbclid, clickTime) : "");
 
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "";
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
@@ -93,7 +116,6 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   }
   const sourceUrl = host ? `${proto}://${host}/t${queryString.toString() ? "?" + queryString.toString() : ""}` : null;
 
-  const clickTime = Date.now();
   const tid = `tid_${nanoid(16)}`;
   // event_id do PageView — o Pixel JS no browser (#12) dispara PageView com
   // ESSE id, e o server pode reusar pra dedup browser+server.
@@ -129,9 +151,17 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
     sent_to_utmify: false,
   });
 
-  const telegramDeepLink = `https://t.me/${typedBot.bot_username}?start=${tid}`;
+  // Botão aponta pro NOSSO domínio (/go) que redireciona pro Telegram — o
+  // Facebook vê destino transparente, não o t.me direto (que ele marca como
+  // link enganoso). O tid carrega o tracking do clique até o /start.
+  const redirectUrl = `/go?bot=${encodeURIComponent(typedBot.id)}&tid=${encodeURIComponent(tid)}`;
   const displayName = typedBot.redirect_display_name?.trim() || `@${typedBot.bot_username}`;
   const avatar = typedBot.avatar_url ?? null;
+
+  // Texto explicativo: personalizado por bot OU genérico (conteúdo "substancial"
+  // que o Facebook exige — página de ponte vazia é marcada como baixa qualidade).
+  const introText = typedBot.tracking_page_intro?.trim() || DEFAULT_INTRO;
+  const introParagraphs = introText.split(/\n{2,}|\n/).map((s) => s.trim()).filter(Boolean);
 
   return (
     <div
@@ -316,14 +346,52 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
             fontSize: "13px",
             color: "rgba(147,197,253,0.85)",
             fontWeight: 500,
-            marginBottom: "28px",
+            marginBottom: "22px",
           }}
         >
           @{typedBot.bot_username}
         </p>
 
+        {/* Conteúdo explicativo — contexto legítimo (anti "baixa qualidade") */}
+        <div style={{ textAlign: "left", marginBottom: "22px" }}>
+          {introParagraphs.map((para, i) => (
+            <p
+              key={i}
+              style={{
+                fontSize: "13.5px",
+                lineHeight: 1.65,
+                color: "rgba(226,232,255,0.78)",
+                margin: i === 0 ? "0 0 12px" : "0 0 12px",
+              }}
+            >
+              {para}
+            </p>
+          ))}
+          <ul style={{ listStyle: "none", padding: 0, margin: "16px 0 0" }}>
+            {TRUST_BULLETS.map((b, i) => (
+              <li
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "9px",
+                  fontSize: "12.5px",
+                  color: "rgba(226,232,255,0.72)",
+                  marginBottom: "9px",
+                  lineHeight: 1.4,
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: "1px" }} aria-hidden>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <a
-          href={telegramDeepLink}
+          href={redirectUrl}
           style={{
             display: "flex",
             alignItems: "center",
@@ -375,19 +443,31 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
         </div>
       </div>
 
-      <p
+      {/* Rodapé legal — o Facebook exige Política/Termos/identificação comercial
+          pra não tratar a página como link enganoso (phishing). */}
+      <footer
         style={{
           position: "relative",
-          marginTop: "28px",
-          fontSize: "10.5px",
-          color: "rgba(226,232,255,0.35)",
-          letterSpacing: "0.22em",
-          textTransform: "uppercase",
-          fontWeight: 600,
+          marginTop: "30px",
+          maxWidth: "420px",
+          textAlign: "center",
+          fontSize: "11px",
+          color: "rgba(226,232,255,0.45)",
+          lineHeight: 1.7,
         }}
       >
-        Powered by LionBot
-      </p>
+        <p style={{ margin: 0 }}>
+          <b style={{ color: "rgba(226,232,255,0.6)" }}>LionBot Assistentes Digitais</b>
+        </p>
+        <p style={{ margin: "5px 0 0" }}>
+          <a href="/privacidade" style={{ color: "rgba(147,197,253,0.8)" }}>Política de Privacidade</a>
+          {" · "}
+          <a href="/termos" style={{ color: "rgba(147,197,253,0.8)" }}>Termos de Uso</a>
+        </p>
+        <p style={{ margin: "8px 0 0", fontSize: "10px", color: "rgba(226,232,255,0.3)" }}>
+          © {new Date(clickTime).getUTCFullYear()} LionBot · contato@lionbot.app
+        </p>
+      </footer>
 
       <script
         dangerouslySetInnerHTML={{

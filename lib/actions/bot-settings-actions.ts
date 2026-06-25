@@ -24,6 +24,7 @@ interface BotSettings {
   prelander_image_url: string;
   prelander_cta_text: string;
   redirect_display_name: string;
+  tracking_page_intro: string;
 }
 
 async function registerEvpayWebhookOnServer(botId: string): Promise<void> {
@@ -72,6 +73,7 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
       prelander_image_url: settings.prelander_image_url || null,
       prelander_cta_text: settings.prelander_cta_text || null,
       redirect_display_name: settings.redirect_display_name || null,
+      tracking_page_intro: settings.tracking_page_intro || null,
     })
     .eq("id", botId);
 

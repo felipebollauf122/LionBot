@@ -144,8 +144,10 @@ export function DashboardClient({
         </Link>
       </div>
 
-      {/* Seletor de visão (só admin) + filtro de período */}
-      <div className="mb-4 animate-up flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+      {/* Seletor de visão (só admin) + filtro de período.
+          relative z-30: eleva esta linha acima dos cards (que têm animações com
+          transform → criam stacking context próprio), senão o dropdown some atrás. */}
+      <div className="relative z-30 mb-4 animate-up flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         {isAdmin ? (
           <AdminViewSwitcher users={viewUsers} currentView={currentView} />
         ) : (

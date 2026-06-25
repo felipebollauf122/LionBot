@@ -72,8 +72,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 animate-up">
+      {/* Header (relative z-30: o dropdown do AdminViewSwitcher precisa ficar
+          acima dos cards, que têm animações com transform → stacking context) */}
+      <div className="relative z-30 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 animate-up">
         <div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight page-title">
             Aná<span className="gradient-text">lises</span>

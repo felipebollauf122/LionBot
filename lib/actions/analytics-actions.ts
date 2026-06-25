@@ -830,13 +830,17 @@ export interface BotFleetRow {
   created_at: string;
 }
 
-export async function getBotsFleet(): Promise<BotFleetRow[]> {
+export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFleetRow[]> {
   const supabase = await createClient();
 
-  const { data: bots } = await supabase
+  // viewTenantId: admin vendo 1 usuário → só os bots dele. As tx/leads abaixo
+  // já são restringidas via .in("bot_id", ids), então herdam o recorte.
+  let botsQuery = supabase
     .from("bots")
     .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,created_at")
     .order("created_at", { ascending: false });
+  if (viewTenantId) botsQuery = botsQuery.eq("tenant_id", viewTenantId);
+  const { data: bots } = await botsQuery;
 
   const list = bots ?? [];
   if (list.length === 0) return [];

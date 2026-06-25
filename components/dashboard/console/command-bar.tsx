@@ -21,8 +21,10 @@ interface CommandBarProps {
  * Collapses gracefully on mobile (stacks).
  */
 export function CommandBar({ title, subtitle, search, filters, kpis, action }: CommandBarProps) {
+  // overflow-x-clip: corta só horizontal (mobile não vaza), mas deixa o dropdown
+  // do AdminViewSwitcher escapar pra baixo (overflow-hidden cortaria).
   return (
-    <div className="sticky top-0 z-20 glass border-b border-(--border-subtle) px-4 sm:px-6 py-3 pt-safe overflow-hidden">
+    <div className="sticky top-0 z-20 glass border-b border-(--border-subtle) px-4 sm:px-6 py-3 pt-safe overflow-x-clip">
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5 min-w-0">
         {/* Title */}
         <div className="min-w-0 shrink-0">

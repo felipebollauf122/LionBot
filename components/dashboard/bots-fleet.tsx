@@ -5,7 +5,9 @@ import Link from "next/link";
 import { LionMark } from "@/components/brand/lion-mark";
 import { CommandBar, CommandSearch, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
 import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
+import { AdminViewSwitcher } from "@/components/dashboard/admin-view-switcher";
 import type { BotFleetRow } from "@/lib/actions/analytics-actions";
+import type { ViewableUser } from "@/lib/actions/admin-actions";
 
 function brl(cents: number) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -26,7 +28,17 @@ type Filter = "all" | "active" | "inactive";
  * status crest, live metrics (revenue/sales/leads), capability bar, quick open.
  * Replaces the old square card grid with a dense, informative fleet layout.
  */
-export function BotsFleet({ bots }: { bots: BotFleetRow[] }) {
+export function BotsFleet({
+  bots,
+  isAdmin = false,
+  viewUsers = [],
+  currentView = "all",
+}: {
+  bots: BotFleetRow[];
+  isAdmin?: boolean;
+  viewUsers?: ViewableUser[];
+  currentView?: string;
+}) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -58,6 +70,7 @@ export function BotsFleet({ bots }: { bots: BotFleetRow[] }) {
         search={<CommandSearch value={search} onChange={setSearch} placeholder="Buscar bot..." />}
         filters={
           <>
+            {isAdmin && <AdminViewSwitcher users={viewUsers} currentView={currentView} />}
             <FilterChip active={filter === "all"} onClick={() => setFilter("all")} count={bots.length}>Todos</FilterChip>
             <FilterChip active={filter === "active"} onClick={() => setFilter("active")} count={totals.active}>Ativos</FilterChip>
             <FilterChip active={filter === "inactive"} onClick={() => setFilter("inactive")} count={bots.length - totals.active}>Inativos</FilterChip>

@@ -61,10 +61,11 @@ export async function sendPushToTenant(tenantId: string, payload: PushPayload): 
 }
 
 /** Convenience: notify the tenant that a sale was approved.
- *  Mensagem enxuta: SÓ "Venda aprovada" + a quantia (sem nome de produto/bot). */
+ *  Mensagem enxuta: SÓ "Venda aprovada" + a quantia. NÃO recebe produto/bot de
+ *  propósito — a notificação não deve expor nome de produto nem do bot. */
 export async function notifySale(
   tenantId: string,
-  opts: { amount: number; productName?: string | null; botName?: string | null },
+  opts: { amount: number },
 ): Promise<void> {
   const value = (opts.amount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   await sendPushToTenant(tenantId, {

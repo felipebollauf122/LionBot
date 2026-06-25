@@ -245,11 +245,8 @@ export async function processPaymentCallback(botId: string | null, body: Record<
         .eq("id", transaction.product_id)
         .single();
       const productName = (prod as { name?: string } | null)?.name ?? null;
-      await notifySale(transaction.tenant_id, {
-        amount: transaction.amount,
-        productName,
-        botName: (bot as unknown as { bot_username?: string }).bot_username ?? null,
-      });
+      // Notificação: SÓ a quantia (sem produto/bot, de propósito).
+      await notifySale(transaction.tenant_id, { amount: transaction.amount });
       logEvent(
         {
           leadId: transaction.lead_id,

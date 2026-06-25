@@ -82,9 +82,11 @@ export async function handlePaymentBundleNode(
     return { nextNodeId: null };
   }
 
-  // Ghost name agora vale em qualquer fluxo (white e black). Se não está
-  // preenchido, cai pro nome real. Único critério de visibilidade do
-  // editor de ghost é admin (já enforced no front).
+  // ATENÇÃO: o nome REAL (product.name) só pode aparecer no TELEGRAM do cliente
+  // (botões/mensagens). Pra QUALQUER saída externa (gateway PIX, Facebook CAPI,
+  // Utmify) usa-se SEMPRE productLabelForExternal/gatewayName → ghost OU genérico
+  // ("Product N"), NUNCA o nome real, mesmo com ghost vazio. Não introduza
+  // fallback `ghost || name` em saída externa — vaza o nome e bane criativo.
   // Build inline keyboard — one button per product with name + price.
   // Cada produto pode ter button_style ('danger', 'success', 'primary') que
   // colore o botão (Bot API 8.x+). Clientes Telegram antigos ignoram o campo
@@ -375,8 +377,8 @@ export async function handleProductPaymentCallback(
       botId: ctx.lead.bot_id,
     };
 
-    // Facebook InitiateCheckout event — usa GHOST (mesma regra da gateway:
-    // tudo que sai pra fora do nosso sistema usa ghost, fallback pro real).
+    // Facebook InitiateCheckout — usa gatewayName (= productLabelForExternal):
+    // ghost OU genérico "Product N". NUNCA o nome real (mesma regra da gateway).
     trackingSvc.trackCheckout({
       tenantId: ctx.lead.tenant_id,
       leadId: ctx.lead.id,

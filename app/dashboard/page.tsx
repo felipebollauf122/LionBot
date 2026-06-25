@@ -1,5 +1,5 @@
 import { getTenantName, getActivityFeed, getDashboardDaily, getTopSellers } from "@/lib/actions/analytics-actions";
-import { isAdmin } from "@/lib/actions/admin-actions";
+import { resolveViewScope, getViewableUsers } from "@/lib/actions/admin-actions";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 
 export const dynamic = "force-dynamic";
@@ -18,19 +18,25 @@ function greeting(): string {
   return "Boa noite";
 }
 
-export default async function DashboardPage() {
-  // Carrega TUDO 1x (série diária pré-agregada — payload pequeno). A troca de
-  // período é feita no cliente, instantânea, sem novo round-trip.
-  const [name, daily, activity, admin] = await Promise.all([
+type SP = { [key: string]: string | string[] | undefined };
+
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const requestedView = typeof sp.view === "string" ? sp.view : undefined;
+
+  // Resolve a visão de admin com SEGURANÇA (não-admin sempre vê só o próprio).
+  const scope = await resolveViewScope(requestedView);
+
+  // Carrega TUDO 1x (série diária pré-agregada). A troca de período é no cliente.
+  const [name, daily, activity, users] = await Promise.all([
     getTenantName(),
-    getDashboardDaily(),
-    getActivityFeed(12),
-    isAdmin(),
+    getDashboardDaily(scope.tenantId),
+    getActivityFeed(12, scope.tenantId),
+    scope.isAdmin ? getViewableUsers() : Promise.resolve([]),
   ]);
 
-  // Top 5 Players: visível só pra admin (ou pra todos, se TOP_PLAYERS_PUBLIC).
-  // Só roda a query (pesada, service-role) quando vai realmente mostrar.
-  const canSeeTopPlayers = TOP_PLAYERS_PUBLIC || admin;
+  // Top 5 Players (ranking global) só pra admin; independe do escopo de visão.
+  const canSeeTopPlayers = TOP_PLAYERS_PUBLIC || scope.isAdmin;
   const topSellers = canSeeTopPlayers ? await getTopSellers(5) : [];
 
   const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
@@ -44,6 +50,9 @@ export default async function DashboardPage() {
       activity={activity}
       topSellers={topSellers}
       showTopPlayers={canSeeTopPlayers}
+      isAdmin={scope.isAdmin}
+      viewUsers={users}
+      currentView={requestedView ?? "all"}
     />
   );
 }

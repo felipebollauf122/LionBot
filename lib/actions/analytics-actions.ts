@@ -24,6 +24,8 @@ export interface AnalyticsFilters {
   flowId?: string;
   gateway?: string;
   source?: string;
+  /** Admin: restringe a um único usuário (tenant). null/undefined = todos. */
+  viewTenantId?: string | null;
 }
 
 // Fuso de referência do negócio (Brasil = UTC-3). created_at é gravado em UTC;
@@ -94,6 +96,9 @@ function applyFilters(query: any, filters: AnalyticsFilters, opts?: { createdCol
   if (start) q = q.gte(col, start);
   if (end) q = q.lt(col, end);
   if (filters.botId) q = q.eq("bot_id", filters.botId);
+  // Admin vendo 1 usuário específico: restringe ao tenant. (RLS não restringe
+  // admin, então o filtro explícito é o que separa "minha"/"por usuário".)
+  if (filters.viewTenantId) q = q.eq("tenant_id", filters.viewTenantId);
   return q;
 }
 
@@ -500,6 +505,7 @@ export async function getSalesByWeekday(filters: AnalyticsFilters = {}): Promise
     if (filters.botId) q = q.eq("bot_id", filters.botId);
     if (filters.flowId) q = q.eq("flow_id", filters.flowId);
     if (filters.gateway) q = q.eq("gateway", filters.gateway);
+    if (filters.viewTenantId) q = q.eq("tenant_id", filters.viewTenantId);
     return q;
   });
 
@@ -563,12 +569,14 @@ export interface ActivityItem {
   at: string; // ISO
 }
 
-export async function getActivityFeed(limit = 12): Promise<ActivityItem[]> {
+export async function getActivityFeed(limit = 12, viewTenantId?: string | null): Promise<ActivityItem[]> {
   const supabase = await createClient();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scoped = (q: any) => (viewTenantId ? q.eq("tenant_id", viewTenantId) : q);
   const [leadsRes, txRes] = await Promise.all([
-    supabase.from("leads").select("first_name,username,created_at").order("created_at", { ascending: false }).limit(limit),
-    supabase.from("transactions").select("amount,status,created_at, products(name,ghost_name)").order("created_at", { ascending: false }).limit(limit),
+    scoped(supabase.from("leads").select("first_name,username,created_at").order("created_at", { ascending: false }).limit(limit)),
+    scoped(supabase.from("transactions").select("amount,status,created_at, products(name,ghost_name)").order("created_at", { ascending: false }).limit(limit)),
   ]);
 
   const items: ActivityItem[] = [];
@@ -913,16 +921,21 @@ export interface DashboardDaily {
   days: DailyBucket[];
 }
 
-export async function getDashboardDaily(): Promise<DashboardDaily> {
+export async function getDashboardDaily(viewTenantId?: string | null): Promise<DashboardDaily> {
   const supabase = await createClient();
 
-  // tudo paginado (RLS já restringe ao tenant). Sem filtro de data → histórico todo.
+  // viewTenantId: filtra por 1 usuário (modo admin "minha"/"por usuário"). Quando
+  // null/undefined, admin vê tudo (RLS dá bypass); usuário comum é restrito por RLS.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scoped = (q: any) => (viewTenantId ? q.eq("tenant_id", viewTenantId) : q);
+
+  // tudo paginado. Sem filtro de data → histórico todo.
   const [txRows, evRows] = await Promise.all([
     fetchAllPaged<{ amount: number; status: string; lead_id: string | null; created_at: string }>(
-      () => supabase.from("transactions").select("amount,status,lead_id,created_at").order("id", { ascending: true }),
+      () => scoped(supabase.from("transactions").select("amount,status,lead_id,created_at").order("id", { ascending: true })),
     ),
     fetchAllPaged<{ event_type: string; created_at: string }>(
-      () => supabase.from("tracking_events").select("event_type,created_at").order("id", { ascending: true }),
+      () => scoped(supabase.from("tracking_events").select("event_type,created_at").order("id", { ascending: true })),
     ),
   ]);
 

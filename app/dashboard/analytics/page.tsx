@@ -17,6 +17,8 @@ import { Funnel } from "@/components/dashboard/analytics/funnel";
 import { WeekdayChart } from "@/components/dashboard/analytics/weekday-chart";
 import { FilterBar } from "@/components/dashboard/analytics/filter-bar";
 import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
+import { AdminViewSwitcher } from "@/components/dashboard/admin-view-switcher";
+import { resolveViewScope, getViewableUsers } from "@/lib/actions/admin-actions";
 import { icons } from "@/components/dashboard/analytics/icons";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,10 @@ type SP = { [key: string]: string | string[] | undefined };
 
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
+  const requestedView = typeof sp.view === "string" ? sp.view : undefined;
+  // Visão de admin (Minha/Todos/Por usuário) — restringe todas as queries.
+  const scope = await resolveViewScope(requestedView);
+
   const filters: AnalyticsFilters = {
     period: (typeof sp.period === "string" ? sp.period : "7d") as Period,
     startDate: typeof sp.startDate === "string" ? sp.startDate : undefined,
@@ -37,10 +43,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     flowId: typeof sp.flowId === "string" ? sp.flowId : undefined,
     gateway: typeof sp.gateway === "string" ? sp.gateway : undefined,
     source: typeof sp.source === "string" ? sp.source : undefined,
+    viewTenantId: scope.tenantId,
   };
 
   const revenue = await getRevenueStats(filters);
-  const [tracking, funnel, tops, weekday, options, audience, saleTypes] = await Promise.all([
+  const [tracking, funnel, tops, weekday, options, audience, saleTypes, viewUsers] = await Promise.all([
     getTrackingStats(filters, revenue.sales),
     getFunnelStats(filters),
     getTopBreakdowns(filters),
@@ -48,6 +55,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     getFilterOptions(),
     getAudienceBreakdown(filters),
     getSaleTypeStats(filters),
+    scope.isAdmin ? getViewableUsers() : Promise.resolve([]),
   ]);
 
   const topRows = (rows: { id: string; label: string; revenue: number; sales: number }[]) =>
@@ -65,13 +73,16 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6 animate-up">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 animate-up">
         <div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight page-title">
             Aná<span className="gradient-text">lises</span>
           </h1>
           <p className="text-(--text-secondary) text-sm mt-1 border-l-2 border-(--accent) pl-2">Métricas e relatórios</p>
         </div>
+        {scope.isAdmin && (
+          <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "all"} />
+        )}
       </div>
 
       {/* Filters */}

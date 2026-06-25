@@ -11,6 +11,8 @@ import { Gauge } from "@/components/dashboard/analytics/gauge";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { TopList } from "@/components/dashboard/analytics/top-list";
 import { ComingSoonCard } from "@/components/dashboard/analytics/coming-soon-card";
+import { AdminViewSwitcher } from "@/components/dashboard/admin-view-switcher";
+import type { ViewableUser } from "@/lib/actions/admin-actions";
 import { icons } from "@/components/dashboard/analytics/icons";
 import { periodDayRange, dayInRange, todayKeyBR, type PeriodKey } from "@/lib/period";
 import type { DashboardDaily, ActivityItem, TopSeller } from "@/lib/actions/analytics-actions";
@@ -39,6 +41,9 @@ export function DashboardClient({
   activity,
   topSellers,
   showTopPlayers = true,
+  isAdmin = false,
+  viewUsers = [],
+  currentView = "all",
   initialPeriod,
 }: {
   daily: DashboardDaily;
@@ -48,6 +53,9 @@ export function DashboardClient({
   activity: ActivityItem[];
   topSellers: TopSeller[];
   showTopPlayers?: boolean;
+  isAdmin?: boolean;
+  viewUsers?: ViewableUser[];
+  currentView?: string;
   initialPeriod?: string;
 }) {
   // estado local → trocar período é 100% client (instantâneo, sem round-trip).
@@ -136,8 +144,13 @@ export function DashboardClient({
         </Link>
       </div>
 
-      {/* Filtro de período (troca instantânea — agrega no cliente) */}
-      <div className="mb-4 animate-up flex justify-end">
+      {/* Seletor de visão (só admin) + filtro de período */}
+      <div className="mb-4 animate-up flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+        {isAdmin ? (
+          <AdminViewSwitcher users={viewUsers} currentView={currentView} />
+        ) : (
+          <span />
+        )}
         <PeriodFilter value={sel} onChange={setSel} />
       </div>
 

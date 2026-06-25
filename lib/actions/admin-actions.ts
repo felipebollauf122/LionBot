@@ -206,3 +206,64 @@ export async function updateUserRole(userId: string, role: "user" | "admin"): Pr
   if (error) throw new Error(error.message);
   return { success: true };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Visão de admin: alternar a dashboard/análises entre "minha", "todos" ou um
+// usuário específico. Só admin pode ver dados de outros — validado no servidor.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ViewableUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/** Lista enxuta (id/nome/email) de todos os usuários, p/ o seletor de admin. */
+export async function getViewableUsers(): Promise<ViewableUser[]> {
+  if (!(await isAdmin())) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tenants")
+    .select("id,name,email")
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((t) => ({
+    id: t.id as string,
+    name: ((t.name as string) || "").trim() || ((t.email as string)?.split("@")[0] ?? "Usuário"),
+    email: (t.email as string) ?? "",
+  }));
+}
+
+export interface ViewScope {
+  /** tenant_id a filtrar; null = todos (só admin). */
+  tenantId: string | null;
+  /** modo efetivo aplicado (pode diferir do pedido se sem permissão). */
+  mode: "mine" | "all" | "user";
+  isAdmin: boolean;
+}
+
+/**
+ * Resolve QUAL tenant a dashboard/análises deve mostrar, com SEGURANÇA:
+ * - não-admin → sempre o próprio (ignora qualquer pedido).
+ * - admin + "all" (ou vazio) → null = todos.
+ * - admin + "mine" → o próprio id.
+ * - admin + <tenantId> → esse tenant.
+ * `requested` vem do searchParam `view` (mine | all | <uuid>).
+ */
+export async function resolveViewScope(requested?: string): Promise<ViewScope> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { tenantId: null, mode: "mine", isAdmin: false };
+
+  const admin = await isAdmin();
+  if (!admin) {
+    // usuário comum: sempre vê só os próprios dados (RLS já garante, mas
+    // filtramos explícito pra consistência com o admin em modo "mine").
+    return { tenantId: user.id, mode: "mine", isAdmin: false };
+  }
+
+  // admin:
+  if (!requested || requested === "all") return { tenantId: null, mode: "all", isAdmin: true };
+  if (requested === "mine") return { tenantId: user.id, mode: "mine", isAdmin: true };
+  // requested é um tenantId específico
+  return { tenantId: requested, mode: "user", isAdmin: true };
+}

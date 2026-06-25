@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { seedLoginBotFlow } from "@/lib/actions/flow-actions";
+import { syncBotFromTelegram } from "@/lib/actions/sync-bot-actions";
 
 export function CreateBotForm({ isOwner = false }: { isOwner?: boolean }) {
   const [token, setToken] = useState("");
@@ -59,6 +60,12 @@ export function CreateBotForm({ isOwner = false }: { isOwner?: boolean }) {
         .single();
 
       if (insertError) throw insertError;
+
+      // Puxa nome + foto de perfil do Telegram → redirect_display_name + avatar_url
+      // (pra a página /t mostrar a cara e o nome reais do bot). Best-effort.
+      if (insertedBot?.id) {
+        await syncBotFromTelegram(insertedBot.id).catch(() => {});
+      }
 
       // Bot de login: ativa direto, semeia o flow editável dos templates e
       // registra webhook automaticamente.

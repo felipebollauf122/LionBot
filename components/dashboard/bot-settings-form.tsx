@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { saveBotSettings, updateBotAvatar, toggleBlackEnabled, toggleProtectContent, deleteBot, updateBotToken } from "@/lib/actions/bot-settings-actions";
+import { syncBotFromTelegram } from "@/lib/actions/sync-bot-actions";
 import { uploadMedia } from "@/lib/actions/upload-actions";
 import { LionMark } from "@/components/brand/lion-mark";
 import type { Bot } from "@/lib/types/database";
@@ -163,6 +164,28 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
       console.error(err);
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const handleSyncFromTelegram = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await syncBotFromTelegram(bot.id);
+      if (res.ok) {
+        if (res.name) setRedirectDisplayName(res.name);
+        setSyncMsg(`✓ Sincronizado: ${res.name ?? "nome"}${res.hasPhoto ? " + foto" : " (sem foto no Telegram)"}`);
+        router.refresh();
+      } else {
+        setSyncMsg(`Erro: ${res.error ?? "falha"}`);
+      }
+    } catch {
+      setSyncMsg("Erro ao sincronizar");
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
     }
   };
 
@@ -338,9 +361,23 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-foreground text-sm font-semibold">Foto de Perfil</span>
-                  <span className="text-(--text-muted) text-xs">JPG, PNG, WebP ou GIF. Max 50MB.</span>
-                  <div className="flex gap-2 mt-1">
+                  <span className="text-foreground text-sm font-semibold">Foto e nome</span>
+                  <span className="text-(--text-muted) text-xs">Puxe automaticamente do Telegram, ou envie uma foto sua.</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={handleSyncFromTelegram}
+                      disabled={syncing}
+                      className="px-3 py-1.5 text-xs font-bold text-(--cyan) border border-(--cyan)/20 rounded-lg hover:bg-(--cyan)/10 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                      style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--cyan) 10%, transparent) 0%, transparent 100%)" }}
+                    >
+                      {syncing ? (
+                        <span className="w-3.5 h-3.5 border-2 border-(--cyan)/40 border-t-(--cyan) rounded-full animate-spin" />
+                      ) : (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>
+                      )}
+                      {syncing ? "Sincronizando..." : "Sincronizar do Telegram"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => avatarInputRef.current?.click()}
@@ -362,6 +399,7 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                       </button>
                     )}
                   </div>
+                  {syncMsg && <span className="text-[11px] text-(--text-secondary) mt-1">{syncMsg}</span>}
                 </div>
               </div>
 

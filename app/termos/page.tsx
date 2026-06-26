@@ -1,4 +1,5 @@
 import { LegalShell } from "../privacidade/page";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata = {
   title: "Termos de Uso — LionBot",
@@ -61,7 +62,7 @@ export default function TermosPage() {
       <h2>7. Contato</h2>
       <p>
         Dúvidas sobre estes Termos podem ser enviadas para{" "}
-        <a href="mailto:contato@lionbot.app">contato@lionbot.app</a>.
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
       </p>
     </LegalShell>
   );

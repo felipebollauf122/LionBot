@@ -2,10 +2,21 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { cookies, headers } from "next/headers";
 import { nanoid } from "nanoid";
 import type { Bot } from "@/lib/types/database";
+import { SITE_NAME, SITE_LEGAL_NAME, CONTACT_EMAIL, SITE_DESCRIPTION } from "@/lib/site";
 
 interface TrackingPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
+
+// Metadata neutra e legítima — NÃO expõe o nome do bot (que pode ser +18) nem
+// "vendas". Título genérico de página de acesso. noindex: é página de redirect
+// por-clique, não conteúdo pra indexar (evita ranquear nome de bot adulto).
+export const metadata = {
+  title: "Acesso ao assistente",
+  description: SITE_DESCRIPTION,
+  robots: { index: false, follow: false },
+  openGraph: { title: `Acesso · ${SITE_NAME}`, description: SITE_DESCRIPTION },
+};
 
 /** Texto genérico (instiga curiosidade + dá contexto legítimo) usado quando o
  *  bot não tem um texto próprio configurado. Vira o conteúdo "substancial" da
@@ -278,14 +289,14 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
       {/* Rodapé legal */}
       <footer style={{ position: "relative", marginTop: 26, maxWidth: 440, textAlign: "center", fontSize: 11, color: "rgba(244,233,255,0.4)", lineHeight: 1.7 }}>
         <p style={{ margin: 0 }}>
-          <b style={{ color: "rgba(244,233,255,0.6)", letterSpacing: "0.04em" }}>LionBot Assistentes Digitais</b>
+          <b style={{ color: "rgba(244,233,255,0.6)", letterSpacing: "0.04em" }}>{SITE_LEGAL_NAME}</b>
         </p>
         <p style={{ margin: "5px 0 0" }}>
           <a href="/privacidade" style={{ color: "rgba(255,43,214,0.75)" }}>Política de Privacidade</a>
           {" · "}
           <a href="/termos" style={{ color: "rgba(255,43,214,0.75)" }}>Termos de Uso</a>
         </p>
-        <p style={{ margin: "8px 0 0", fontSize: 10, color: "rgba(244,233,255,0.28)" }}>© {year} LionBot · contato@lionbot.app</p>
+        <p style={{ margin: "8px 0 0", fontSize: 10, color: "rgba(244,233,255,0.28)" }}>© {year} {SITE_NAME} · {CONTACT_EMAIL}</p>
       </footer>
 
       {/* cookies _fbp/_fbc no browser (não muda otimização) */}

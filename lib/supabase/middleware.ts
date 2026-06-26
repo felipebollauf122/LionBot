@@ -37,7 +37,9 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/t/") ||
     request.nextUrl.pathname === "/go" ||
     request.nextUrl.pathname === "/privacidade" ||
-    request.nextUrl.pathname === "/termos";
+    request.nextUrl.pathname === "/termos" ||
+    request.nextUrl.pathname === "/robots.txt" ||
+    request.nextUrl.pathname === "/sitemap.xml";
 
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone();

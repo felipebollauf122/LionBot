@@ -1,14 +1,15 @@
 import type { MetadataRoute } from "next";
+import { SITE_NAME, SITE_DESCRIPTION } from "@/lib/site";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "LionBot",
-    short_name: "LionBot",
-    description: "Automação de vendas no Telegram — funil, PIX, tracking e recuperação.",
+    name: SITE_NAME,
+    short_name: SITE_NAME,
+    description: SITE_DESCRIPTION,
     start_url: "/dashboard",
     display: "standalone",
-    background_color: "#07040d",
-    theme_color: "#07040d",
+    background_color: "#000000",
+    theme_color: "#000000",
     orientation: "portrait",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },

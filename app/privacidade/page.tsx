@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SITE_LEGAL_NAME, CONTACT_EMAIL } from "@/lib/site";
 
 export const metadata = {
   title: "Política de Privacidade — LionBot",
@@ -65,7 +66,7 @@ export default function PrivacidadePage() {
       <h2>7. Contato</h2>
       <p>
         Dúvidas sobre esta Política ou sobre seus dados podem ser enviadas para{" "}
-        <a href="mailto:contato@lionbot.app">contato@lionbot.app</a>.
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
       </p>
     </LegalShell>
   );
@@ -98,12 +99,12 @@ export function LegalFooter() {
   return (
     <footer style={{ marginTop: 44, paddingTop: 22, borderTop: "1px solid rgba(96,165,250,0.15)", fontSize: 12, color: "rgba(223,229,255,0.5)", lineHeight: 1.7 }}>
       <p style={{ margin: 0 }}>
-        <b style={{ color: "rgba(223,229,255,0.7)" }}>LionBot Assistentes Digitais</b> — Plataforma de
+        <b style={{ color: "rgba(223,229,255,0.7)" }}>{SITE_LEGAL_NAME}</b> — Plataforma de
         assistentes virtuais. CNPJ em processo de registro.
       </p>
       <p style={{ margin: "6px 0 0" }}>
         <a href="/privacidade">Política de Privacidade</a> · <a href="/termos">Termos de Uso</a> ·{" "}
-        <a href="mailto:contato@lionbot.app">contato@lionbot.app</a>
+        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
       </p>
       <p style={{ margin: "10px 0 0", fontSize: 11, color: "rgba(223,229,255,0.35)" }}>
         © {YEAR} LionBot. Todos os direitos reservados.

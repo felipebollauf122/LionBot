@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SITE_URL, SITE_NAME, SITE_LEGAL_NAME, SITE_TAGLINE, SITE_DESCRIPTION } from "@/lib/site";
 import { Chakra_Petch } from "next/font/google";
 import { Rajdhani } from "next/font/google";
 import { JetBrains_Mono } from "next/font/google";
@@ -26,13 +27,33 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LionBot — Automacao de Vendas no Telegram",
-  description:
-    "Crie bots de vendas automatizados no Telegram. Funil, PIX integrado, tracking avancado e recuperacao automatica — tudo no piloto automatico.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  authors: [{ name: SITE_LEGAL_NAME }],
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: SITE_NAME,
+    url: SITE_URL,
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: SITE_NAME }],
+  },
+  twitter: {
+    card: "summary",
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+    images: ["/icon-512.png"],
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "LionBot",
+    title: SITE_NAME,
     statusBarStyle: "black-translucent",
   },
   icons: {

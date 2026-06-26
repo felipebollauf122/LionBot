@@ -319,53 +319,54 @@
   --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.10) 0%, transparent 60%);
 }
 
-/* Dark — preto ABSOLUTO, neutro (sem tom de cor). Pretão puro. */
+/* Dark — preto BREU, cards quase pretos. Accent vermelho-sangue fosco (identidade
+   própria, diferente do mono branco). Bem mais escuro que qualquer outro tema. */
 [data-theme="dark"] {
   --bg-root: #000000;
-  --glass-bg: rgba(0, 0, 0, 0.92);
-  --bg-surface: #060606;
-  --bg-elevated: #0c0c0c;
-  --bg-overlay: #141414;
-  --bg-input: rgba(255, 255, 255, 0.035);
+  --glass-bg: rgba(0, 0, 0, 0.94);
+  --bg-surface: #0a0a0a;
+  --bg-elevated: #101010;
+  --bg-overlay: #161616;
+  --bg-input: rgba(255, 255, 255, 0.03);
 
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-default: rgba(255, 255, 255, 0.12);
-  --border-strong: rgba(255, 255, 255, 0.22);
-  --border-glow: rgba(255, 255, 255, 0.16);
+  --border-subtle: rgba(255, 255, 255, 0.055);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-glow: rgba(226, 59, 59, 0.30);
 
-  --text-primary: #f2f2f2;
-  --text-secondary: rgba(242, 242, 242, 0.56);
-  --text-muted: rgba(242, 242, 242, 0.34);
-  --text-ghost: rgba(242, 242, 242, 0.16);
+  --text-primary: #ededed;
+  --text-secondary: rgba(237, 237, 237, 0.52);
+  --text-muted: rgba(237, 237, 237, 0.32);
+  --text-ghost: rgba(237, 237, 237, 0.15);
 
-  --accent: #e6e6e6;
-  --accent-hover: #ffffff;
-  --accent-muted: rgba(255, 255, 255, 0.10);
-  --accent-glow: rgba(255, 255, 255, 0.28);
-  --accent-deep: rgba(255, 255, 255, 0.05);
+  --accent: #e23b3b;
+  --accent-hover: #ff5a5a;
+  --accent-muted: rgba(226, 59, 59, 0.13);
+  --accent-glow: rgba(226, 59, 59, 0.45);
+  --accent-deep: rgba(226, 59, 59, 0.06);
 
-  --cyan: #9aa0a6;
-  --cyan-muted: rgba(154, 160, 166, 0.12);
-  --cyan-glow: rgba(154, 160, 166, 0.28);
+  --cyan: #d14b4b;
+  --cyan-muted: rgba(209, 75, 75, 0.12);
+  --cyan-glow: rgba(209, 75, 75, 0.32);
 
-  --purple: #6e7681;
-  --purple-muted: rgba(110, 118, 129, 0.14);
-  --purple-glow: rgba(110, 118, 129, 0.28);
+  --purple: #8a8a8a;
+  --purple-muted: rgba(138, 138, 138, 0.12);
+  --purple-glow: rgba(138, 138, 138, 0.26);
 
-  --amber: #c9c9c9;
-  --amber-muted: rgba(201, 201, 201, 0.12);
-  --amber-glow: rgba(201, 201, 201, 0.26);
+  --amber: #c98b3a;
+  --amber-muted: rgba(201, 139, 58, 0.12);
+  --amber-glow: rgba(201, 139, 58, 0.28);
 
-  --red: #ff5e57;
-  --red-muted: rgba(255, 94, 87, 0.12);
-  --red-glow: rgba(255, 94, 87, 0.28);
+  --red: #ff4d4d;
+  --red-muted: rgba(255, 77, 77, 0.12);
+  --red-glow: rgba(255, 77, 77, 0.30);
 
-  --status-active: #e6e6e6;
-  --status-pending: #9aa0a6;
-  --status-error: #ff5e57;
+  --status-active: #e23b3b;
+  --status-pending: #c98b3a;
+  --status-error: #ff4d4d;
 
-  --gradient-card: linear-gradient(165deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.008) 100%);
-  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.06) 0%, transparent 55%);
+  --gradient-card: linear-gradient(165deg, rgba(226, 59, 59, 0.04) 0%, rgba(226, 59, 59, 0.008) 100%);
+  --gradient-glow: radial-gradient(ellipse at 50% 0%, rgba(226, 59, 59, 0.10) 0%, transparent 55%);
 }
 
 /* ── Custom — accent tokens set inline via JS (data-theme="custom") ── */

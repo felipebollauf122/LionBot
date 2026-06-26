@@ -15,6 +15,9 @@ import type {
   Lead,
   Transaction,
   TrackingEvent,
+  TrafficFilterRule,
+  TrafficFilterList,
+  TrafficFilterMatchType,
 } from "@/lib/types/database";
 
 describe("Database Types", () => {
@@ -67,6 +70,7 @@ describe("Database Types", () => {
         prelander_description: null,
         prelander_image_url: null,
         prelander_cta_text: null,
+        traffic_filter_enabled: false,
         created_at: "2026-04-01T10:00:00Z",
       };
 

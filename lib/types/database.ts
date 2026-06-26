@@ -68,6 +68,21 @@ export interface Bot {
   tracking_page_intro: string | null;
   black_enabled: boolean;
   protect_content: boolean;
+  traffic_filter_enabled: boolean;
+  created_at: string;
+}
+
+export type TrafficFilterList = "allow" | "block";
+export type TrafficFilterMatchType = "ip" | "user_agent" | "referer" | "asn";
+
+export interface TrafficFilterRule {
+  id: string;
+  tenant_id: string;
+  list: TrafficFilterList;
+  match_type: TrafficFilterMatchType;
+  value: string;
+  note: string | null;
+  is_active: boolean;
   created_at: string;
 }
 

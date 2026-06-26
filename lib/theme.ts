@@ -10,7 +10,7 @@ export interface ThemeDef {
 
 export const THEMES: ThemeDef[] = [
   { id: "synthwave", name: "Synthwave", description: "Magenta & cyan · Blade Runner", swatch: ["#08040e", "#ff2bd6", "#00e5ff", "#b14bff"] },
-  { id: "dark", name: "Dark", description: "Preto breu · accent vermelho-sangue", swatch: ["#000000", "#e23b3b", "#d14b4b", "#8a8a8a"] },
+  { id: "dark", name: "Vampiro", description: "Preto breu · vermelho-sangue", swatch: ["#000000", "#e23b3b", "#d14b4b", "#8a8a8a"] },
   { id: "matrix", name: "Matrix", description: "Verde neon · terminal hacker", swatch: ["#010402", "#00ff8c", "#00e5ff", "#7cff6b"] },
   { id: "inferno", name: "Inferno", description: "Vermelho & âmbar · molten", swatch: ["#090402", "#ff4d2e", "#ffb800", "#ff2d6f"] },
   { id: "ice", name: "Ice", description: "Azul gelo · frio e limpo", swatch: ["#03050b", "#38bdf8", "#22d3ee", "#818cf8"] },

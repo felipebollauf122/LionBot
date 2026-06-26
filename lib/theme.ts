@@ -1,4 +1,4 @@
-export type ThemeId = "synthwave" | "matrix" | "inferno" | "ice" | "gold" | "mono" | "custom";
+export type ThemeId = "synthwave" | "dark" | "matrix" | "inferno" | "ice" | "gold" | "mono" | "custom";
 
 export interface ThemeDef {
   id: ThemeId;
@@ -10,6 +10,7 @@ export interface ThemeDef {
 
 export const THEMES: ThemeDef[] = [
   { id: "synthwave", name: "Synthwave", description: "Magenta & cyan · Blade Runner", swatch: ["#08040e", "#ff2bd6", "#00e5ff", "#b14bff"] },
+  { id: "dark", name: "Midnight", description: "Azul profundo · sóbrio e elegante", swatch: ["#070a12", "#5b8def", "#3ec6ff", "#8b7dff"] },
   { id: "matrix", name: "Matrix", description: "Verde neon · terminal hacker", swatch: ["#010402", "#00ff8c", "#00e5ff", "#7cff6b"] },
   { id: "inferno", name: "Inferno", description: "Vermelho & âmbar · molten", swatch: ["#090402", "#ff4d2e", "#ffb800", "#ff2d6f"] },
   { id: "ice", name: "Ice", description: "Azul gelo · frio e limpo", swatch: ["#03050b", "#38bdf8", "#22d3ee", "#818cf8"] },

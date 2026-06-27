@@ -107,6 +107,9 @@ export function TrafficFilterManager({
   // Per-row pending state
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
+  // Modal de confirmação ao bloquear o crawler do FB (substitui o window.confirm).
+  const [showCrawlerModal, setShowCrawlerModal] = useState(false);
+
   const allowRules = initialRules.filter((r) => r.list === "allow");
   const blockRules = initialRules.filter((r) => r.list === "block");
 
@@ -129,21 +132,19 @@ export function TrafficFilterManager({
     });
   };
 
-  // Ligar a chave do crawler = bloquear o robô do FB = cloaking. Confirma antes.
+  // Ligar a chave do crawler = bloquear o robô do FB = cloaking. Abre o modal
+  // de confirmação ao LIGAR; desligar é seguro e aplica direto.
   const handleCrawlerToggle = () => {
-    const next = !crawlerBlocked;
-    if (next) {
-      const ok = window.confirm(
-        "ATENÇÃO — risco de banimento.\n\n" +
-        "Bloquear o crawler do Facebook faz o robô revisor da Meta cair na página de " +
-        "venda em vez da página real. Isso é CLOAKING: o Facebook vê conteúdo diferente " +
-        "do usuário, REPROVA o anúncio e pode BANIR a conta.\n\n" +
-        "Isso NÃO protege sua oferta — sem anúncio aprovado não há tráfego nenhum.\n\n" +
-        "Tem certeza de que quer bloquear mesmo assim?"
-      );
-      if (!ok) return;
+    if (!crawlerBlocked) {
+      setShowCrawlerModal(true); // vai bloquear → confirma no modal
+    } else {
+      handleCategory("tf_block_fb_crawler", false); // desbloquear é seguro
     }
-    handleCategory("tf_block_fb_crawler", next);
+  };
+
+  const confirmCrawlerBlock = () => {
+    setShowCrawlerModal(false);
+    handleCategory("tf_block_fb_crawler", true);
   };
 
   const handleToggleMaster = () => {
@@ -524,6 +525,92 @@ export function TrafficFilterManager({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Modal: confirmar bloqueio do crawler do FB (cloaking) ───────────── */}
+      {showCrawlerModal && (
+        <div
+          className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crawler-modal-title"
+          onClick={() => setShowCrawlerModal(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl border border-(--red)/25 overflow-hidden animate-in zoom-in-95 duration-200"
+            style={{
+              background: "linear-gradient(160deg, #1a0815 0%, #12060f 100%)",
+              boxShadow: "0 24px 80px -20px rgba(255,43,107,0.5), 0 0 0 1px rgba(255,43,107,0.12), inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* glow superior */}
+            <div className="absolute top-0 left-6 right-6 h-px" style={{ background: "linear-gradient(to right, transparent, var(--red), transparent)" }} />
+
+            <div className="p-6">
+              {/* Ícone de alerta */}
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: "color-mix(in srgb, var(--red) 16%, transparent)", boxShadow: "0 0 24px -6px var(--red)" }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+
+              <h2 id="crawler-modal-title" className="text-foreground font-bold text-lg tracking-tight">
+                Bloquear o robô do Facebook?
+              </h2>
+              <p className="text-(--red) text-xs font-bold uppercase tracking-wider mt-1">
+                Risco de banimento
+              </p>
+
+              <div className="mt-4 space-y-3 text-sm leading-relaxed text-(--text-secondary)">
+                <p>
+                  O robô revisor da Meta vai cair na <b className="text-foreground">página de venda</b> em vez da página
+                  real do seu bot.
+                </p>
+                <div
+                  className="rounded-xl p-3 border border-(--red)/20"
+                  style={{ background: "color-mix(in srgb, var(--red) 8%, transparent)" }}
+                >
+                  <p className="text-(--text-muted) text-xs">
+                    Isso é <b className="text-(--red)">cloaking</b>: o Facebook vê uma página diferente da que o usuário vê.
+                    O resultado é o anúncio <b className="text-foreground">reprovado</b> e a conta sob risco de
+                    <b className="text-foreground"> banimento</b>.
+                  </p>
+                </div>
+                <p className="text-(--text-muted) text-xs">
+                  Isto <b className="text-foreground">não protege a sua oferta</b> — sem anúncio aprovado, não há tráfego
+                  nenhum chegando ao bot.
+                </p>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowCrawlerModal(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-foreground border border-(--border-default) hover:bg-white/5 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmCrawlerBlock}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110"
+                  style={{
+                    background: "linear-gradient(135deg, var(--red) 0%, #c01e4a 100%)",
+                    boxShadow: "0 8px 24px -8px rgba(255,43,107,0.7)",
+                  }}
+                >
+                  Bloquear mesmo assim
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

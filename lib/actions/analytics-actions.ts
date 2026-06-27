@@ -829,6 +829,8 @@ export interface BotFleetRow {
   has_tracking: boolean;
   has_payment: boolean;
   has_utmify: boolean; // tem Utmify configurada → link com UTM params
+  slug_gate_enabled: boolean; // portão de slug ativo → link de cópia leva &s=
+  slug_plain: string | null;  // slug secreto em claro (pra montar o link)
   revenue: number; // approved cents (all-time)
   sales: number;
   leads: number;
@@ -842,7 +844,7 @@ export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFle
   // já são restringidas via .in("bot_id", ids), então herdam o recorte.
   let botsQuery = supabase
     .from("bots")
-    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,utmify_api_key,created_at")
+    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,utmify_api_key,slug_gate_enabled,slug_plain,created_at")
     .order("created_at", { ascending: false });
   if (viewTenantId) botsQuery = botsQuery.eq("tenant_id", viewTenantId);
   const { data: bots } = await botsQuery;
@@ -899,6 +901,8 @@ export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFle
       has_tracking: !!b.facebook_pixel_id,
       has_payment: hasPayment,
       has_utmify: !!b.utmify_api_key,
+      slug_gate_enabled: !!b.slug_gate_enabled,
+      slug_plain: (b.slug_plain as string) ?? null,
       revenue: r.revenue,
       sales: r.sales,
       leads: leadCount.get(b.id as string) ?? 0,

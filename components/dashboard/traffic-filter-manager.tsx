@@ -11,6 +11,7 @@ import {
   setTrafficCategory,
   type TrafficCategoryKey,
 } from "@/lib/actions/traffic-filter-actions";
+import { SlugGateManager } from "@/components/dashboard/slug-gate-manager";
 import type {
   TrafficFilterRule,
   TrafficFilterList,
@@ -28,6 +29,11 @@ interface TrafficFilterManagerProps {
     tf_block_datacenter: boolean;
     tf_block_adlibrary: boolean;
     tf_block_fb_crawler: boolean;
+  };
+  /** chave secreta (slug) — proteção final */
+  slugGate?: {
+    enabled: boolean;
+    slugPlain: string | null;
   };
 }
 
@@ -76,6 +82,7 @@ export function TrafficFilterManager({
   trafficFilterEnabled,
   initialRules,
   categories,
+  slugGate,
 }: TrafficFilterManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -524,6 +531,15 @@ export function TrafficFilterManager({
                 {renderSection("Bloqueados (block)", "Caem na landing de venda do LionBot", "var(--red)", blockRules)}
               </div>
             </div>
+          )}
+
+          {/* Chave secreta (slug) — proteção final */}
+          {slugGate && (
+            <SlugGateManager
+              botId={botId}
+              slugGateEnabled={slugGate.enabled}
+              slugPlain={slugGate.slugPlain}
+            />
           )}
         </div>
       )}

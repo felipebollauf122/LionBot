@@ -5,11 +5,18 @@
  *   (campos {{campaign.name}} etc. são preenchidos pelo Facebook na hora do clique).
  * - SEM Utmify: link limpo, só o bot.
  *
- * `origin` é o domínio público (ex: https://eagle-bot.vercel.app). No cliente,
+ * `origin` é o domínio público (ex: https://lionbot.site). No cliente,
  * passe window.location.origin.
  */
-export function buildTrackingLink(botId: string, hasUtmify: boolean, origin: string): string {
-  const base = `${origin.replace(/\/+$/, "")}/t?bot=${botId}`;
+export function buildTrackingLink(
+  botId: string,
+  hasUtmify: boolean,
+  origin: string,
+  slug?: string | null,
+): string {
+  let base = `${origin.replace(/\/+$/, "")}/t?bot=${botId}`;
+  // slug secreto (chave de segurança final) — vai junto nos parâmetros.
+  if (slug) base += `&s=${encodeURIComponent(slug)}`;
   if (!hasUtmify) return base;
   const utm =
     "utm_source=FB" +

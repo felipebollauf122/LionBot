@@ -684,6 +684,10 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                           tf_block_adlibrary: bot.tf_block_adlibrary ?? true,
                           tf_block_fb_crawler: bot.tf_block_fb_crawler ?? false,
                         }}
+                        slugGate={{
+                          enabled: bot.slug_gate_enabled ?? false,
+                          slugPlain: bot.slug_plain ?? null,
+                        }}
                       />
                     </div>
                   </div>

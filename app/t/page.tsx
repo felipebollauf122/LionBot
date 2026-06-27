@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import type { Bot } from "@/lib/types/database";
 import { SITE_NAME, SITE_LEGAL_NAME, CONTACT_EMAIL, SITE_DESCRIPTION } from "@/lib/site";
 import { decideTraffic } from "@/lib/traffic-filter/evaluate";
+import { evaluateSlugGate } from "@/lib/traffic-filter/slug";
 import { LionBotSalesPage } from "@/components/traffic-filter/lion-bot-sales-page";
 
 interface TrackingPageProps {
@@ -89,6 +90,18 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   }
 
   const typedBot = bot as Bot;
+
+  // ── Portão de slug secreto (chave de segurança final) ─────────────────────
+  // Se ativo, só prossegue quem trouxer ?s=<slug> que bata com o hash do bot.
+  // Slug errado/ausente → landing de venda (igual espião). Roda ANTES do filtro
+  // de tráfego: é a camada mais forte. Slug certo NÃO dá passe livre — o
+  // visitante ainda passa pelos outros filtros abaixo.
+  if (typedBot.slug_gate_enabled) {
+    const slugFromUrl = String(search.s ?? "") || null;
+    if (evaluateSlugGate(true, typedBot.slug_hash, slugFromUrl) === "block") {
+      return <LionBotSalesPage />;
+    }
+  }
 
   // ── Filtro de tráfego (allowlist/blocklist) ──────────────────────────────
   // Só roda se o bot ativou. Veredito "block" → espião vê a landing de venda

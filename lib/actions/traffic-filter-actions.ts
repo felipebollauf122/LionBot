@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/actions/admin-actions";
+import { generateSlug as makeSlug, hashSlug } from "@/lib/traffic-filter/slug";
 import type {
   TrafficFilterRule,
   TrafficFilterList,
@@ -166,5 +167,51 @@ export async function toggleTrafficFilter(botId: string, enabled: boolean): Prom
     .update({ traffic_filter_enabled: enabled })
     .eq("id", botId);
   if (error) throw new Error(`Failed to toggle traffic filter: ${error.message}`);
+  return { success: true };
+}
+
+/** Valida que o usuário é dono do bot (ou admin) e retorna o client. */
+async function assertBotAccess(botId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const admin = await isAdmin();
+  let botQuery = supabase.from("bots").select("id").eq("id", botId);
+  if (!admin) botQuery = botQuery.eq("tenant_id", user.id);
+  const { data: bot } = await botQuery.single();
+  if (!bot) throw new Error("Bot not found");
+  return supabase;
+}
+
+/**
+ * Gera um slug secreto novo, salva o HASH no bot e retorna o slug em claro —
+ * mostrado UMA vez ao usuário (o claro nunca mais sai do banco). Não liga o
+ * portão sozinho; o usuário ativa via toggleSlugGate.
+ */
+export async function generateSlugForBot(botId: string): Promise<{ slug: string }> {
+  const supabase = await assertBotAccess(botId);
+  const slug = makeSlug(8);
+  const { error } = await supabase
+    .from("bots")
+    .update({ slug_hash: hashSlug(slug), slug_plain: slug })
+    .eq("id", botId);
+  if (error) throw new Error(`Failed to save slug: ${error.message}`);
+  return { slug };
+}
+
+export async function toggleSlugGate(botId: string, enabled: boolean): Promise<{ success: true }> {
+  const supabase = await assertBotAccess(botId);
+
+  // Não deixa ligar o portão sem um slug gerado (senão ninguém entra).
+  if (enabled) {
+    const { data: bot } = await supabase.from("bots").select("slug_hash").eq("id", botId).single();
+    if (!bot?.slug_hash) throw new Error("Gere um slug antes de ativar o portão.");
+  }
+
+  const { error } = await supabase
+    .from("bots")
+    .update({ slug_gate_enabled: enabled })
+    .eq("id", botId);
+  if (error) throw new Error(`Failed to toggle slug gate: ${error.message}`);
   return { success: true };
 }

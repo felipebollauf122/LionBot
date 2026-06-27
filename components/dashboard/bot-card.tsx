@@ -13,7 +13,9 @@ export function BotCard({ bot }: BotCardProps) {
   const [copied, setCopied] = useState(false);
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  const trackingUrl = buildTrackingLink(bot.id, !!bot.utmify_api_key, baseUrl);
+  // Se o portão de slug está ativo, o link de cópia já inclui o slug secreto.
+  const slugForLink = bot.slug_gate_enabled ? bot.slug_plain : null;
+  const trackingUrl = buildTrackingLink(bot.id, !!bot.utmify_api_key, baseUrl, slugForLink);
 
   function handleCopyTracking(e: React.MouseEvent) {
     e.preventDefault();

@@ -167,7 +167,7 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
         <span className={`badge ${bot.is_active ? "badge-active" : "badge-inactive"} shrink-0`}>
           {bot.is_active ? "Ativo" : "Inativo"}
         </span>
-        <CopyLinkButton botId={bot.id} hasUtmify={bot.has_utmify} />
+        <CopyLinkButton botId={bot.id} hasUtmify={bot.has_utmify} slug={bot.slug_gate_enabled ? bot.slug_plain : null} />
         <svg className="hidden lg:block w-4 h-4 text-(--text-muted) group-hover:text-(--accent) group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
       </div>
     </Link>
@@ -175,14 +175,14 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
 }
 
 /** Botão "Copiar link" do bot. Para o clique no card (que navega pros flows). */
-function CopyLinkButton({ botId, hasUtmify }: { botId: string; hasUtmify: boolean }) {
+function CopyLinkButton({ botId, hasUtmify, slug }: { botId: string; hasUtmify: boolean; slug?: string | null }) {
   const [copied, setCopied] = useState(false);
 
   function copy(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    navigator.clipboard.writeText(buildTrackingLink(botId, hasUtmify, origin));
+    navigator.clipboard.writeText(buildTrackingLink(botId, hasUtmify, origin, slug));
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }

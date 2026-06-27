@@ -106,6 +106,7 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
         blockSpies: typedBot.tf_block_spies ?? true,
         blockDatacenter: typedBot.tf_block_datacenter ?? true,
         blockAdLibrary: typedBot.tf_block_adlibrary ?? true,
+        blockFbCrawler: typedBot.tf_block_fb_crawler ?? false,
       },
     });
     if (verdict === "block") {

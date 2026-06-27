@@ -121,7 +121,11 @@ export async function toggleRule(ruleId: string, isActive: boolean): Promise<{ s
 }
 
 /** Categorias liga/desliga do filtro, salvas como colunas booleanas no bot. */
-export type TrafficCategoryKey = "tf_block_spies" | "tf_block_datacenter" | "tf_block_adlibrary";
+export type TrafficCategoryKey =
+  | "tf_block_spies"
+  | "tf_block_datacenter"
+  | "tf_block_adlibrary"
+  | "tf_block_fb_crawler";
 
 export async function setTrafficCategory(
   botId: string,

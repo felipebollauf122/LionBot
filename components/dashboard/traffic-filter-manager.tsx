@@ -27,6 +27,7 @@ interface TrafficFilterManagerProps {
     tf_block_spies: boolean;
     tf_block_datacenter: boolean;
     tf_block_adlibrary: boolean;
+    tf_block_fb_crawler: boolean;
   };
 }
 
@@ -83,11 +84,13 @@ export function TrafficFilterManager({
   const [togglingMaster, setTogglingMaster] = useState(false);
   const [masterError, setMasterError] = useState<string | null>(null);
 
-  // Categorias amigáveis (liga/desliga). Default = tudo ligado.
+  // Categorias amigáveis (liga/desliga). As 3 de bloqueio começam ligadas;
+  // o crawler do FB começa DESLIGADO (permitido) por padrão.
   const [cats, setCats] = useState({
     tf_block_spies: categories?.tf_block_spies ?? true,
     tf_block_datacenter: categories?.tf_block_datacenter ?? true,
     tf_block_adlibrary: categories?.tf_block_adlibrary ?? true,
+    tf_block_fb_crawler: categories?.tf_block_fb_crawler ?? false,
   });
   const [catBusy, setCatBusy] = useState<TrafficCategoryKey | null>(null);
 
@@ -107,10 +110,8 @@ export function TrafficFilterManager({
   const allowRules = initialRules.filter((r) => r.list === "allow");
   const blockRules = initialRules.filter((r) => r.list === "block");
 
-  // O crawler do FB: pegamos qualquer regra fb_crawler pra saber se está
-  // permitido (allow) ou bloqueado (block). Todas as seeds andam juntas.
-  const crawlerRules = initialRules.filter(isCrawlerRule);
-  const crawlerBlocked = crawlerRules.length > 0 && crawlerRules.every((r) => r.list === "block");
+  // Crawler do FB: agora é uma categoria como as outras (flag tf_block_fb_crawler).
+  const crawlerBlocked = cats.tf_block_fb_crawler;
 
   const handleCategory = (key: TrafficCategoryKey, next: boolean) => {
     setCats((c) => ({ ...c, [key]: next })); // optimistic
@@ -128,10 +129,10 @@ export function TrafficFilterManager({
     });
   };
 
-  // Liga/desliga o crawler do FB movendo TODAS as seeds entre allow e block.
+  // Ligar a chave do crawler = bloquear o robô do FB = cloaking. Confirma antes.
   const handleCrawlerToggle = () => {
-    const targetBlock = !crawlerBlocked; // se está permitido, vai bloquear
-    if (targetBlock) {
+    const next = !crawlerBlocked;
+    if (next) {
       const ok = window.confirm(
         "ATENÇÃO — risco de banimento.\n\n" +
         "Bloquear o crawler do Facebook faz o robô revisor da Meta cair na página de " +
@@ -142,19 +143,7 @@ export function TrafficFilterManager({
       );
       if (!ok) return;
     }
-    setCatBusy("tf_block_spies"); // reusa o spinner global de categoria
-    startTransition(async () => {
-      try {
-        await Promise.all(
-          crawlerRules.map((r) => moveRule(r.id, targetBlock ? "block" : "allow")),
-        );
-        router.refresh();
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setCatBusy(null);
-      }
-    });
+    handleCategory("tf_block_fb_crawler", next);
   };
 
   const handleToggleMaster = () => {
@@ -458,30 +447,29 @@ export function TrafficFilterManager({
               );
             })}
 
-            {/* Crawler do Facebook — agora é uma chave igual às outras, na mesma
-                lista. Desligado (permitido) por padrão; com aviso de cloaking. */}
-            {crawlerRules.length > 0 && (
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle)">
-                <div className="min-w-0">
-                  <p className="text-foreground text-sm font-medium">Bloquear o robô revisor do Facebook</p>
-                  <p className="text-(--text-muted) text-xs mt-0.5">
-                    {crawlerBlocked
-                      ? "⚠ Bloqueado — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta."
-                      : "⚠ Cuidado: bloquear o revisor do FB é cloaking e pode reprovar seu anúncio. Deixe desligado salvo se souber o que faz."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={crawlerBlocked}
-                  disabled={isPending}
-                  onClick={handleCrawlerToggle}
-                  className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${crawlerBlocked ? "bg-(--red)" : "bg-white/10"}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${crawlerBlocked ? "translate-x-5" : ""}`} />
-                </button>
+            {/* Crawler do Facebook — 4ª chave, igual às outras. Os 3 user-agents
+                (facebookexternalhit/facebookcatalog/meta-externalagent) são uma
+                classe só. Desligado (permitido) por padrão; aviso de cloaking. */}
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle)">
+              <div className="min-w-0">
+                <p className="text-foreground text-sm font-medium">Bloquear o robô revisor do Facebook</p>
+                <p className="text-(--text-muted) text-xs mt-0.5">
+                  {crawlerBlocked
+                    ? "⚠ Bloqueado — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta."
+                    : "⚠ Cuidado: bloquear o revisor do FB é cloaking e pode reprovar seu anúncio. Deixe desligado salvo se souber o que faz."}
+                </p>
               </div>
-            )}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={crawlerBlocked}
+                disabled={catBusy === "tf_block_fb_crawler" || isPending}
+                onClick={handleCrawlerToggle}
+                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${crawlerBlocked ? "bg-(--red)" : "bg-white/10"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${crawlerBlocked ? "translate-x-5" : ""}`} />
+              </button>
+            </div>
           </div>
 
           {/* Avançado: regras manuais por IP/ASN (escondido por padrão) */}

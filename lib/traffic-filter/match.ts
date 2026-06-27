@@ -55,20 +55,32 @@ function ruleMatches(rule: TrafficFilterRule, s: TrafficSignals): boolean {
   }
 }
 
+/** Os 3 user-agents do robô revisor do Facebook (a "classe" do crawler). */
+const FB_CRAWLER_UAS = ["facebookexternalhit", "facebookcatalog", "meta-externalagent"];
+
+/** True se o User-Agent é de qualquer um dos 3 crawlers do Facebook. */
+export function isFbCrawler(userAgent: string | null): boolean {
+  if (!userAgent) return false;
+  const ua = userAgent.toLowerCase();
+  return FB_CRAWLER_UAS.some((c) => ua.includes(c));
+}
+
 /**
  * Categorias do filtro (botões liga/desliga na UI). Cada flag liga/desliga um
- * pedaço do "default por sinal". Default = tudo LIGADO = comportamento clássico.
+ * pedaço do "default por sinal". Default = comportamento clássico.
  */
 export interface TrafficCategories {
   blockSpies: boolean;       // humano sem fbclid (espião)
   blockDatacenter: boolean;  // IP de datacenter/VPN/proxy
   blockAdLibrary: boolean;   // veio da Ad Library do Facebook
+  blockFbCrawler: boolean;   // robô revisor do FB (cloaking — default desligado)
 }
 
 const DEFAULT_CATEGORIES: TrafficCategories = {
   blockSpies: true,
   blockDatacenter: true,
   blockAdLibrary: true,
+  blockFbCrawler: false,
 };
 
 /**
@@ -87,6 +99,13 @@ export function evaluateRules(
 
   if (active.some((r) => r.list === "allow" && ruleMatches(r, s))) return "allow";
   if (active.some((r) => r.list === "block" && ruleMatches(r, s))) return "block";
+
+  // Robô revisor do FB: a flag decide. A classe (os 3 user-agents) é tratada
+  // junta. Ligada → block (cloaking). Desligada → allow, e ele NÃO cai no
+  // blockSpies abaixo (ele não tem fbclid, mas é legítimo e deve ver a /t real).
+  if (isFbCrawler(s.userAgent)) {
+    return categories.blockFbCrawler ? "block" : "allow";
+  }
 
   // Clique real de anúncio sempre passa.
   if (s.fbclid && s.fbclid.length > 0) return "allow";

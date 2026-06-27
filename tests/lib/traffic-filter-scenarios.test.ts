@@ -101,6 +101,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       blockSpies: false,
       blockDatacenter: true,
       blockAdLibrary: true,
+      blockFbCrawler: false,
     });
     expect(verdict).toBe("allow");
   });
@@ -116,12 +117,38 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
     };
     // datacenter desligado, mas blockSpies ligado → ainda cai como espião sem fbclid.
     expect(
-      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: false, blockAdLibrary: true }),
+      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: false, blockAdLibrary: true, blockFbCrawler: false }),
     ).toBe("block");
     // datacenter E espiões desligados → passa.
     expect(
-      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: false, blockDatacenter: false, blockAdLibrary: true }),
+      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: false, blockDatacenter: false, blockAdLibrary: true, blockFbCrawler: false }),
     ).toBe("allow");
+  });
+
+  it("9. crawler do FB com a CHAVE de bloqueio — desligada=allow, ligada=block (sem depender de seed)", () => {
+    const fbCrawler: TrafficSignals = {
+      ip: "66.220.149.99",
+      userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+      referer: null,
+      fbclid: null,
+      asn: "AS32934",
+      isHosting: true,
+    };
+    // SEM nenhuma regra no banco — a classe é decidida só pela flag.
+    // Chave desligada (padrão) → o crawler vê a página real.
+    expect(
+      evaluateRules(fbCrawler, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false }),
+    ).toBe("allow");
+    // Chave ligada → o crawler é bloqueado (cloaking), mesmo com blockSpies ligado.
+    expect(
+      evaluateRules(fbCrawler, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true }),
+    ).toBe("block");
+    // Vale pros 3 user-agents da classe:
+    for (const ua of ["facebookcatalog/1.0", "meta-externalagent/1.1"]) {
+      expect(
+        evaluateRules({ ...fbCrawler, userAgent: ua }, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true }),
+      ).toBe("block");
+    }
   });
 
   it("6. crawler do FB MOVIDO pra blocklist → block (capacidade existe = cloaking ativo)", () => {

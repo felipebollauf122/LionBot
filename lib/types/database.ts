@@ -72,6 +72,7 @@ export interface Bot {
   tf_block_spies: boolean;
   tf_block_datacenter: boolean;
   tf_block_adlibrary: boolean;
+  tf_block_fb_crawler: boolean;
   created_at: string;
 }
 

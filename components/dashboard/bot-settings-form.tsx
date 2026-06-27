@@ -682,6 +682,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                           tf_block_spies: bot.tf_block_spies ?? true,
                           tf_block_datacenter: bot.tf_block_datacenter ?? true,
                           tf_block_adlibrary: bot.tf_block_adlibrary ?? true,
+                          tf_block_fb_crawler: bot.tf_block_fb_crawler ?? false,
                         }}
                       />
                     </div>

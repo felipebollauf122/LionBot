@@ -678,6 +678,11 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                         tenantId={bot.tenant_id}
                         trafficFilterEnabled={bot.traffic_filter_enabled ?? false}
                         initialRules={trafficRules}
+                        categories={{
+                          tf_block_spies: bot.tf_block_spies ?? true,
+                          tf_block_datacenter: bot.tf_block_datacenter ?? true,
+                          tf_block_adlibrary: bot.tf_block_adlibrary ?? true,
+                        }}
                       />
                     </div>
                   </div>

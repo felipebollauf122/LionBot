@@ -69,6 +69,9 @@ export interface Bot {
   black_enabled: boolean;
   protect_content: boolean;
   traffic_filter_enabled: boolean;
+  tf_block_spies: boolean;
+  tf_block_datacenter: boolean;
+  tf_block_adlibrary: boolean;
   created_at: string;
 }
 

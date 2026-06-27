@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TrafficFilterRule } from "@/lib/types/database";
-import { evaluateRules, type TrafficSignals } from "@/lib/traffic-filter/match";
+import { evaluateRules, type TrafficSignals, type TrafficCategories } from "@/lib/traffic-filter/match";
 import { lookupAsn } from "@/lib/traffic-filter/asn-lookup";
 
 export interface DecideTrafficInput {
@@ -10,6 +10,8 @@ export interface DecideTrafficInput {
   userAgent: string | null;
   referer: string | null;
   fbclid: string | null;
+  /** categorias liga/desliga do bot; se omitido, usa o default (tudo ligado) */
+  categories?: TrafficCategories;
 }
 
 /**
@@ -35,7 +37,7 @@ export async function decideTraffic(input: DecideTrafficInput): Promise<"allow" 
       isHosting: !!asn.isHosting || !!asn.isProxy,
     };
 
-    return evaluateRules(signals, (rules ?? []) as TrafficFilterRule[]);
+    return evaluateRules(signals, (rules ?? []) as TrafficFilterRule[], input.categories);
   } catch {
     return "allow"; // fail-open: filtro nunca derruba clique legítimo
   }

@@ -8,6 +8,8 @@ import {
   moveRule,
   toggleRule,
   toggleTrafficFilter,
+  setTrafficCategory,
+  type TrafficCategoryKey,
 } from "@/lib/actions/traffic-filter-actions";
 import type {
   TrafficFilterRule,
@@ -20,7 +22,32 @@ interface TrafficFilterManagerProps {
   tenantId: string;
   trafficFilterEnabled: boolean;
   initialRules: TrafficFilterRule[];
+  /** categorias liga/desliga (colunas tf_block_* do bot) */
+  categories?: {
+    tf_block_spies: boolean;
+    tf_block_datacenter: boolean;
+    tf_block_adlibrary: boolean;
+  };
 }
+
+/** As 3 categorias amigáveis (botões liga/desliga em português). */
+const CATEGORY_DEFS: { key: TrafficCategoryKey; title: string; desc: string }[] = [
+  {
+    key: "tf_block_spies",
+    title: "Bloquear espiões (sem clique no anúncio)",
+    desc: "Quem abre o link sem ter clicado no seu anúncio cai na página de venda. Recomendado ligado.",
+  },
+  {
+    key: "tf_block_datacenter",
+    title: "Bloquear VPN e datacenter",
+    desc: "Acessos de servidores, VPNs e proxies (típico de robôs e concorrentes espiando).",
+  },
+  {
+    key: "tf_block_adlibrary",
+    title: "Bloquear quem vem da Biblioteca de Anúncios",
+    desc: "Quem chega pela Ad Library do Facebook (gente bisbilhotando seus anúncios).",
+  },
+];
 
 const MATCH_TYPE_LABEL: Record<TrafficFilterMatchType, string> = {
   ip: "IP / CIDR",
@@ -47,6 +74,7 @@ export function TrafficFilterManager({
   tenantId,
   trafficFilterEnabled,
   initialRules,
+  categories,
 }: TrafficFilterManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -54,6 +82,17 @@ export function TrafficFilterManager({
   const [enabled, setEnabled] = useState(trafficFilterEnabled);
   const [togglingMaster, setTogglingMaster] = useState(false);
   const [masterError, setMasterError] = useState<string | null>(null);
+
+  // Categorias amigáveis (liga/desliga). Default = tudo ligado.
+  const [cats, setCats] = useState({
+    tf_block_spies: categories?.tf_block_spies ?? true,
+    tf_block_datacenter: categories?.tf_block_datacenter ?? true,
+    tf_block_adlibrary: categories?.tf_block_adlibrary ?? true,
+  });
+  const [catBusy, setCatBusy] = useState<TrafficCategoryKey | null>(null);
+
+  // Mostrar/esconder o formulário avançado de regra manual (IP/ASN na mão).
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Add form
   const [list, setList] = useState<TrafficFilterList>("block");
@@ -67,6 +106,56 @@ export function TrafficFilterManager({
 
   const allowRules = initialRules.filter((r) => r.list === "allow");
   const blockRules = initialRules.filter((r) => r.list === "block");
+
+  // O crawler do FB: pegamos qualquer regra fb_crawler pra saber se está
+  // permitido (allow) ou bloqueado (block). Todas as seeds andam juntas.
+  const crawlerRules = initialRules.filter(isCrawlerRule);
+  const crawlerBlocked = crawlerRules.length > 0 && crawlerRules.every((r) => r.list === "block");
+
+  const handleCategory = (key: TrafficCategoryKey, next: boolean) => {
+    setCats((c) => ({ ...c, [key]: next })); // optimistic
+    setCatBusy(key);
+    startTransition(async () => {
+      try {
+        await setTrafficCategory(botId, key, next);
+        router.refresh();
+      } catch (e) {
+        setCats((c) => ({ ...c, [key]: !next })); // revert
+        console.error(e);
+      } finally {
+        setCatBusy(null);
+      }
+    });
+  };
+
+  // Liga/desliga o crawler do FB movendo TODAS as seeds entre allow e block.
+  const handleCrawlerToggle = () => {
+    const targetBlock = !crawlerBlocked; // se está permitido, vai bloquear
+    if (targetBlock) {
+      const ok = window.confirm(
+        "ATENÇÃO — risco de banimento.\n\n" +
+        "Bloquear o crawler do Facebook faz o robô revisor da Meta cair na página de " +
+        "venda em vez da página real. Isso é CLOAKING: o Facebook vê conteúdo diferente " +
+        "do usuário, REPROVA o anúncio e pode BANIR a conta.\n\n" +
+        "Isso NÃO protege sua oferta — sem anúncio aprovado não há tráfego nenhum.\n\n" +
+        "Tem certeza de que quer bloquear mesmo assim?"
+      );
+      if (!ok) return;
+    }
+    setCatBusy("tf_block_spies"); // reusa o spinner global de categoria
+    startTransition(async () => {
+      try {
+        await Promise.all(
+          crawlerRules.map((r) => moveRule(r.id, targetBlock ? "block" : "allow")),
+        );
+        router.refresh();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setCatBusy(null);
+      }
+    });
+  };
 
   const handleToggleMaster = () => {
     setMasterError(null);
@@ -336,81 +425,125 @@ export function TrafficFilterManager({
         </div>
       </div>
 
-      {/* Add form */}
-      <div className="card p-6 relative">
-        <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
-        <h3 className="text-foreground font-semibold text-sm tracking-tight mb-4">Adicionar regra</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-          <div>
-            <label className="input-label">Lista</label>
-            <select
-              value={list}
-              onChange={(e) => setList(e.target.value as TrafficFilterList)}
-              className="input"
-            >
-              <option value="allow">Permitidos (allow)</option>
-              <option value="block">Bloqueados (block)</option>
-            </select>
-          </div>
-          <div>
-            <label className="input-label">Tipo</label>
-            <select
-              value={matchType}
-              onChange={(e) => setMatchType(e.target.value as TrafficFilterMatchType)}
-              className="input"
-            >
-              <option value="ip">IP / CIDR</option>
-              <option value="user_agent">User-Agent</option>
-              <option value="referer">Referer</option>
-              <option value="asn">ASN</option>
-            </select>
-          </div>
-          <div>
-            <label className="input-label">Valor *</label>
-            <input
-              type="text"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder={MATCH_TYPE_PLACEHOLDER[matchType]}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="input-label">Nota</label>
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Opcional"
-              className="input"
-            />
-          </div>
-        </div>
-        {addError && <p className="text-(--red) text-xs mb-2">{addError}</p>}
-        <button
-          onClick={handleAdd}
-          disabled={isPending}
-          className="btn-primary py-2! px-4! text-xs!"
-        >
-          {isPending ? "Adicionando..." : "+ Adicionar regra"}
-        </button>
-      </div>
+      {/* Categorias amigáveis (liga/desliga) — só aparecem com o filtro ligado */}
+      {enabled && (
+        <div className="card p-6 relative">
+          <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
+          <h3 className="text-foreground font-semibold text-sm tracking-tight">O que bloquear</h3>
+          <p className="text-(--text-muted) text-xs mt-0.5 mb-4">
+            Quem clica no seu anúncio de verdade sempre passa. Estas chaves decidem quem mais é barrado.
+          </p>
 
-      {/* Lists */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {renderSection(
-          "Permitidos (allow)",
-          "Sempre veem a pagina real — vence o block",
-          "var(--cyan)",
-          allowRules,
-        )}
-        {renderSection(
-          "Bloqueados (block)",
-          "Caem na landing de venda do LionBot",
-          "var(--red)",
-          blockRules,
-        )}
-      </div>
+          <div className="space-y-2">
+            {CATEGORY_DEFS.map((c) => {
+              const on = cats[c.key];
+              const busy = catBusy === c.key;
+              return (
+                <div key={c.key} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle)">
+                  <div className="min-w-0">
+                    <p className="text-foreground text-sm font-medium">{c.title}</p>
+                    <p className="text-(--text-muted) text-xs mt-0.5">{c.desc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    disabled={busy || isPending}
+                    onClick={() => handleCategory(c.key, !on)}
+                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${on ? "bg-(--cyan)" : "bg-white/10"}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${on ? "translate-x-5" : ""}`} />
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Crawler do Facebook — chave própria, com aviso ao bloquear */}
+            {crawlerRules.length > 0 && (
+              <div
+                className="flex items-center justify-between gap-3 p-3 rounded-xl border"
+                style={
+                  crawlerBlocked
+                    ? { background: "color-mix(in srgb, var(--red) 9%, transparent)", borderColor: "color-mix(in srgb, var(--red) 40%, transparent)" }
+                    : { background: "color-mix(in srgb, var(--amber) 7%, transparent)", borderColor: "color-mix(in srgb, var(--amber) 30%, transparent)" }
+                }
+              >
+                <div className="min-w-0">
+                  <p className="text-foreground text-sm font-medium">Bloquear o robô revisor do Facebook</p>
+                  <p className="text-(--text-muted) text-xs mt-0.5">
+                    {crawlerBlocked
+                      ? "⚠ BLOQUEADO — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta."
+                      : "Mantenha DESLIGADO. Bloquear o revisor do FB reprova seu anúncio (cloaking)."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={crawlerBlocked}
+                  disabled={isPending}
+                  onClick={handleCrawlerToggle}
+                  className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${crawlerBlocked ? "bg-(--red)" : "bg-white/10"}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${crawlerBlocked ? "translate-x-5" : ""}`} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Avançado: regras manuais por IP/ASN (escondido por padrão) */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="mt-4 text-(--text-ghost) text-xs hover:text-(--text-muted) transition-colors"
+          >
+            {showAdvanced ? "▾ Esconder regras avançadas" : "▸ Regras avançadas (IP, ASN, User-Agent)"}
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-3 pt-4 border-t border-(--border-subtle)">
+              <p className="text-(--text-muted) text-xs mb-3">
+                Para casos específicos: bloquear ou liberar um IP, faixa (CIDR), ASN, User-Agent ou referer manualmente.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                <div>
+                  <label className="input-label">Lista</label>
+                  <select value={list} onChange={(e) => setList(e.target.value as TrafficFilterList)} className="input">
+                    <option value="allow">Permitidos (allow)</option>
+                    <option value="block">Bloqueados (block)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="input-label">Tipo</label>
+                  <select value={matchType} onChange={(e) => setMatchType(e.target.value as TrafficFilterMatchType)} className="input">
+                    <option value="ip">IP / CIDR</option>
+                    <option value="user_agent">User-Agent</option>
+                    <option value="referer">Referer</option>
+                    <option value="asn">ASN</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="input-label">Valor *</label>
+                  <input type="text" value={value} onChange={(e) => setValue(e.target.value)} placeholder={MATCH_TYPE_PLACEHOLDER[matchType]} className="input" />
+                </div>
+                <div>
+                  <label className="input-label">Nota</label>
+                  <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Opcional" className="input" />
+                </div>
+              </div>
+              {addError && <p className="text-(--red) text-xs mb-2">{addError}</p>}
+              <button onClick={handleAdd} disabled={isPending} className="btn-primary py-2! px-4! text-xs!">
+                {isPending ? "Adicionando..." : "+ Adicionar regra"}
+              </button>
+
+              {/* Listas das regras manuais */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+                {renderSection("Permitidos (allow)", "Sempre veem a pagina real — vence o block", "var(--cyan)", allowRules)}
+                {renderSection("Bloqueados (block)", "Caem na landing de venda do LionBot", "var(--red)", blockRules)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

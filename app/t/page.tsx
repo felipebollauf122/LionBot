@@ -102,6 +102,11 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
       userAgent: hdrsForFilter.get("user-agent") ?? null,
       referer: hdrsForFilter.get("referer") ?? hdrsForFilter.get("referrer") ?? null,
       fbclid: String(search.fbclid ?? "") || null,
+      categories: {
+        blockSpies: typedBot.tf_block_spies ?? true,
+        blockDatacenter: typedBot.tf_block_datacenter ?? true,
+        blockAdLibrary: typedBot.tf_block_adlibrary ?? true,
+      },
     });
     if (verdict === "block") {
       return <LionBotSalesPage />;

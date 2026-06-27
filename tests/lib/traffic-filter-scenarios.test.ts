@@ -86,6 +86,44 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
     expect(evaluateRules(datacenterSpy, FB_CRAWLER_SEEDS)).toBe("block");
   });
 
+  it("7. categoria 'bloquear espiões' DESLIGADA → espião humano passa (allow)", () => {
+    const humanSpy: TrafficSignals = {
+      ip: "200.150.10.20",
+      userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/124",
+      referer: null,
+      fbclid: null,
+      asn: "AS27699",
+      isHosting: false,
+    };
+    // Com a categoria de espiões desligada (e sem datacenter/adlibrary casando),
+    // o espião humano deixa de ser bloqueado.
+    const verdict = evaluateRules(humanSpy, FB_CRAWLER_SEEDS, {
+      blockSpies: false,
+      blockDatacenter: true,
+      blockAdLibrary: true,
+    });
+    expect(verdict).toBe("allow");
+  });
+
+  it("8. categoria 'bloquear datacenter' DESLIGADA → VPN passa, mas espião ainda bloqueia", () => {
+    const datacenter: TrafficSignals = {
+      ip: "203.0.113.50",
+      userAgent: "Mozilla/5.0 (X11; Linux) HeadlessChrome/124",
+      referer: null,
+      fbclid: null,
+      asn: "AS16509",
+      isHosting: true,
+    };
+    // datacenter desligado, mas blockSpies ligado → ainda cai como espião sem fbclid.
+    expect(
+      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: false, blockAdLibrary: true }),
+    ).toBe("block");
+    // datacenter E espiões desligados → passa.
+    expect(
+      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: false, blockDatacenter: false, blockAdLibrary: true }),
+    ).toBe("allow");
+  });
+
   it("6. crawler do FB MOVIDO pra blocklist → block (capacidade existe = cloaking ativo)", () => {
     // O usuário pode mover o crawler pra block (com aviso na UI). Quando faz isso,
     // a regra vira list:'block' e o crawler passa a cair na landing de venda.

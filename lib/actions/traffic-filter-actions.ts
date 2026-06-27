@@ -120,6 +120,32 @@ export async function toggleRule(ruleId: string, isActive: boolean): Promise<{ s
   return { success: true };
 }
 
+/** Categorias liga/desliga do filtro, salvas como colunas booleanas no bot. */
+export type TrafficCategoryKey = "tf_block_spies" | "tf_block_datacenter" | "tf_block_adlibrary";
+
+export async function setTrafficCategory(
+  botId: string,
+  key: TrafficCategoryKey,
+  enabled: boolean,
+): Promise<{ success: true }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const admin = await isAdmin();
+  let botQuery = supabase.from("bots").select("id").eq("id", botId);
+  if (!admin) botQuery = botQuery.eq("tenant_id", user.id);
+  const { data: bot } = await botQuery.single();
+  if (!bot) throw new Error("Bot not found");
+
+  const { error } = await supabase
+    .from("bots")
+    .update({ [key]: enabled })
+    .eq("id", botId);
+  if (error) throw new Error(`Failed to update category: ${error.message}`);
+  return { success: true };
+}
+
 export async function toggleTrafficFilter(botId: string, enabled: boolean): Promise<{ success: true }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

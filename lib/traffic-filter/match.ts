@@ -56,22 +56,49 @@ function ruleMatches(rule: TrafficFilterRule, s: TrafficSignals): boolean {
 }
 
 /**
+ * Categorias do filtro (botões liga/desliga na UI). Cada flag liga/desliga um
+ * pedaço do "default por sinal". Default = tudo LIGADO = comportamento clássico.
+ */
+export interface TrafficCategories {
+  blockSpies: boolean;       // humano sem fbclid (espião)
+  blockDatacenter: boolean;  // IP de datacenter/VPN/proxy
+  blockAdLibrary: boolean;   // veio da Ad Library do Facebook
+}
+
+const DEFAULT_CATEGORIES: TrafficCategories = {
+  blockSpies: true,
+  blockDatacenter: true,
+  blockAdLibrary: true,
+};
+
+/**
  * Veredito final. Precedência:
  *   1. ALLOW explícito que casa  → allow
  *   2. BLOCK explícito que casa  → block
- *   3. default-por-sinal
+ *   3. default-por-sinal (modulado pelas categorias)
  * Fail-open: na dúvida (e quando há fbclid) → allow.
  */
-export function evaluateRules(s: TrafficSignals, rules: TrafficFilterRule[]): "allow" | "block" {
+export function evaluateRules(
+  s: TrafficSignals,
+  rules: TrafficFilterRule[],
+  categories: TrafficCategories = DEFAULT_CATEGORIES,
+): "allow" | "block" {
   const active = rules.filter((r) => r.is_active);
 
   if (active.some((r) => r.list === "allow" && ruleMatches(r, s))) return "allow";
   if (active.some((r) => r.list === "block" && ruleMatches(r, s))) return "block";
 
-  // Default por sinal:
-  if (s.fbclid && s.fbclid.length > 0) return "allow";          // clique real de anúncio
-  if (s.isHosting) return "block";                               // datacenter/VPN
-  if (s.referer && s.referer.toLowerCase().includes("ads/library")) return "block";
-  if (!s.userAgent) return "block";                             // sem UA = suspeito
-  return "block";                                               // humano sem fbclid = espião
+  // Clique real de anúncio sempre passa.
+  if (s.fbclid && s.fbclid.length > 0) return "allow";
+
+  // Default por sinal — cada categoria pode ser desligada pelo usuário:
+  if (categories.blockDatacenter && s.isHosting) return "block";
+  if (categories.blockAdLibrary && s.referer && s.referer.toLowerCase().includes("ads/library")) return "block";
+  if (categories.blockSpies) {
+    if (!s.userAgent) return "block";   // sem UA = suspeito
+    return "block";                     // humano sem fbclid = espião
+  }
+
+  // Nenhuma categoria pegou → deixa passar (usuário afrouxou o filtro).
+  return "allow";
 }

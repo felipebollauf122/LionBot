@@ -6,7 +6,7 @@ import { LionMark } from "@/components/brand/lion-mark";
 import { CommandBar, CommandSearch, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
 import { AnimatedNumber } from "@/components/dashboard/analytics/animated-number";
 import { AdminViewSwitcher } from "@/components/dashboard/admin-view-switcher";
-import { buildTrackingLink } from "@/lib/tracking-link";
+import { buildTrackingLink, buildTrackingParams } from "@/lib/tracking-link";
 import type { BotFleetRow } from "@/lib/actions/analytics-actions";
 import type { ViewableUser } from "@/lib/actions/admin-actions";
 
@@ -168,6 +168,7 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
           {bot.is_active ? "Ativo" : "Inativo"}
         </span>
         <CopyLinkButton botId={bot.id} hasUtmify={bot.has_utmify} slug={bot.slug_gate_enabled ? bot.slug_plain : null} />
+        <CopyParamsButton botId={bot.id} hasUtmify={bot.has_utmify} slug={bot.slug_gate_enabled ? bot.slug_plain : null} />
         <svg className="hidden lg:block w-4 h-4 text-(--text-muted) group-hover:text-(--accent) group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
       </div>
     </Link>
@@ -207,6 +208,45 @@ function CopyLinkButton({ botId, hasUtmify, slug }: { botId: string; hasUtmify: 
         <>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
           Link
+        </>
+      )}
+    </button>
+  );
+}
+
+/** Botão "Parâmetros": copia SÓ a query string (bot + UTMs + slug) pra colar no
+ *  campo de parâmetros do anúncio. Para o clique no card. */
+function CopyParamsButton({ botId, hasUtmify, slug }: { botId: string; hasUtmify: boolean; slug?: string | null }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(buildTrackingParams(botId, hasUtmify, slug));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title="Copiar só os parâmetros (bot, UTMs, slug) pro anúncio"
+      className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+        copied
+          ? "border-(--cyan)/40 text-(--cyan) bg-(--cyan)/10"
+          : "border-(--border-subtle) text-(--text-secondary) hover:text-foreground hover:border-(--accent)/40 hover:bg-white/5"
+      }`}
+    >
+      {copied ? (
+        <>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          Copiado
+        </>
+      ) : (
+        <>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><line x1="10" y1="3" x2="8" y2="21" /><line x1="16" y1="3" x2="14" y2="21" /></svg>
+          Parâmetros
         </>
       )}
     </button>

@@ -8,21 +8,33 @@
  * `origin` é o domínio público (ex: https://lionbot.site). No cliente,
  * passe window.location.origin.
  */
+/**
+ * Monta SÓ a query string de tracking (sem domínio nem `/t?`), pra colar no
+ * campo de parâmetros do anúncio. Ex: `bot=...&utm_source=FB&...&s=<slug>`.
+ *
+ * - `bot=<id>` sempre.
+ * - UTMs da Meta se `hasUtmify`.
+ * - `s=<slug>` se houver slug (a chave de segurança final).
+ */
+export function buildTrackingParams(botId: string, hasUtmify: boolean, slug?: string | null): string {
+  let params = `bot=${botId}`;
+  if (hasUtmify) {
+    params +=
+      "&utm_source=FB" +
+      "&utm_campaign={{campaign.name}}|{{campaign.id}}" +
+      "&utm_medium={{adset.name}}|{{adset.id}}" +
+      "&utm_content={{ad.name}}|{{ad.id}}" +
+      "&utm_term={{placement}}";
+  }
+  if (slug) params += `&s=${encodeURIComponent(slug)}`;
+  return params;
+}
+
 export function buildTrackingLink(
   botId: string,
   hasUtmify: boolean,
   origin: string,
   slug?: string | null,
 ): string {
-  let base = `${origin.replace(/\/+$/, "")}/t?bot=${botId}`;
-  // slug secreto (chave de segurança final) — vai junto nos parâmetros.
-  if (slug) base += `&s=${encodeURIComponent(slug)}`;
-  if (!hasUtmify) return base;
-  const utm =
-    "utm_source=FB" +
-    "&utm_campaign={{campaign.name}}|{{campaign.id}}" +
-    "&utm_medium={{adset.name}}|{{adset.id}}" +
-    "&utm_content={{ad.name}}|{{ad.id}}" +
-    "&utm_term={{placement}}";
-  return `${base}&${utm}`;
+  return `${origin.replace(/\/+$/, "")}/t?${buildTrackingParams(botId, hasUtmify, slug)}`;
 }

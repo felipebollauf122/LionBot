@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LionMark } from "@/components/brand/lion-mark";
-import { buildTrackingLink } from "@/lib/tracking-link";
+import { buildTrackingLink, buildTrackingParams } from "@/lib/tracking-link";
 import type { Bot } from "@/lib/types/database";
 
 interface BotCardProps {
@@ -11,9 +11,10 @@ interface BotCardProps {
 
 export function BotCard({ bot }: BotCardProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedParams, setCopiedParams] = useState(false);
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  // Se o portão de slug está ativo, o link de cópia já inclui o slug secreto.
+  // Se o portão de slug está ativo, o link/params já incluem o slug secreto.
   const slugForLink = bot.slug_gate_enabled ? bot.slug_plain : null;
   const trackingUrl = buildTrackingLink(bot.id, !!bot.utmify_api_key, baseUrl, slugForLink);
 
@@ -23,6 +24,14 @@ export function BotCard({ bot }: BotCardProps) {
     navigator.clipboard.writeText(trackingUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleCopyParams(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(buildTrackingParams(bot.id, !!bot.utmify_api_key, slugForLink));
+    setCopiedParams(true);
+    setTimeout(() => setCopiedParams(false), 2000);
   }
 
   const hasTracking = !!bot.facebook_pixel_id;
@@ -90,7 +99,19 @@ export function BotCard({ bot }: BotCardProps) {
           }`}
           style={copied ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}
         >
-          {copied ? "Copiado!" : "Copiar"}
+          {copied ? "Copiado!" : "Link"}
+        </button>
+        <button
+          onClick={handleCopyParams}
+          title="Copiar só os parâmetros (bot, UTMs, slug) pro anúncio"
+          className={`shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all ${
+            copiedParams
+              ? "bg-(--cyan)/10 text-(--cyan) border border-(--cyan)/20"
+              : "bg-white/4 text-(--text-secondary) border border-(--border-subtle) hover:bg-white/8 hover:text-foreground hover:border-(--border-default)"
+          }`}
+          style={copiedParams ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--cyan) 30%, transparent)" } : {}}
+        >
+          {copiedParams ? "Copiado!" : "Parâmetros"}
         </button>
       </div>
 

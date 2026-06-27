@@ -172,4 +172,37 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false }),
     ).toBe("allow");
   });
+
+  it("10. fbclid FORJADO (?fbclid=teste, sem referer do FB) → block (não engana mais)", () => {
+    const forged: TrafficSignals = {
+      ip: "200.150.10.30",
+      userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/124",
+      referer: null,            // não veio do facebook
+      fbclid: "teste",          // forjado, formato implausível
+      asn: "AS27699",
+      isHosting: false,
+    };
+    // Antes "tem fbclid = allow" deixava passar. Agora o formato implausível +
+    // sem referer do FB → não conta como clique real → cai como espião.
+    expect(evaluateRules(forged, FB_CRAWLER_SEEDS)).toBe("block");
+  });
+
+  it("11. fbclid real (formato plausível OU referer do FB) → allow", () => {
+    const base: TrafficSignals = {
+      ip: "189.40.1.9",
+      userAgent: "Mozilla/5.0 (iPhone) Safari",
+      referer: null,
+      fbclid: null,
+      asn: "AS28573",
+      isHosting: false,
+    };
+    // a) formato plausível (longo, charset base64-url), mesmo sem referer:
+    expect(
+      evaluateRules({ ...base, fbclid: "IwAR1aBcD2eFgH3iJkL4mNoP5qRsT6uVwX7yZ" }, FB_CRAWLER_SEEDS),
+    ).toBe("allow");
+    // b) fbclid curto MAS com referer do facebook → também vale:
+    expect(
+      evaluateRules({ ...base, fbclid: "x9", referer: "https://l.facebook.com/" }, FB_CRAWLER_SEEDS),
+    ).toBe("allow");
+  });
 });

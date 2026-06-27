@@ -65,6 +65,38 @@ export function isFbCrawler(userAgent: string | null): boolean {
   return FB_CRAWLER_UAS.some((c) => ua.includes(c));
 }
 
+/** Referers de onde um clique real de anúncio do FB/IG costuma vir. */
+const FB_REFERERS = ["facebook.com", "l.facebook.com", "lm.facebook.com", "fb.me", "instagram.com", "l.instagram.com"];
+
+/**
+ * Heurística pra distinguir um fbclid de clique REAL de um forjado (ex:
+ * `?fbclid=teste`). NÃO é validação criptográfica — o fbclid é opaco e o FB não
+ * oferece API. É permissiva DE PROPÓSITO (nunca barrar cliente legítimo):
+ * basta UM sinal plausível.
+ *
+ * Conta como válido se:
+ *   - o formato é plausível (comprimento real + charset do fbclid), OU
+ *   - veio com referer do Facebook/Instagram (clique veio de lá).
+ */
+export function isLikelyRealFbclid(fbclid: string | null, referer: string | null): boolean {
+  if (!fbclid) return false;
+  const id = fbclid.trim();
+  if (!id) return false;
+
+  // Sinal 1: referer do FB/IG → clique veio mesmo de lá.
+  if (referer) {
+    const ref = referer.toLowerCase();
+    if (FB_REFERERS.some((d) => ref.includes(d))) return true;
+  }
+
+  // Sinal 2: formato plausível. fbclid real é longo (~50-200) e usa o charset
+  // base64-url (A-Z a-z 0-9 _ -). "teste", "banana", "123" não passam.
+  const plausibleCharset = /^[A-Za-z0-9_-]+$/.test(id);
+  if (plausibleCharset && id.length >= 20) return true;
+
+  return false;
+}
+
 /**
  * Categorias do filtro (botões liga/desliga na UI). Cada flag liga/desliga um
  * pedaço do "default por sinal". Default = comportamento clássico.
@@ -109,8 +141,10 @@ export function evaluateRules(
   if (active.some((r) => r.list === "allow" && ruleMatches(r, s))) return "allow";
   if (active.some((r) => r.list === "block" && ruleMatches(r, s))) return "block";
 
-  // Clique real de anúncio sempre passa.
-  if (s.fbclid && s.fbclid.length > 0) return "allow";
+  // Clique real de anúncio passa. Agora exige um fbclid PLAUSÍVEL (formato real
+  // ou referer do FB) — um `?fbclid=teste` forjado não basta mais e cai nos
+  // checks de espião abaixo. Permissivo de propósito: nunca barra clique real.
+  if (isLikelyRealFbclid(s.fbclid, s.referer)) return "allow";
 
   // Default por sinal — cada categoria pode ser desligada pelo usuário:
   if (categories.blockDatacenter && s.isHosting) return "block";

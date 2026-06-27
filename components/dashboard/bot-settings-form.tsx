@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { saveBotSettings, updateBotAvatar, toggleBlackEnabled, toggleProtectContent, deleteBot, updateBotToken } from "@/lib/actions/bot-settings-actions";
+import { toggleTrafficFilter } from "@/lib/actions/traffic-filter-actions";
 import { syncBotFromTelegram } from "@/lib/actions/sync-bot-actions";
 import { uploadMedia } from "@/lib/actions/upload-actions";
 import { LionMark } from "@/components/brand/lion-mark";
@@ -70,6 +71,8 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
   const [togglingBlack, setTogglingBlack] = useState(false);
   const [protectContent, setProtectContent] = useState(bot.protect_content ?? true);
   const [togglingProtect, setTogglingProtect] = useState(false);
+  const [trafficFilterEnabled, setTrafficFilterEnabled] = useState(bot.traffic_filter_enabled ?? false);
+  const [togglingFilter, setTogglingFilter] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(bot.avatar_url ?? "");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [botUsername, setBotUsername] = useState(bot.bot_username ?? "");
@@ -665,6 +668,47 @@ export function BotSettingsForm({ bot, isAdmin = false, children }: BotSettingsF
                       />
                       <p className="text-(--text-muted) text-xs mt-2">
                         Conteúdo que aparece na página antes do botão. Ajuda a <b>evitar bloqueio do Facebook</b> (página sem texto é marcada como link enganoso). Deixe em branco para usar um texto genérico padrão.
+                      </p>
+                    </div>
+
+                    {/* ── Filtro de Tráfego ─────────────────────────── */}
+                    <div className="pt-4 border-t border-(--border-subtle)">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="section-icon w-8 h-8" style={{ background: "color-mix(in srgb, var(--red) 14%, transparent)", boxShadow: "0 0 12px -4px var(--red)" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-foreground font-semibold text-sm tracking-tight">Filtro de tráfego</h3>
+                            <p className="text-(--text-muted) text-xs">Espião (sem clique de anúncio) cai numa página de venda em vez da sua oferta</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setTogglingFilter(true);
+                            try {
+                              await toggleTrafficFilter(bot.id, !trafficFilterEnabled);
+                              setTrafficFilterEnabled(!trafficFilterEnabled);
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setTogglingFilter(false);
+                            }
+                          }}
+                          disabled={togglingFilter}
+                          className={`relative w-11 h-6 rounded-full transition-all duration-200 ${trafficFilterEnabled ? "bg-(--red)" : "bg-(--border-default)"}`}
+                          style={trafficFilterEnabled ? { boxShadow: "0 0 12px -2px rgba(255,59,107,0.4)" } : {}}
+                        >
+                          <span
+                            className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${trafficFilterEnabled ? "translate-x-5" : "translate-x-0"}`}
+                          />
+                        </button>
+                      </div>
+                      <p className="text-(--text-muted) text-xs mt-3">
+                        O crawler do Facebook e os cliques reais de anúncio sempre veem sua oferta normal. Gerencie as regras (IP, ASN, etc.) na aba <b>Filtro de tráfego</b>.
                       </p>
                     </div>
                   </div>

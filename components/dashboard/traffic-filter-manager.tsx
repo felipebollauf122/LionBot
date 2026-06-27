@@ -400,7 +400,7 @@ export function TrafficFilterManager({
             <p className="text-(--text-muted) text-xs mt-0.5 leading-relaxed max-w-xl">
               Filtra os visitantes da pagina de clique <span className="font-mono">/t</span>. Visitantes suspeitos (espiao
               sem fbclid, vindo da Ad Library, datacenter/VPN) caem numa landing de venda do LionBot em vez de ver a
-              oferta do bot. O crawler do Facebook e cliques reais sempre veem a pagina normal.
+              oferta do bot.
             </p>
             <p className="text-(--text-ghost) text-xs mt-2">
               {enabled

@@ -3,6 +3,8 @@ import { cookies, headers } from "next/headers";
 import { nanoid } from "nanoid";
 import type { Bot } from "@/lib/types/database";
 import { SITE_NAME, SITE_LEGAL_NAME, CONTACT_EMAIL, SITE_DESCRIPTION } from "@/lib/site";
+import { decideTraffic } from "@/lib/traffic-filter/evaluate";
+import { LionBotSalesPage } from "@/components/traffic-filter/lion-bot-sales-page";
 
 interface TrackingPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -87,6 +89,24 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   }
 
   const typedBot = bot as Bot;
+
+  // ── Filtro de tráfego (allowlist/blocklist) ──────────────────────────────
+  // Só roda se o bot ativou. Veredito "block" → espião vê a landing de venda
+  // do LionBot (sem botão /go, sem tracking_event). Fail-open dentro de decideTraffic.
+  if (typedBot.traffic_filter_enabled) {
+    const hdrsForFilter = await headers();
+    const verdict = await decideTraffic({
+      supabase,
+      tenantId: typedBot.tenant_id,
+      ip: extractClientIp(hdrsForFilter),
+      userAgent: hdrsForFilter.get("user-agent") ?? null,
+      referer: hdrsForFilter.get("referer") ?? hdrsForFilter.get("referrer") ?? null,
+      fbclid: String(search.fbclid ?? "") || null,
+    });
+    if (verdict === "block") {
+      return <LionBotSalesPage />;
+    }
+  }
 
   const fbclid = String(search.fbclid ?? "");
   const utmSource = String(search.utm_source ?? "");

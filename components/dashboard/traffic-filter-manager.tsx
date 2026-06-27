@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   addRule,
   deleteRule,
+  moveRule,
   toggleRule,
   toggleTrafficFilter,
 } from "@/lib/actions/traffic-filter-actions";
@@ -35,9 +36,10 @@ const MATCH_TYPE_PLACEHOLDER: Record<TrafficFilterMatchType, string> = {
   asn: "AS15169",
 };
 
-/** Seed anti-bloqueio do crawler do FB — não deve ser removida. */
-function isCrawlerSeed(rule: TrafficFilterRule): boolean {
-  return !!rule.note && rule.note.toLowerCase().includes("crawler fb");
+/** Regra do crawler revisor do FB. Vem na allowlist por padrão; pode ser movida
+ *  pra blocklist (com aviso), mas não pode ser removida. */
+function isCrawlerRule(rule: TrafficFilterRule): boolean {
+  return rule.rule_kind === "fb_crawler";
 }
 
 export function TrafficFilterManager({
@@ -136,16 +138,51 @@ export function TrafficFilterManager({
     });
   };
 
+  const handleMove = (rule: TrafficFilterRule) => {
+    const target: TrafficFilterList = rule.list === "allow" ? "block" : "allow";
+
+    // Mover o crawler revisor do FB pra BLOCK = cloaking (ele cai na landing de
+    // venda em vez da /t real) → anúncio reprovado / conta banida. Confirma forte.
+    if (isCrawlerRule(rule) && target === "block") {
+      const ok = window.confirm(
+        "ATENÇÃO — risco de banimento.\n\n" +
+        "Mover o crawler do Facebook para os BLOQUEADOS faz o robô revisor da Meta " +
+        "cair na landing de venda do LionBot em vez da página real. Isso é CLOAKING: " +
+        "o Facebook vê conteúdo diferente do usuário, REPROVA o anúncio e pode BANIR a conta.\n\n" +
+        "Isso NÃO protege a sua oferta — sem anúncio aprovado não há tráfego nenhum.\n\n" +
+        "Tem certeza de que quer mover mesmo assim?"
+      );
+      if (!ok) return;
+    }
+
+    setRowBusy(rule.id);
+    startTransition(async () => {
+      try {
+        await moveRule(rule.id, target);
+        router.refresh();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setRowBusy(null);
+      }
+    });
+  };
+
   const renderRule = (rule: TrafficFilterRule) => {
-    const seed = isCrawlerSeed(rule);
+    const crawler = isCrawlerRule(rule);
+    // Crawler na blocklist = cloaking ativo → destaca em vermelho/alerta.
+    const danger = crawler && rule.list === "block";
     const accent = rule.list === "allow" ? "var(--cyan)" : "var(--red)";
     const busy = rowBusy === rule.id;
+    const moveLabel = rule.list === "allow" ? "→ Bloquear" : "→ Permitir";
     return (
       <div
         key={rule.id}
         className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle) group hover:bg-white/2 transition-colors"
         style={
-          seed
+          danger
+            ? { background: "color-mix(in srgb, var(--red) 9%, transparent)", borderColor: "color-mix(in srgb, var(--red) 40%, transparent)" }
+            : crawler
             ? { background: "color-mix(in srgb, var(--amber) 7%, transparent)", borderColor: "color-mix(in srgb, var(--amber) 30%, transparent)" }
             : undefined
         }
@@ -166,9 +203,14 @@ export function TrafficFilterManager({
               <span className={`text-foreground text-sm font-mono truncate ${rule.is_active ? "" : "opacity-40 line-through"}`}>
                 {rule.value}
               </span>
-              {seed && (
+              {crawler && !danger && (
                 <span className="shrink-0 text-(--amber) text-[10px] font-bold whitespace-nowrap">
-                  Anti-bloqueio — nao remover
+                  Crawler do Facebook · recomendado em Permitidos
+                </span>
+              )}
+              {danger && (
+                <span className="shrink-0 text-(--red) text-[10px] font-bold whitespace-nowrap">
+                  ⚠ Cloaking — risco de banimento
                 </span>
               )}
             </div>
@@ -192,7 +234,22 @@ export function TrafficFilterManager({
             <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${rule.is_active ? "translate-x-4" : ""}`} />
           </button>
 
-          {!seed && (
+          {/* mover entre listas (allow ↔ block) */}
+          <button
+            onClick={() => handleMove(rule)}
+            disabled={busy || isPending}
+            title={rule.list === "allow" ? "Mover para Bloqueados" : "Mover para Permitidos"}
+            className="px-3 py-1.5 text-xs font-bold rounded-lg border transition-all opacity-0 group-hover:opacity-100 disabled:opacity-50 shrink-0"
+            style={{
+              color: rule.list === "allow" ? "var(--red)" : "var(--cyan)",
+              borderColor: `color-mix(in srgb, ${rule.list === "allow" ? "var(--red)" : "var(--cyan)"} 18%, transparent)`,
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
+            {busy ? "..." : moveLabel}
+          </button>
+
+          {!crawler && (
             <button
               onClick={() => handleDelete(rule)}
               disabled={busy || isPending}

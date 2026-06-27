@@ -5,7 +5,7 @@ import type { TrafficFilterRule } from "@/lib/types/database";
 function rule(p: Partial<TrafficFilterRule>): TrafficFilterRule {
   return {
     id: "r", tenant_id: "t", list: "block", match_type: "ip",
-    value: "", note: null, is_active: true, created_at: "2026-06-26T00:00:00Z",
+    value: "", note: null, rule_kind: "custom", is_active: true, created_at: "2026-06-26T00:00:00Z",
     ...p,
   };
 }

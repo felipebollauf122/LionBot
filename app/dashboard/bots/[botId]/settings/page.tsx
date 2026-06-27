@@ -5,7 +5,7 @@ import { isOwner } from "@/lib/actions/owner-actions";
 import { BotSettingsForm } from "@/components/dashboard/bot-settings-form";
 import { BlacklistManager } from "@/components/dashboard/blacklist-manager";
 import { SettingsPasswordGate } from "@/components/dashboard/settings-password-gate";
-import type { Bot, BlacklistUser } from "@/lib/types/database";
+import type { Bot, BlacklistUser, TrafficFilterRule } from "@/lib/types/database";
 
 export default async function SettingsPage({
   params,
@@ -25,6 +25,8 @@ export default async function SettingsPage({
 
   if (!bot) notFound();
 
+  const typedBot = bot as Bot;
+
   let blacklist: BlacklistUser[] = [];
   if (admin) {
     const { data } = await supabase
@@ -35,10 +37,22 @@ export default async function SettingsPage({
     blacklist = (data ?? []) as BlacklistUser[];
   }
 
+  // Regras do filtro de tráfego (allow/block, inclui o crawler do FB) — exibidas
+  // dentro da seção de redirecionamento das Configurações.
+  const { data: trafficRules } = await supabase
+    .from("traffic_filter_rules")
+    .select("*")
+    .eq("tenant_id", typedBot.tenant_id)
+    .order("created_at", { ascending: false });
+
   return (
     <SettingsPasswordGate enabled={owner}>
       <div className="p-4 sm:p-6 lg:p-8 pb-20 md:pb-8 max-w-5xl mx-auto w-full">
-        <BotSettingsForm bot={bot as Bot} isAdmin={admin}>
+        <BotSettingsForm
+          bot={typedBot}
+          isAdmin={admin}
+          trafficRules={(trafficRules ?? []) as TrafficFilterRule[]}
+        >
           {admin && <BlacklistManager botId={botId} initialBlacklist={blacklist} />}
         </BotSettingsForm>
       </div>

@@ -74,6 +74,9 @@ export interface Bot {
 
 export type TrafficFilterList = "allow" | "block";
 export type TrafficFilterMatchType = "ip" | "user_agent" | "referer" | "asn";
+/** Classe da regra. 'fb_crawler' = seed do crawler revisor do Facebook (vem na
+ *  allowlist por padrão; pode ser movida pra blocklist, mas isso é cloaking). */
+export type TrafficFilterRuleKind = "fb_crawler" | "custom";
 
 export interface TrafficFilterRule {
   id: string;
@@ -82,6 +85,7 @@ export interface TrafficFilterRule {
   match_type: TrafficFilterMatchType;
   value: string;
   note: string | null;
+  rule_kind: TrafficFilterRuleKind;
   is_active: boolean;
   created_at: string;
 }

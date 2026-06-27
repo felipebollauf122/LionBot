@@ -8,7 +8,7 @@ import type { TrafficFilterRule } from "@/lib/types/database";
  * Garante o caso crítico anti-cloaking: o crawler revisor SEMPRE vê a /t real.
  */
 
-// Seeds idênticas às da migration 043_traffic_filter_rules.sql.
+// Seeds idênticas às da migration 043/044: crawler do FB em ALLOW, classe fb_crawler.
 const FB_CRAWLER_SEEDS: TrafficFilterRule[] = ["facebookexternalhit", "facebookcatalog", "meta-externalagent"].map(
   (value, i) => ({
     id: `seed-${i}`,
@@ -17,6 +17,7 @@ const FB_CRAWLER_SEEDS: TrafficFilterRule[] = ["facebookexternalhit", "facebookc
     match_type: "user_agent",
     value,
     note: "crawler FB (anti-cloaking) — não remover",
+    rule_kind: "fb_crawler",
     is_active: true,
     created_at: "2026-06-26T00:00:00Z",
   }),
@@ -83,5 +84,21 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       isHosting: true,
     };
     expect(evaluateRules(datacenterSpy, FB_CRAWLER_SEEDS)).toBe("block");
+  });
+
+  it("6. crawler do FB MOVIDO pra blocklist → block (capacidade existe = cloaking ativo)", () => {
+    // O usuário pode mover o crawler pra block (com aviso na UI). Quando faz isso,
+    // a regra vira list:'block' e o crawler passa a cair na landing de venda.
+    // Este teste prova que a capacidade FUNCIONA — e documenta que isso é cloaking.
+    const movedToBlock: TrafficFilterRule[] = FB_CRAWLER_SEEDS.map((r) => ({ ...r, list: "block" }));
+    const fbCrawler: TrafficSignals = {
+      ip: "66.220.149.99",
+      userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+      referer: null,
+      fbclid: null,
+      asn: "AS32934",
+      isHosting: true,
+    };
+    expect(evaluateRules(fbCrawler, movedToBlock)).toBe("block");
   });
 });

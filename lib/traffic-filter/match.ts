@@ -97,15 +97,17 @@ export function evaluateRules(
 ): "allow" | "block" {
   const active = rules.filter((r) => r.is_active);
 
-  if (active.some((r) => r.list === "allow" && ruleMatches(r, s))) return "allow";
-  if (active.some((r) => r.list === "block" && ruleMatches(r, s))) return "block";
-
-  // Robô revisor do FB: a flag decide. A classe (os 3 user-agents) é tratada
-  // junta. Ligada → block (cloaking). Desligada → allow, e ele NÃO cai no
-  // blockSpies abaixo (ele não tem fbclid, mas é legítimo e deve ver a /t real).
+  // Robô revisor do FB: a CHAVE (flag) é a autoridade sobre a classe (os 3
+  // user-agents), tratada junta. Vem ANTES das regras explícitas de propósito —
+  // as seeds antigas (allow do crawler, migrations 043/044) não devem mais
+  // mandar; quem manda é a flag. Ligada → block (cloaking). Desligada → allow
+  // (e o crawler NÃO cai no blockSpies abaixo: não tem fbclid mas é legítimo).
   if (isFbCrawler(s.userAgent)) {
     return categories.blockFbCrawler ? "block" : "allow";
   }
+
+  if (active.some((r) => r.list === "allow" && ruleMatches(r, s))) return "allow";
+  if (active.some((r) => r.list === "block" && ruleMatches(r, s))) return "block";
 
   // Clique real de anúncio sempre passa.
   if (s.fbclid && s.fbclid.length > 0) return "allow";

@@ -151,11 +151,10 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
     }
   });
 
-  it("6. crawler do FB MOVIDO pra blocklist → block (capacidade existe = cloaking ativo)", () => {
-    // O usuário pode mover o crawler pra block (com aviso na UI). Quando faz isso,
-    // a regra vira list:'block' e o crawler passa a cair na landing de venda.
-    // Este teste prova que a capacidade FUNCIONA — e documenta que isso é cloaking.
-    const movedToBlock: TrafficFilterRule[] = FB_CRAWLER_SEEDS.map((r) => ({ ...r, list: "block" }));
+  it("6. a FLAG é a autoridade sobre o crawler — vence até uma seed ALLOW no banco", () => {
+    // Regressão do bug real: a seed ALLOW do crawler (migrations 043/044) NÃO
+    // pode mais sobrepor a flag. Com blockFbCrawler=true, o crawler é bloqueado
+    // mesmo existindo a regra allow no banco (isFbCrawler roda ANTES das regras).
     const fbCrawler: TrafficSignals = {
       ip: "66.220.149.99",
       userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
@@ -164,6 +163,13 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       asn: "AS32934",
       isHosting: true,
     };
-    expect(evaluateRules(fbCrawler, movedToBlock)).toBe("block");
+    // FB_CRAWLER_SEEDS tem a regra ALLOW do crawler. Mesmo assim, flag ligada → block.
+    expect(
+      evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true }),
+    ).toBe("block");
+    // Flag desligada → allow (a seed nem importa mais).
+    expect(
+      evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false }),
+    ).toBe("allow");
   });
 });

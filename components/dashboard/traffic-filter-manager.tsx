@@ -458,22 +458,16 @@ export function TrafficFilterManager({
               );
             })}
 
-            {/* Crawler do Facebook — chave própria, com aviso ao bloquear */}
+            {/* Crawler do Facebook — agora é uma chave igual às outras, na mesma
+                lista. Desligado (permitido) por padrão; com aviso de cloaking. */}
             {crawlerRules.length > 0 && (
-              <div
-                className="flex items-center justify-between gap-3 p-3 rounded-xl border"
-                style={
-                  crawlerBlocked
-                    ? { background: "color-mix(in srgb, var(--red) 9%, transparent)", borderColor: "color-mix(in srgb, var(--red) 40%, transparent)" }
-                    : { background: "color-mix(in srgb, var(--amber) 7%, transparent)", borderColor: "color-mix(in srgb, var(--amber) 30%, transparent)" }
-                }
-              >
+              <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle)">
                 <div className="min-w-0">
                   <p className="text-foreground text-sm font-medium">Bloquear o robô revisor do Facebook</p>
                   <p className="text-(--text-muted) text-xs mt-0.5">
                     {crawlerBlocked
-                      ? "⚠ BLOQUEADO — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta."
-                      : "Mantenha DESLIGADO. Bloquear o revisor do FB reprova seu anúncio (cloaking)."}
+                      ? "⚠ Bloqueado — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta."
+                      : "⚠ Cuidado: bloquear o revisor do FB é cloaking e pode reprovar seu anúncio. Deixe desligado salvo se souber o que faz."}
                   </p>
                 </div>
                 <button

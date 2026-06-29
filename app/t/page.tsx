@@ -69,8 +69,12 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   const search = await searchParams;
   const botId = String(search.bot ?? "");
 
+  // Sem ?bot= (ex: o Facebook revisa o link base lionbot.online/t porque os
+  // params do bot ficam no campo "Parâmetros" do anúncio): em vez da tela vazia
+  // "link inválido" (que o FB lê como link enganoso e reprova), mostra a landing
+  // de venda do LionBot — conteúdo legítimo da plataforma.
   if (!botId) {
-    return <InvalidLink />;
+    return <LionBotSalesPage />;
   }
 
   const supabase = createServiceClient(
@@ -85,8 +89,10 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
     .eq("is_active", true)
     .single();
 
+  // Bot inexistente/inativo: mesma lógica — landing de venda em vez da tela vazia,
+  // pra nunca devolver uma página "quebrada" que o Facebook marque como enganosa.
   if (!bot) {
-    return <InvalidLink />;
+    return <LionBotSalesPage />;
   }
 
   const typedBot = bot as Bot;
@@ -360,25 +366,6 @@ ${fbcCookie ? `var f=document.cookie.split('; ').find(function(c){return c.index
           *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
         }
       `}</style>
-    </div>
-  );
-}
-
-function InvalidLink() {
-  return (
-    <div
-      style={{
-        minHeight: "100svh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#0a0410",
-        color: "rgba(244,233,255,0.5)",
-        fontSize: 14,
-        fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto',
-      }}
-    >
-      Link inválido ou expirado.
     </div>
   );
 }

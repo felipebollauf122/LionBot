@@ -1,6 +1,6 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { cookies, headers } from "next/headers";
-import { nanoid } from "nanoid";
+import { customAlphabet } from "nanoid";
 import type { Bot } from "@/lib/types/database";
 import { SITE_NAME, SITE_LEGAL_NAME, CONTACT_EMAIL, SITE_DESCRIPTION } from "@/lib/site";
 import { decideTraffic } from "@/lib/traffic-filter/evaluate";
@@ -38,6 +38,13 @@ const TRUST_BULLETS = [
   "Conteúdo entregue de forma automática e segura",
   "Suporte e instruções passo a passo no próprio chat",
 ];
+
+// IMPORTANTE: o tid é re-extraído no /start do Telegram com sanitização
+// `[^a-zA-Z0-9_]` (server/src/webhook/telegram.ts). O nanoid PADRÃO usa o
+// alfabeto A-Za-z0-9_- (com hífen), então um tid com '-' era ALTERADO no /start
+// → não batia com o tracking_event → o black flow caía no visual_flow.
+// Geramos o tid só com [a-zA-Z0-9] (sem '-' e sem '_'), que sobrevive intacto.
+const tidNanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 16);
 
 function generateFbp(): string {
   const rand = Math.floor(Math.random() * 1e10);
@@ -166,7 +173,7 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   }
   const sourceUrl = host ? `${proto}://${host}/t${queryString.toString() ? "?" + queryString.toString() : ""}` : null;
 
-  const tid = `tid_${nanoid(16)}`;
+  const tid = `tid_${tidNanoid(16)}`;
   const pageViewEventId = `pv_${tid}`;
 
   await supabase.from("tracking_events").insert({

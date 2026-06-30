@@ -176,10 +176,22 @@ export class FlowProcessor {
         : isBlack
         ? BLACK_DELETE_DELAY_MINUTES
         : null;
-    const { nodes, edges } = flow.flow_data;
+    // Blindagem (bug black flow): flow_data pode vir null/corrompido ou sem nós.
+    // Antes isso virava crash (destructuring de null) ou silêncio total. Agora
+    // logamos claramente o motivo pra nunca falhar "invisível".
+    const flowData = flow.flow_data as { nodes?: typeof flow.flow_data.nodes; edges?: typeof flow.flow_data.edges } | null;
+    if (!flowData || !Array.isArray(flowData.nodes)) {
+      console.error(`[flow] ✗ flow ${flow.id} (${flow.name ?? "?"}) com flow_data inválido/vazio${isBlack ? " [BLACK]" : ""} — nada a executar`);
+      return {};
+    }
+    const nodes = flowData.nodes;
+    const edges = Array.isArray(flowData.edges) ? flowData.edges : [];
 
     let currentNodeId = startNodeId ?? nodes.find((n) => n.type === "trigger")?.id;
-    if (!currentNodeId) return {};
+    if (!currentNodeId) {
+      console.error(`[flow] ✗ flow ${flow.id} (${flow.name ?? "?"}) sem nó 'trigger'${isBlack ? " [BLACK]" : ""} — nada a enviar. Configure o gatilho do fluxo.`);
+      return {};
+    }
 
     const MAX_ITERATIONS = 50;
     let iterations = 0;

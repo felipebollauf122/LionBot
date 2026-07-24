@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { saveAutomationBot, removeAutomationBot } from "@/app/dashboard/automations/clones/actions";
 
+// Renderiza SÓ o conteúdo — a page envolve num CardShell "Bot companheiro"
+// (com o ícone do bot), então aqui não há card externo nem título duplicado.
 export function AutomationBotCard({
   bot,
 }: {
@@ -14,29 +16,17 @@ export function AutomationBotCard({
 
   if (bot) {
     return (
-      <div className="card-glow reveal p-5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="section-icon w-10 h-10 shrink-0 text-lg"
-            style={{
-              background:
-                "linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 100%)",
-              boxShadow: "0 0 14px -4px var(--accent)",
-            }}
-          >
-            🤖
-          </div>
-          <div className="min-w-0">
-            <div className="text-(--text-primary) font-medium truncate">@{bot.username}</div>
-            <div className="text-(--text-secondary) text-sm mt-0.5">
-              Publica os clones e é promovido a admin nos destinos criados.
-            </div>
+      <div className="row-hover reveal flex items-center justify-between gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
+        <div className="min-w-0">
+          <div className="text-foreground font-medium truncate">@{bot.username}</div>
+          <div className="text-(--text-secondary) text-xs mt-0.5">
+            Publica os clones e é promovido a admin nos destinos criados.
           </div>
         </div>
         <button
           onClick={() => start(() => void removeAutomationBot())}
           disabled={pending}
-          className="btn-ghost text-xs px-3 py-1.5 shrink-0"
+          className="btn-ghost text-xs px-3 py-1.5 shrink-0 disabled:opacity-40"
         >
           Trocar
         </button>
@@ -45,24 +35,12 @@ export function AutomationBotCard({
   }
 
   return (
-    <div className="card reveal p-5 space-y-3">
-      <div className="flex items-center gap-3">
-        <div
-          className="section-icon w-10 h-10 shrink-0 text-lg"
-          style={{
-            background:
-              "linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent) 0%, color-mix(in srgb, var(--accent) 4%, transparent) 100%)",
-            boxShadow: "0 0 14px -4px var(--accent)",
-          }}
-        >
-          🤖
-        </div>
-        <div className="text-(--text-primary) font-medium">Bot companheiro</div>
-      </div>
+    <div className="space-y-3 reveal">
       <p className="text-(--text-secondary) text-sm">
-        Crie um bot no @BotFather e cole o token. Ele é quem publica os clones — sua
-        conta pessoal só lê. No BotFather, deixe <strong>Group Privacy desligado</strong> e{" "}
-        <strong>allow groups ligado</strong>, senão a promoção a admin falha.
+        Crie um bot no @BotFather e cole o token. Ele é quem publica os clones — sua conta
+        pessoal só lê. No BotFather, deixe <strong className="text-foreground">Group Privacy
+        desligado</strong> e <strong className="text-foreground">allow groups ligado</strong>,
+        senão a promoção a admin falha.
       </p>
       <input
         value={token}

@@ -7,6 +7,9 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: "RASCUNHO", badge: "badge-inactive" },
 };
 
+// Renderiza SÓ as linhas — a page envolve num CardShell (o painel é o card).
+// Padrão de linha igual ao TopList/ActivityFeed do dashboard: fundo leve dentro
+// do painel sólido, row-hover e reveal escalonado.
 export function CloneList({
   clones,
 }: {
@@ -21,16 +24,15 @@ export function CloneList({
 }) {
   if (clones.length === 0) {
     return (
-      <div className="card text-center text-(--text-muted) text-sm">
+      <div className="py-8 text-center text-(--text-ghost) text-xs">
         Nenhum clone ainda — abra &quot;Ver conteúdo&quot; numa conta e clique em Clonar.
       </div>
     );
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-1.5">
       {clones.map((c, i) => {
-        const meta =
-          STATUS_MAP[c.status] ?? { label: c.status.toUpperCase(), badge: "badge-inactive" };
+        const meta = STATUS_MAP[c.status] ?? { label: c.status.toUpperCase(), badge: "badge-inactive" };
         const pct =
           c.total_seen > 0
             ? Math.min(100, Math.round((c.copied_count / c.total_seen) * 100))
@@ -41,25 +43,30 @@ export function CloneList({
           <a
             key={c.id}
             href={`/dashboard/automations/clones/${c.id}`}
-            className={`card-interactive block p-4 reveal-${Math.min(i + 1, 8)}`}
+            className={`row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) hover:border-(--border-default) transition-colors`}
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="text-(--text-primary) font-medium truncate">{c.dest_title}</div>
+              <span className="text-sm text-foreground font-medium truncate">{c.dest_title}</span>
               <span className={`badge ${meta.badge} shrink-0`}>{meta.label}</span>
             </div>
-            <div className="text-(--text-muted) text-xs truncate mt-0.5">
+            <div className="text-[11px] text-(--text-ghost) truncate mt-0.5">
               de {c.source_title ?? "—"}
             </div>
-            <div className="h-2 rounded-full bg-(--bg-input) overflow-hidden mt-2">
-              <div
-                style={{
-                  width: `${pct}%`,
-                  background: "linear-gradient(90deg, var(--accent), var(--cyan))",
-                }}
-                className="h-full"
-              />
+            <div className="flex items-center gap-3 mt-2">
+              <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    background: "linear-gradient(90deg, var(--accent), var(--cyan))",
+                    transition: "width 1s cubic-bezier(0.16,1,0.3,1)",
+                  }}
+                />
+              </div>
+              <span className="text-[11px] font-bold stat-value text-(--text-secondary) shrink-0">
+                {c.copied_count} copiadas
+              </span>
             </div>
-            <div className="text-(--text-secondary) text-xs mt-2">{c.copied_count} copiadas</div>
           </a>
         );
       })}

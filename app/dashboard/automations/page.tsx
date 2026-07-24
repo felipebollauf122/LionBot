@@ -3,6 +3,9 @@ import { MtprotoAccounts } from "@/components/dashboard/mtproto-accounts";
 import { MtprotoCampaignList } from "@/components/dashboard/mtproto-campaign-list";
 import { AutomationBotCard } from "@/components/dashboard/automation-bot-card";
 import { CloneList } from "@/components/dashboard/clone-list";
+import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
+import { CardShell } from "@/components/dashboard/analytics/card-shell";
+import { icons } from "@/components/dashboard/analytics/icons";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { notFound } from "next/navigation";
 
@@ -39,92 +42,135 @@ export default async function AutomationsPage() {
   const activeAccounts = (accounts ?? []).filter((a) => a.status === "active").length;
   const clonesCompleted = (clones ?? []).filter((c) => c.status === "completed").length;
   const clonesRunning = (clones ?? []).filter(
-    (c) => c.status === "running" || c.status === "waiting_flood"
+    (c) => c.status === "running" || c.status === "waiting_flood",
   ).length;
 
   return (
-    <div className="p-8 max-w-5xl">
-      <header className="mb-8 reveal">
-        <h1 className="text-3xl font-bold text-(--text-primary) mb-1">Automações</h1>
-        <p className="text-(--text-secondary)">
-          Conecte contas pessoais do Telegram e dispare mensagens em massa.
+    <div className="p-6 md:p-8 max-w-6xl mx-auto">
+      <header className="mb-6 reveal">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Automações</h1>
+        <p className="text-(--text-secondary) text-sm mt-1">
+          Conecte contas do Telegram, clone canais e dispare mensagens em massa.
         </p>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10 reveal-1">
-        <div className="card p-4">
-          <div className="text-2xl font-bold text-(--text-primary)">{activeAccounts}</div>
-          <div className="text-xs uppercase tracking-wide text-(--text-muted) mt-1">Contas ativas</div>
-        </div>
-        <div className="card p-4">
-          <div className="text-2xl font-bold text-(--text-primary)">{clonesCompleted}</div>
-          <div className="text-xs uppercase tracking-wide text-(--text-muted) mt-1">Clones concluídos</div>
-        </div>
-        <div className="card p-4">
-          <div className="text-2xl font-bold text-(--text-primary)">{clonesRunning}</div>
-          <div className="text-xs uppercase tracking-wide text-(--text-muted) mt-1">Clones rodando</div>
-        </div>
-        <div className="card p-4">
-          <div className="mb-1">
-            {bot ? (
-              <span className="badge badge-active">CONFIGURADO</span>
-            ) : (
-              <span className="badge badge-pending">PENDENTE</span>
-            )}
-          </div>
-          <div className="text-xs uppercase tracking-wide text-(--text-muted) mt-1">Bot</div>
-        </div>
+      {/* Faixa de KPIs — mesmos cards do dashboard (KpiCard), herdam o tema */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <KpiCard
+          label="Contas ativas"
+          value=""
+          numericValue={activeAccounts}
+          format="int"
+          hint={`${(accounts ?? []).length} conectada${(accounts ?? []).length !== 1 ? "s" : ""}`}
+          accent="purple"
+          icon={icons.users}
+          revealIndex={1}
+        />
+        <KpiCard
+          label="Clones rodando"
+          value=""
+          numericValue={clonesRunning}
+          format="int"
+          hint={clonesRunning > 0 ? "em andamento" : "nenhum agora"}
+          accent="cyan"
+          icon={icons.repeat}
+          revealIndex={2}
+        />
+        <KpiCard
+          label="Clones concluídos"
+          value=""
+          numericValue={clonesCompleted}
+          format="int"
+          hint={`${(clones ?? []).length} no total`}
+          accent="magenta"
+          icon={icons.check}
+          revealIndex={3}
+        />
+        <KpiCard
+          label="Bot companheiro"
+          value={bot ? "Ativo" : "Pendente"}
+          hint={bot ? `@${bot.username}` : "cadastre o token"}
+          accent="amber"
+          icon={icons.bot}
+          revealIndex={4}
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 reveal-2">
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary) mb-3">
-            Contas conectadas
-          </h2>
+      {/* Clonagem — seção-herói */}
+      <div className="mb-6">
+        <CardShell
+          title="Clonagem"
+          subtitle="clone canais e grupos"
+          icon={icons.flow}
+          accent="magenta"
+          revealIndex={2}
+        >
+          <CloneList clones={clones ?? []} />
+        </CardShell>
+      </div>
+
+      {/* Contas + Bot lado a lado */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <CardShell
+          title="Contas conectadas"
+          subtitle="perfis do Telegram"
+          icon={icons.users}
+          accent="purple"
+          revealIndex={3}
+        >
           <MtprotoAccounts accounts={accounts ?? []} />
-        </section>
+        </CardShell>
 
-        <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary) mb-3">
-            Bot companheiro
-          </h2>
+        <CardShell
+          title="Bot companheiro"
+          subtitle="publica os clones"
+          icon={icons.bot}
+          accent="cyan"
+          revealIndex={4}
+        >
           <AutomationBotCard bot={bot ?? null} />
-        </section>
+        </CardShell>
       </div>
 
-      <section className="mb-12 reveal-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary) mb-4">
-          Clonagem
-        </h2>
-        <CloneList clones={clones ?? []} />
-      </section>
+      {/* Campanhas */}
+      <div className="mb-6">
+        <CardShell
+          title="Campanhas"
+          subtitle="disparo em massa"
+          icon={icons.megaphone}
+          accent="amber"
+          revealIndex={5}
+          right={
+            <a href="/dashboard/automations/new-campaign" className="btn-primary text-xs px-4 py-2">
+              Nova campanha
+            </a>
+          }
+        >
+          <MtprotoCampaignList campaigns={campaigns ?? []} />
+        </CardShell>
+      </div>
 
-      <section className="mb-10 reveal-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary)">
-            Campanhas
-          </h2>
-          <a href="/dashboard/automations/new-campaign" className="btn-primary">
-            Nova campanha
-          </a>
-        </div>
-        <MtprotoCampaignList campaigns={campaigns ?? []} />
-      </section>
-
-      <section className="reveal-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-(--text-secondary) mb-3">
-          Monitoramento de canais
-        </h2>
+      {/* Monitoramento */}
+      <CardShell
+        title="Monitoramento de canais"
+        subtitle="substituição automática"
+        icon={icons.eye}
+        accent="cyan"
+        revealIndex={6}
+      >
         <a
           href="/dashboard/automations/channel-monitors"
-          className="card card-interactive block p-4"
+          className="row-hover reveal flex items-center gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
         >
-          <div className="text-(--text-primary) font-medium">🛡 Monitor + substituição automática</div>
-          <div className="text-(--text-muted) text-xs mt-1">
-            Quando um canal monitorado cair (canal banido ou conta freezada), o sistema cria automaticamente um canal substituto com o template configurado.
+          <div className="min-w-0">
+            <div className="text-foreground text-sm font-medium">🛡 Monitor + substituição automática</div>
+            <div className="text-(--text-muted) text-xs mt-0.5">
+              Quando um canal monitorado cai (banido ou conta freezada), o sistema cria um substituto
+              automaticamente com o template configurado.
+            </div>
           </div>
         </a>
-      </section>
+      </CardShell>
     </div>
   );
 }

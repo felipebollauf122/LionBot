@@ -34,13 +34,14 @@ function deps(
     iterate: async function* (since: number) {
       for (const msg of messages) if (msg.id > since) yield msg;
     },
-    publish: async (group, replyToDestId) => {
+    publish: vi.fn(async (group: SourceMessage[], replyToDestId: number | null) => {
       groups.push(group);
       replies.push(replyToDestId);
       return group.map(() => ({ status: "copied" as const, destMsgId: nextDestId++ }));
-    },
+    }),
     persist: vi.fn(async () => {}),
     loadIdMap: vi.fn(async () => []),
+    loadCounters: vi.fn(async () => ({ copied: 0, skipped: 0, failed: 0, seen: 0 })),
     getStatus: vi.fn(async () => "running"),
     setStatus: vi.fn(async () => {}),
     scheduleResume: vi.fn(async () => {}),
@@ -164,11 +165,11 @@ describe("CloneRunner", () => {
     const d = deps([m(1), m(2)], { sourcePinnedIds: vi.fn(async () => [2]) });
     await new CloneRunner(d, cfg({ copyPins: true })).run();
     expect(d.pinInDest).toHaveBeenCalledWith([101]);
-    // ordem: pin depois de todo o envio
+    // ordem: pin acontece depois de TODAS as publicações, não só de alguma delas
     const pinOrder = (d.pinInDest as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
-    const lastPublish = d.groups.length;
-    expect(lastPublish).toBe(2);
-    expect(pinOrder).toBeGreaterThan(0);
+    const publishOrders = (d.publish as ReturnType<typeof vi.fn>).mock.invocationCallOrder;
+    const lastPublishOrder = publishOrders[publishOrders.length - 1];
+    expect(pinOrder).toBeGreaterThan(lastPublishOrder);
   });
 
   it("não toca em pins quando o toggle está desligado", async () => {
@@ -181,5 +182,50 @@ describe("CloneRunner", () => {
     const d = deps([m(1), m(2)]);
     await new CloneRunner(d, cfg({ throttleMs: 3000 })).run();
     expect(d.delay).toHaveBeenCalledWith(3000);
+  });
+
+  it("semeia os contadores de loadCounters e acumula no setStatus final", async () => {
+    // Job retomado depois de um FLOOD_WAIT: já tinha 400 copiadas, 2 puladas,
+    // 1 falha e 403 vistas persistidas. O runner novo não pode reiniciar do
+    // zero — senão o progresso reportado volta pra trás.
+    const d = deps([m(1)], {
+      loadCounters: vi.fn(async () => ({ copied: 400, skipped: 2, failed: 1, seen: 403 })),
+    });
+    await new CloneRunner(d, cfg()).run();
+    expect(d.setStatus).toHaveBeenLastCalledWith(
+      "j1",
+      "completed",
+      expect.objectContaining({
+        copiedCount: 401,
+        skippedCount: 2,
+        failedCount: 1,
+        totalSeen: 404,
+      }),
+    );
+  });
+
+  it("messageLimit considera mensagens já vistas em retomadas anteriores", async () => {
+    // messageLimit: 3 com seen: 2 já persistidos (de antes do FLOOD_WAIT) só
+    // deixa 1 mensagem a mais passar — não as 3 do limite original.
+    const d = deps([m(1), m(2), m(3)], {
+      loadCounters: vi.fn(async () => ({ copied: 0, skipped: 0, failed: 0, seen: 2 })),
+    });
+    await new CloneRunner(d, cfg({ messageLimit: 3 })).run();
+    expect(d.groups.flat().map((x) => x.id)).toEqual([1]);
+  });
+
+  it("messageLimit no meio de um álbum não trunca a galeria: álbum > messageLimit", async () => {
+    // Precedência deliberada: o corte de messageLimit só é observado entre
+    // grupos (seen só sobe dentro de flush()). Um álbum inteiro que ultrapassa
+    // o limite ainda assim é enviado por completo — truncar a galeria no meio
+    // produziria um clone visivelmente quebrado, o que é pior que estourar a
+    // contagem de mensagens em até ALBUM_MAX-1 itens.
+    const d = deps([
+      m(1, { groupedId: "g1" }),
+      m(2, { groupedId: "g1" }),
+      m(3, { groupedId: "g1" }),
+    ]);
+    await new CloneRunner(d, cfg({ messageLimit: 1 })).run();
+    expect(d.groups.map((g) => g.map((x) => x.id))).toEqual([[1, 2, 3]]);
   });
 });

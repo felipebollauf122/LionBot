@@ -25,6 +25,17 @@ export interface CloneRunnerDeps {
   publish(group: SourceMessage[], replyToDestId: number | null): Promise<CloneOutcome[]>;
   persist(jobId: string, rows: CloneMapRow[], cursor: number): Promise<void>;
   loadIdMap(jobId: string): Promise<Array<[number, number]>>;
+  /**
+   * Contadores ja persistidos deste job. O runner e reconstruido do zero a
+   * cada retomada, entao sem isso o progresso volta pra tras e o messageLimit
+   * recomeca a contar (job com limite 500 que ja copiou 400 copiaria mais 500).
+   */
+  loadCounters(jobId: string): Promise<{
+    copied: number;
+    skipped: number;
+    failed: number;
+    seen: number;
+  }>;
   getStatus(jobId: string): Promise<string | null>;
   setStatus(jobId: string, status: CloneStatus, patch: CloneStatusPatch): Promise<void>;
   scheduleResume(jobId: string, seconds: number): Promise<void>;
@@ -49,6 +60,15 @@ export class CloneRunner {
     for (const [src, dest] of await this.deps.loadIdMap(this.cfg.jobId)) {
       this.idMap.set(src, dest);
     }
+
+    // Semeia os contadores do que já foi persistido: o runner é recriado do
+    // zero a cada retomada (ex.: depois de um FLOOD_WAIT), então sem isso o
+    // progresso reportado volta pra trás e o messageLimit recomeça a contar.
+    const counters = await this.deps.loadCounters(this.cfg.jobId);
+    this.copied = counters.copied;
+    this.skipped = counters.skipped;
+    this.failed = counters.failed;
+    this.seen = counters.seen;
 
     const cursor = this.highestCopiedSource();
     await this.deps.setStatus(this.cfg.jobId, "running", {});

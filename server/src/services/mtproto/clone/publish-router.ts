@@ -34,6 +34,9 @@ export interface RouteInput {
 }
 
 export function routeGroup(input: RouteInput): RouteDecision {
+  // copyPolls/copyButtons não são lidos aqui: chooseStrategy já resolveu os
+  // dois em `strategy` (poll é decidido em planForMessage, botão vira
+  // "download" na estratégia) — reagir de novo aqui duplicaria a decisão.
   const { strategy, plans } = input;
   const skipIndexes = plans
     .map((p, i) => (p.kind === "skip" ? i : -1))
@@ -118,19 +121,71 @@ export function createPublisher(
     const downloaded: string[] = [];
     try {
       if (decision.mode === "album") {
-        const items: Array<{ filePath: string; kind: "photo" | "video"; caption: string }> = [];
+        // Baixa tudo primeiro: um item grande demais não pode derrubar os
+        // irmãos que couberam no teto (ver finding do review de Task 10).
+        const ok: Array<{ index: number; filePath: string; kind: "photo" | "video"; caption: string }> =
+          [];
+        const tooLarge = new Set<number>();
         for (let i = 0; i < raws.length; i++) {
           const dl = await ctx.reader.downloadToPath(raws[i], ctx.tmpDir, MAX_FILE_BYTES);
-          if (!dl) return plans.map(() => ({ status: "skipped" as const, reason: "file_too_large" }));
+          if (!dl) {
+            tooLarge.add(i);
+            continue;
+          }
           downloaded.push(dl.filePath);
           const plan = plans[i];
-          items.push({
+          ok.push({
+            index: i,
             filePath: dl.filePath,
             kind: plan.kind === "media" && plan.mediaKind === "video" ? "video" : "photo",
             caption: raws[i].message ?? "",
           });
         }
-        const destIds = await ctx.bot.publishAlbum(items);
+
+        // Nenhum item coube: nada pra enviar, nenhuma chamada ao Telegram.
+        if (ok.length === 0) {
+          return plans.map(() => ({ status: "skipped" as const, reason: "file_too_large" }));
+        }
+
+        // Alguns (mas não todos) grandes demais: um álbum parcial não
+        // preserva o 1:1 com os ids de volta, e "álbum" de 1 item não é
+        // álbum de verdade — degrada pra envios individuais via publishMedia,
+        // preservando o mediaKind real (foto ou vídeo) de cada item.
+        if (tooLarge.size > 0) {
+          const degraded: CloneOutcome[] = new Array(raws.length);
+          let replyUsed = false;
+          for (const item of ok) {
+            const destMsgId = await ctx.bot.publishMedia(item.filePath, item.kind, item.caption, {
+              replyToMessageId: !replyUsed && replyToDestId != null ? replyToDestId : undefined,
+            });
+            degraded[item.index] = { status: "copied", destMsgId };
+            replyUsed = true;
+          }
+          for (const i of tooLarge) {
+            degraded[i] = { status: "skipped", reason: "file_too_large" };
+          }
+          return degraded;
+        }
+
+        // Todos ok: álbum de verdade. O reply do grupo vai no álbum inteiro —
+        // o Telegram ancora automaticamente no primeiro item do media group.
+        const items = ok.map(({ filePath, kind, caption }) => ({ filePath, kind, caption }));
+        const destIds = await ctx.bot.publishAlbum(
+          items,
+          replyToDestId != null ? { replyToMessageId: replyToDestId } : undefined,
+        );
+        // Guarda de alinhamento: sem isso, um retorno mais curto (ou fora de
+        // ordem) do publishAlbum atribuiria o destMsgId errado a uma
+        // mensagem de origem errada. Mapeia o que dá pra mapear
+        // posicionalmente; o resto vira failed, igual ao sem_id_no_retorno
+        // do forward.
+        if (destIds.length !== items.length) {
+          return items.map((_, i) =>
+            i < destIds.length
+              ? { status: "copied" as const, destMsgId: destIds[i] }
+              : { status: "failed" as const, reason: "album_id_count_mismatch" },
+          );
+        }
         return destIds.map((destMsgId) => ({ status: "copied" as const, destMsgId }));
       }
 

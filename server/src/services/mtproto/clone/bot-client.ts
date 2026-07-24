@@ -149,6 +149,11 @@ export class CompanionBot {
   /** Álbum. O caller já fatiou em no máximo 10 itens. */
   async publishAlbum(
     items: Array<{ filePath: string; kind: "photo" | "video"; caption: string }>,
+    /**
+     * Opcional, sem default de reply: o Telegram ancora o reply no primeiro
+     * item do álbum automaticamente, então o caller só precisa passar o id.
+     */
+    opts: { replyToMessageId?: number } = {},
   ): Promise<number[]> {
     const media = items.map((it) => ({
       type: it.kind,
@@ -157,6 +162,9 @@ export class CompanionBot {
     }));
     const sent = await this.bot.api.sendMediaGroup(this.destChatId, media as never, {
       disable_notification: true,
+      reply_parameters: opts.replyToMessageId
+        ? { message_id: opts.replyToMessageId }
+        : undefined,
     });
     return sent.map((m) => m.message_id);
   }

@@ -1,6 +1,5 @@
 import { Api } from "telegram";
 import { Bot, InputFile } from "grammy";
-import { config } from "../../../config.js";
 import { MtprotoClient } from "../client.js";
 import type { CloneMediaKind } from "./media-plan.js";
 
@@ -63,6 +62,11 @@ export interface PublishOptions {
   inlineLinks?: InlineLink[];
 }
 
+export interface BotMtprotoCreds {
+  apiId: number;
+  apiHash: string;
+}
+
 /**
  * Publicador do clone. Bot API para o caso comum; cliente MTProto de bot
  * apenas para o que a Bot API não cobre.
@@ -76,6 +80,12 @@ export class CompanionBot {
     /** chat_id no formato do Bot API: -100<channelId> para canal/supergrupo. */
     private destChatId: string,
     private sessionString: string | null = null,
+    /**
+     * Credenciais MTProto do app. Injetadas em vez de importadas de config.ts
+     * porque aquele modulo dispara assert de env no import, o que prendia os
+     * testes puros deste arquivo a ter SUPABASE_URL no ambiente.
+     */
+    private creds: BotMtprotoCreds | null = null,
   ) {
     this.bot = new Bot(token);
   }
@@ -163,9 +173,14 @@ export class CompanionBot {
    */
   async mtproto(): Promise<{ client: MtprotoClient; sessionString: string }> {
     if (!this.mt) {
+      if (!this.creds) {
+        throw new Error(
+          "CompanionBot.mtproto() precisa de creds (apiId/apiHash) injetadas no construtor",
+        );
+      }
       this.mt = new MtprotoClient(
-        config.telegramApiId,
-        config.telegramApiHash,
+        this.creds.apiId,
+        this.creds.apiHash,
         this.sessionString ?? "",
       );
       if (!this.sessionString) {

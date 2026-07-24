@@ -44,6 +44,7 @@ function deps(
     loadCounters: vi.fn(async () => ({ copied: 0, skipped: 0, failed: 0, seen: 0 })),
     getStatus: vi.fn(async () => "running"),
     setStatus: vi.fn(async () => {}),
+    heartbeat: vi.fn(async () => {}),
     scheduleResume: vi.fn(async () => {}),
     sourcePinnedIds: vi.fn(async () => []),
     pinInDest: vi.fn(async () => {}),
@@ -89,6 +90,21 @@ describe("CloneRunner", () => {
     await new CloneRunner(d, cfg()).run();
     const cursors = (d.persist as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[2]);
     expect(cursors).toEqual([1, 2]);
+  });
+
+  it("chama heartbeat com os contadores correntes a cada flush (defeito I3)", async () => {
+    // Regressão da barra de progresso travada em 0% durante o run: setStatus
+    // só grava contadores nas transições terminais e persist() só grava o
+    // cursor — sem um heartbeat por flush, o polling do dashboard não via
+    // progresso nenhum até o job terminar.
+    const d = deps([m(1), m(2), m(3)]);
+    await new CloneRunner(d, cfg()).run();
+    const calls = (d.heartbeat as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toEqual([
+      ["j1", { copiedCount: 1, skippedCount: 0, failedCount: 0, totalSeen: 1 }],
+      ["j1", { copiedCount: 2, skippedCount: 0, failedCount: 0, totalSeen: 2 }],
+      ["j1", { copiedCount: 3, skippedCount: 0, failedCount: 0, totalSeen: 3 }],
+    ]);
   });
 
   it("remapeia resposta para o id do destino quando copyReplies está ligado", async () => {

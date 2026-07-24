@@ -35,7 +35,11 @@ export interface EnsureDestinationInput {
   destTitle: string;
   copyIdentity: boolean;
   botUsername: string;
-  /** Destino já criado numa execução anterior. Quando presente, nada é refeito. */
+  /**
+   * Destino já criado numa execução anterior. Quando presente, canal e
+   * identidade não são refeitos — mas a promoção do bot SEMPRE roda de novo
+   * (defeito I4, ver ensureDestination).
+   */
   existing: DestinationRef | null;
 }
 
@@ -55,7 +59,8 @@ export function deriveDestKind(dialogKind: string): DestKind {
 
 /**
  * Cria o destino, aplica a identidade da origem, promove o bot a admin e
- * exporta o convite. Idempotente: retomada de job não recria nada.
+ * exporta o convite. Retomada de job não recria canal nem identidade — mas
+ * SEMPRE repromove o bot.
  *
  * Foto e convite são best-effort. A promoção do bot é fatal — sem bot admin
  * não existe publicação, e falhar aqui é mais barato que falhar na mensagem 1.
@@ -64,7 +69,23 @@ export async function ensureDestination(
   deps: DestBuilderDeps,
   input: EnsureDestinationInput,
 ): Promise<DestinationRef> {
-  if (input.existing) return input.existing;
+  if (input.existing) {
+    // Defeito I4: o job anterior persiste dest_channel_id assim que o canal
+    // existe (logo após createChannel), ANTES do promoteBot fatal. Se
+    // promoteBot explodiu depois disso (Group Privacy do bot ligado no
+    // BotFather → BOT_GROUPS_BLOCKED, ou FLOOD/PEER_FLOOD na promoção), o
+    // canal fica órfão pra sempre: sem isso aqui, a retomada devolvia
+    // `existing` direto e o bot nunca virava admin — toda publicação falha
+    // com CHAT_ADMIN_REQUIRED e nenhum resume corrige. Por isso a promoção
+    // roda de novo em toda retomada, e não só na criação. deps.promoteBot
+    // precisa tolerar "já feito" (USER_ALREADY_PARTICIPANT/
+    // USER_ALREADY_INVITED) pra não falhar um job cujo bot já tinha sido
+    // promovido com sucesso num run anterior (ex.: retomada por flood
+    // durante a publicação, não durante a promoção) — ver o wrapper em
+    // clone-handler.ts.
+    await deps.promoteBot(input.existing.channelId, input.existing.accessHash, input.botUsername);
+    return input.existing;
+  }
 
   const identity = input.copyIdentity
     ? await deps.readIdentity(input.source)

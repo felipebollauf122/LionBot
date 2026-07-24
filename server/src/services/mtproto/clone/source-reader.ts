@@ -52,6 +52,37 @@ export class SourceReader {
     return this.peer;
   }
 
+  /**
+   * Menor id entre as N mensagens reais (Api.Message, sem contar serviço)
+   * mais recentes da origem. Defeito I8: "últimas N mensagens" tem que ser
+   * as N mais NOVAS, não as N mais antigas — mas o runner só sabe iterar em
+   * ordem ascendente (do mais antigo pro mais novo), pra manter a retomada
+   * pelo cursor. A solução é dar um PISO pra essa iteração ascendente: busca
+   * as N mais recentes (ordem padrão do Telegram, mais novo primeiro), pega
+   * o menor id entre elas, e usa como offsetId — a iteração ascendente
+   * continua funcionando do jeito que sempre funcionou, só que começando
+   * perto do fim do histórico em vez do início. Composição com o cursor
+   * feita no caller (clone-handler): Math.max(cursorPersistido, piso - 1).
+   *
+   * Devolve 0 (sem piso = clona desde o início) quando o canal tem N
+   * mensagens reais ou menos.
+   */
+  async floorForLastN(limit: number): Promise<number> {
+    if (!limit || limit <= 0) return 0;
+    await this.client.connect();
+    let minId = 0;
+    let count = 0;
+    for await (const raw of this.client.raw.iterMessages(this.peer, {
+      limit: undefined,
+    }) as AsyncIterable<unknown>) {
+      if (!(raw instanceof Api.Message)) continue;
+      if (minId === 0 || raw.id < minId) minId = raw.id;
+      count++;
+      if (count >= limit) break;
+    }
+    return count >= limit ? minId : 0;
+  }
+
   /** Título, descrição e foto da origem. Canal e grupo legacy usam calls diferentes. */
   async readIdentity(): Promise<SourceIdentity> {
     await this.client.connect();

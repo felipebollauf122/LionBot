@@ -97,21 +97,37 @@ describe("ensureDestination", () => {
     expect(d.setPhoto).not.toHaveBeenCalled();
   });
 
-  it("é idempotente: destino já gravado não é recriado", async () => {
+  it("é idempotente na retomada: canal e identidade não são refeitos", async () => {
     const d = deps();
     const existing = { channelId: "77", accessHash: "88", inviteLink: null };
     const out = await ensureDestination(d, { ...input, existing });
 
-    // Nenhuma dependência pode ser chamada no caminho de retomada — inclusive
-    // persist e readIdentity, que uma regressão poderia reintroduzir sem
-    // quebrar o retorno.
+    // Canal e identidade não podem ser recriados no caminho de retomada —
+    // inclusive persist e readIdentity, que uma regressão poderia
+    // reintroduzir sem quebrar o retorno (e queimaria outra unidade da cota
+    // diária de CreateChannel).
     expect(d.readIdentity).not.toHaveBeenCalled();
     expect(d.createChannel).not.toHaveBeenCalled();
     expect(d.setAbout).not.toHaveBeenCalled();
     expect(d.setPhoto).not.toHaveBeenCalled();
-    expect(d.promoteBot).not.toHaveBeenCalled();
     expect(d.exportInvite).not.toHaveBeenCalled();
     expect(d.persist).not.toHaveBeenCalled();
+    expect(out).toEqual(existing);
+  });
+
+  it("defeito I4: na retomada, promoteBot roda de novo mesmo com destino já existente", async () => {
+    // Antes do fix, `if (input.existing) return input.existing;` devolvia
+    // cedo demais — se o job anterior falhou DEPOIS de persistir
+    // dest_channel_id mas ANTES do promoteBot completar (Group Privacy do
+    // bot, FLOOD/PEER_FLOOD na promoção), o canal ficava órfão pra sempre: a
+    // retomada nunca revisitava a promoção, e toda publicação falhava com
+    // CHAT_ADMIN_REQUIRED sem que nenhum resume corrigisse.
+    const d = deps();
+    const existing = { channelId: "77", accessHash: "88", inviteLink: null };
+    const out = await ensureDestination(d, { ...input, existing });
+
+    expect(d.promoteBot).toHaveBeenCalledWith("77", "88", "meu_bot");
+    expect(d.promoteBot).toHaveBeenCalledTimes(1);
     expect(out).toEqual(existing);
   });
 

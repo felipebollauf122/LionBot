@@ -38,6 +38,16 @@ export interface CloneRunnerDeps {
   }>;
   getStatus(jobId: string): Promise<string | null>;
   setStatus(jobId: string, status: CloneStatus, patch: CloneStatusPatch): Promise<void>;
+  /**
+   * Defeito I3: heartbeat de progresso. setStatus só grava contadores nas
+   * transições terminais (running com patch vazio, waiting_flood, completed,
+   * failed) e persist() só grava o cursor — então a barra de progresso lida
+   * via polling (copied_count/skipped_count/failed_count/total_seen) fica
+   * travada em 0% a run inteira e pula pra 100% no fim. Chamado ao fim de
+   * cada flush() com os contadores atuais; a implementação real escreve
+   * só essas 4 colunas (nunca status/started_at).
+   */
+  heartbeat(jobId: string, counters: CloneStatusPatch): Promise<void>;
   scheduleResume(jobId: string, seconds: number): Promise<void>;
   sourcePinnedIds(): Promise<number[]>;
   pinInDest(destMsgIds: number[]): Promise<void>;
@@ -176,6 +186,9 @@ export class CloneRunner {
     });
 
     await this.deps.persist(this.cfg.jobId, rows, cursor);
+    // Heartbeat de progresso (defeito I3) — depois do persist, pra refletir
+    // os contadores já atualizados por este flush.
+    await this.deps.heartbeat(this.cfg.jobId, this.counters());
     if (this.cfg.throttleMs > 0) await this.deps.delay(this.cfg.throttleMs);
   }
 

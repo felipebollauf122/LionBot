@@ -76,6 +76,15 @@ describe("MtprotoClient.promoteBotToAdmin (tolerância de convite)", () => {
     expect(editAdminCalls(fake)).toHaveLength(1);
   });
 
+  it("quando InviteToChannel rejeita com USER_BOT (canal broadcast), EditAdmin AINDA roda", async () => {
+    // Em canal broadcast o bot não pode ser membro comum — o InviteToChannel
+    // volta USER_BOT, mas o EditAdmin adiciona+promove o bot direto.
+    const { client, fake } = makeClientWithFake(new Error("400: USER_BOT (caused by channels.InviteToChannel)"));
+    await client.promoteBotToAdmin("123", "456", "meu_bot");
+    expect(inviteCalls(fake)).toHaveLength(1);
+    expect(editAdminCalls(fake)).toHaveLength(1);
+  });
+
   it("quando InviteToChannel tem sucesso, EditAdmin roda uma vez", async () => {
     const { client, fake } = makeClientWithFake(null);
     await client.promoteBotToAdmin("123", "456", "meu_bot");

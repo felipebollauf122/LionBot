@@ -78,7 +78,8 @@ export async function removeAutomationBot(): Promise<void> {
   await requireOwner();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
-  await supabase.from("automation_bots").delete().eq("tenant_id", tenantId);
+  const { error } = await supabase.from("automation_bots").delete().eq("tenant_id", tenantId);
+  if (error) throw new Error(error.message);
   revalidatePath("/dashboard/automations");
 }
 
@@ -163,11 +164,17 @@ export async function launchClone(cloneJobId: string): Promise<void> {
   await requireOwner();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
-  await supabase
+  const { data: updated, error } = await supabase
     .from("clone_jobs")
     .update({ status: "running", last_error: null })
     .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  // Job de outro tenant (ou inexistente) não bate nenhuma linha: não pode
+  // disparar o worker externo, que só recebe o id e confiaria cegamente nele.
+  if (!updated) return;
   await enqueueClone(cloneJobId);
   revalidatePath("/dashboard/automations");
   revalidatePath(`/dashboard/automations/clones/${cloneJobId}`);
@@ -178,11 +185,12 @@ export async function pauseClone(cloneJobId: string): Promise<void> {
   await requireOwner();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
-  await supabase
+  const { error } = await supabase
     .from("clone_jobs")
     .update({ status: "paused" })
     .eq("id", cloneJobId)
     .eq("tenant_id", tenantId);
+  if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/automations/clones/${cloneJobId}`);
 }
 
@@ -190,7 +198,12 @@ export async function deleteClone(cloneJobId: string): Promise<void> {
   await requireOwner();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
-  await supabase.from("clone_jobs").delete().eq("id", cloneJobId).eq("tenant_id", tenantId);
+  const { error } = await supabase
+    .from("clone_jobs")
+    .delete()
+    .eq("id", cloneJobId)
+    .eq("tenant_id", tenantId);
+  if (error) throw new Error(error.message);
   revalidatePath("/dashboard/automations");
 }
 

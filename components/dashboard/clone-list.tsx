@@ -1,3 +1,12 @@
+const STATUS_MAP: Record<string, { label: string; badge: string }> = {
+  running: { label: "RODANDO", badge: "badge-info" },
+  waiting_flood: { label: "ESPERANDO", badge: "badge-info" },
+  paused: { label: "PAUSADO", badge: "badge-pending" },
+  completed: { label: "CONCLUÍDO", badge: "badge-active" },
+  failed: { label: "FALHOU", badge: "badge-error" },
+  draft: { label: "RASCUNHO", badge: "badge-inactive" },
+};
+
 export function CloneList({
   clones,
 }: {
@@ -12,29 +21,48 @@ export function CloneList({
 }) {
   if (clones.length === 0) {
     return (
-      <p className="text-white/40 text-sm">
-        Nenhum clone ainda. Abra &quot;Ver conteúdo&quot; numa conta e clique em Clonar.
-      </p>
+      <div className="card text-center text-(--text-muted) text-sm">
+        Nenhum clone ainda — abra &quot;Ver conteúdo&quot; numa conta e clique em Clonar.
+      </div>
     );
   }
   return (
-    <div className="space-y-1">
-      {clones.map((c) => (
-        <a
-          key={c.id}
-          href={`/dashboard/automations/clones/${c.id}`}
-          className="flex items-center justify-between px-3 py-2 rounded-md border border-white/10 bg-white/[0.02] hover:bg-white/[0.04]"
-        >
-          <div className="min-w-0">
-            <div className="text-white text-sm truncate">{c.dest_title}</div>
-            <div className="text-white/40 text-xs truncate">de {c.source_title ?? "—"}</div>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="text-white/70 text-xs">{c.status}</div>
-            <div className="text-white/40 text-xs">{c.copied_count} copiadas</div>
-          </div>
-        </a>
-      ))}
+    <div className="space-y-3">
+      {clones.map((c, i) => {
+        const meta =
+          STATUS_MAP[c.status] ?? { label: c.status.toUpperCase(), badge: "badge-inactive" };
+        const pct =
+          c.total_seen > 0
+            ? Math.min(100, Math.round((c.copied_count / c.total_seen) * 100))
+            : c.status === "completed"
+              ? 100
+              : 0;
+        return (
+          <a
+            key={c.id}
+            href={`/dashboard/automations/clones/${c.id}`}
+            className={`card-interactive block p-4 reveal-${Math.min(i + 1, 8)}`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-(--text-primary) font-medium truncate">{c.dest_title}</div>
+              <span className={`badge ${meta.badge} shrink-0`}>{meta.label}</span>
+            </div>
+            <div className="text-(--text-muted) text-xs truncate mt-0.5">
+              de {c.source_title ?? "—"}
+            </div>
+            <div className="h-2 rounded-full bg-(--bg-input) overflow-hidden mt-2">
+              <div
+                style={{
+                  width: `${pct}%`,
+                  background: "linear-gradient(90deg, var(--accent), var(--cyan))",
+                }}
+                className="h-full"
+              />
+            </div>
+            <div className="text-(--text-secondary) text-xs mt-2">{c.copied_count} copiadas</div>
+          </a>
+        );
+      })}
     </div>
   );
 }

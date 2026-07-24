@@ -32,13 +32,42 @@ function formatNextRun(iso: string | null | undefined): string | null {
   return `em ${days}d`;
 }
 
+// Mapa de status → cor de badge alinhado com o STATUS_MAP de clone-list.tsx:
+// a mesma palavra de status tem a mesma cor na página (running=cyan/info,
+// completed=magenta/active, paused=âmbar/pending, failed=vermelho, draft=cinza).
+// scheduled é exclusivo de campanha (roxo, "futuro").
+function campaignBadge(status: string): { cls: string; label: string } {
+  switch (status) {
+    case "running":
+      return { cls: "badge-info", label: "Ativa" };
+    case "scheduled":
+      return { cls: "badge-purple", label: "Agendada" };
+    case "pending":
+      return { cls: "badge-pending", label: "Pendente" };
+    case "completed":
+      return { cls: "badge-active", label: "Concluída" };
+    case "paused":
+      return { cls: "badge-pending", label: "Pausada" };
+    case "draft":
+      return { cls: "badge-inactive", label: "Rascunho" };
+    case "failed":
+      return { cls: "badge-error", label: "Falhou" };
+    default:
+      return { cls: "badge-inactive", label: status };
+  }
+}
+
 export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   if (campaigns.length === 0) {
-    return <p className="text-white/40 text-sm">Nenhuma campanha ainda.</p>;
+    return (
+      <div className="card p-4">
+        <p className="text-(--text-muted) text-sm">Nenhuma campanha ainda.</p>
+      </div>
+    );
   }
 
   function handleDelete(e: React.MouseEvent, c: Campaign) {
@@ -59,29 +88,39 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   }
 
   return (
-    <div className="space-y-2">
-      {campaigns.map((c) => {
+    <div className="space-y-3">
+      {campaigns.map((c, i) => {
         const isRecurrent = !!c.recurrence_hours;
         const nextRun = formatNextRun(c.next_run_at);
         const deleting = pendingId === c.id;
+        const badge = campaignBadge(c.status);
+        const pct =
+          c.total_targets > 0
+            ? Math.min(100, Math.round((c.sent_count / c.total_targets) * 100))
+            : 0;
         return (
           <div
             key={c.id}
-            className={`flex items-center gap-2 p-3 rounded-lg border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] ${deleting ? "opacity-50" : ""}`}
+            className={`card-interactive p-4 flex items-center gap-3 reveal-${Math.min(i + 1, 8)} ${deleting ? "opacity-50" : ""}`}
           >
             <a
               href={`/dashboard/automations/campaigns/${c.id}`}
-              className="flex-1 flex items-center justify-between min-w-0"
+              className="flex-1 flex items-center justify-between gap-3 min-w-0"
             >
-              <div className="min-w-0">
-                <div className="text-white text-sm font-medium flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-(--text-primary) text-sm font-semibold flex items-center gap-2">
                   {isRecurrent && (
                     <span title={`Recorrente a cada ${c.recurrence_hours}h`}>🔁</span>
                   )}
                   <span className="truncate">{c.name}</span>
+                  <span className={`badge ${badge.cls} shrink-0`}>{badge.label}</span>
                 </div>
-                <div className="text-white/40 text-xs">
-                  {c.sent_count}/{c.total_targets} enviadas · {c.failed_count} falhas · {c.status}
+                <div className="text-(--text-muted) text-xs mt-1.5">
+                  {c.sent_count}/{c.total_targets} enviadas
+                  {" · "}
+                  <span className={c.failed_count > 0 ? "text-(--red)" : ""}>
+                    {c.failed_count} falhas
+                  </span>
                   {isRecurrent && (
                     <>
                       {" · "}
@@ -90,8 +129,19 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
                     </>
                   )}
                 </div>
+                {c.total_targets > 0 && (
+                  <div className="mt-2 h-2 rounded-full bg-(--bg-input) overflow-hidden max-w-xs">
+                    <div
+                      style={{
+                        width: `${pct}%`,
+                        background: "linear-gradient(90deg, var(--accent), var(--cyan))",
+                      }}
+                      className="h-full"
+                    />
+                  </div>
+                )}
               </div>
-              <div className="text-white/30 text-xs shrink-0 pl-3">
+              <div className="text-(--text-ghost) text-xs shrink-0 pl-3">
                 {new Date(c.created_at).toLocaleDateString("pt-BR")}
               </div>
             </a>
@@ -100,7 +150,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
               onClick={(e) => handleDelete(e, c)}
               disabled={deleting}
               title="Excluir campanha"
-              className="shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+              className="btn-danger shrink-0 p-0 w-9 h-9 disabled:opacity-40"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6" />

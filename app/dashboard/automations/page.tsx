@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { MtprotoAccounts } from "@/components/dashboard/mtproto-accounts";
 import { MtprotoCampaignList } from "@/components/dashboard/mtproto-campaign-list";
 import { AutomationBotCard } from "@/components/dashboard/automation-bot-card";
+import { CloneList } from "@/components/dashboard/clone-list";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { notFound } from "next/navigation";
 
@@ -28,6 +29,12 @@ export default async function AutomationsPage() {
     .select("username, bot_user_id")
     .eq("tenant_id", user.id)
     .maybeSingle();
+
+  const { data: clones } = await supabase
+    .from("clone_jobs")
+    .select("id, dest_title, source_title, status, copied_count, total_seen")
+    .eq("tenant_id", user.id)
+    .order("created_at", { ascending: false });
 
   return (
     <div className="p-8 max-w-5xl">
@@ -57,6 +64,11 @@ export default async function AutomationsPage() {
           </a>
         </div>
         <MtprotoCampaignList campaigns={campaigns ?? []} />
+      </section>
+
+      <section className="mb-10">
+        <h2 className="text-lg font-semibold text-white mb-3">Clonagem</h2>
+        <CloneList clones={clones ?? []} />
       </section>
 
       <section>

@@ -79,8 +79,13 @@ export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBo
         <button
           onClick={() =>
             start(async () => {
-              await syncAccountDialogs(accountId);
-              setRows(await listAccountDialogs(accountId));
+              try {
+                await syncAccountDialogs(accountId);
+                setRows(await listAccountDialogs(accountId));
+                alert("Sincronização enfileirada. Em alguns segundos a lista será atualizada.");
+              } catch (err) {
+                alert(err instanceof Error ? err.message : "erro");
+              }
             })
           }
           disabled={pending}

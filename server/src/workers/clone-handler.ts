@@ -234,7 +234,11 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
           return data?.status ?? null;
         },
         setStatus: async (id, status: CloneStatus, patch) => {
-          await supabase
+          // Escreve transições de status observáveis do job (running, waiting_flood,
+          // completed, failed) — o que o dashboard lê na polling. Falha silenciosa
+          // aqui deixa o job travado num estado antigo, sem notificação do operador.
+          // Log permite rastrear se a escrita falhou para esse job e status.
+          const { error: writeError } = await supabase
             .from("clone_jobs")
             .update({
               status,
@@ -247,6 +251,11 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               ...(status === "completed" ? { completed_at: new Date().toISOString() } : {}),
             })
             .eq("id", id);
+          if (writeError) {
+            console.error(
+              `[clone] falha ao gravar status=${status} do job ${id}: ${writeError.message}`
+            );
+          }
         },
         scheduleResume: async (id, seconds) => {
           // +5s de folga sobre o que o Telegram pediu. O job volta pela fila
@@ -289,8 +298,16 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
 }
 
 async function fail(cloneJobId: string, error: string): Promise<void> {
-  await supabase
+  // Escreve o estado terminal (failed) do job — falha silenciosa aqui deixa
+  // o job travado como running no dashboard, sem nenhum trace. Log permite
+  // que o operador localize em analytics se a escrita falhou.
+  const { error: writeError } = await supabase
     .from("clone_jobs")
     .update({ status: "failed", last_error: error })
     .eq("id", cloneJobId);
+  if (writeError) {
+    console.error(
+      `[clone] falha ao marcar job ${cloneJobId} como failed: ${writeError.message}`
+    );
+  }
 }

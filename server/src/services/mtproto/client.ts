@@ -604,21 +604,26 @@ export class MtprotoClient {
   }
 
   /**
-   * Cria um canal novo (broadcast) com título + about. Retorna identidade
-   * do canal pra postar e exportar link de convite. Pode estourar FLOOD_WAIT
-   * se a conta criou muitos canais recentemente.
+   * Cria um canal novo. `megagroup: true` cria supergrupo em vez de canal
+   * broadcast — usado pela clonagem quando a origem é grupo. Pode estourar
+   * FLOOD_WAIT se a conta criou muitos canais recentemente.
    */
-  async createChannel(title: string, about: string): Promise<{
+  async createChannel(
+    title: string,
+    about: string,
+    opts: { megagroup?: boolean } = {},
+  ): Promise<{
     channelId: string;
     accessHash: string;
   }> {
     await this.connect();
+    const megagroup = opts.megagroup === true;
     const result = await this.client.invoke(
       new Api.channels.CreateChannel({
         title,
         about,
-        broadcast: true,
-        megagroup: false,
+        broadcast: !megagroup,
+        megagroup,
       }),
     );
     if (
@@ -640,6 +645,23 @@ export class MtprotoClient {
   }
 
   /**
+   * Sobe um arquivo que já está em disco. Acima de 20MB o gramjs abre o 3º
+   * argumento do CustomFile como CAMINHO (uploads.js:64) — passar o nome ali,
+   * como sendMediaToChannel fazia, quebra em arquivo grande.
+   */
+  async uploadFromPath(
+    filePath: string,
+    fileName: string,
+    sizeBytes: number,
+  ): Promise<Api.TypeInputFile> {
+    await this.connect();
+    return this.client.uploadFile({
+      file: new CustomFile(fileName, sizeBytes, filePath),
+      workers: 4,
+    });
+  }
+
+  /**
    * Faz upload de um Buffer e envia como foto ou vídeo pro canal.
    * O caller é responsável por baixar a mídia da URL antes (multi-step
    * porque pode ser URL externa, Supabase Storage signed URL, etc.).
@@ -652,6 +674,13 @@ export class MtprotoClient {
     kind: "photo" | "video",
   ): Promise<void> {
     await this.connect();
+    const BUFFER_UPLOAD_LIMIT = 20 * 1024 * 1024;
+    if (media.buffer.length >= BUFFER_UPLOAD_LIMIT) {
+      throw new Error(
+        `MEDIA_TOO_LARGE_FOR_BUFFER_UPLOAD: ${media.fileName} tem ${media.buffer.length} bytes; ` +
+          `use uploadFromPath com o arquivo em disco`,
+      );
+    }
     const peer = new Api.InputPeerChannel({
       channelId: bigInt(channelId),
       accessHash: bigInt(accessHash),

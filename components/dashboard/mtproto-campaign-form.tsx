@@ -200,39 +200,39 @@ export function MtprotoCampaignForm() {
   return (
     <form className="space-y-4">
       <div>
-        <label className="text-white/70 text-sm block mb-1">Nome</label>
+        <label className="input-label">Nome</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-white"
+          className="input"
         />
       </div>
       <div>
-        <label className="text-white/70 text-sm block mb-1">Mensagem</label>
+        <label className="input-label">Mensagem</label>
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           required
           rows={4}
-          className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-white"
+          className="input resize-y"
         />
       </div>
 
       {/* Disparo global */}
-      <div className="border border-amber-500/30 rounded-lg p-4 bg-amber-500/5 space-y-2">
+      <div className="rounded-lg p-4 space-y-2 border border-(--amber)/30 bg-(--amber)/5">
         <label className="flex items-start gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={isGlobal}
             onChange={(e) => setIsGlobal(e.target.checked)}
-            className="accent-amber-400 mt-1"
+            className="accent-(--amber) mt-1"
           />
           <div>
-            <div className="text-white text-sm font-medium">
+            <div className="text-foreground text-sm font-medium">
               🌍 Disparo global — todas as contas, todos os contatos/DMs/grupos meus/canais meus
             </div>
-            <div className="text-white/60 text-xs mt-1 leading-relaxed">
+            <div className="text-(--text-secondary) text-xs mt-1 leading-relaxed">
               Quando ativo, ignora a lista de alvos e a seleção manual. Cada conta MTProto
               conectada dispara a mesma mensagem pra <b>tudo onde a conta consegue mandar</b>:
               contatos, DMs, grupos (admin <i>ou</i> só participante) e canais (dono <i>ou</i>
@@ -241,7 +241,7 @@ export function MtprotoCampaignForm() {
               cada disparo global e em loop a cada 24h.
             </div>
             {isGlobal && (
-              <div className="text-amber-300 text-xs mt-2 leading-relaxed">
+              <div className="text-(--amber) text-xs mt-2 leading-relaxed">
                 ⚠️ <b>Risco MUITO alto de ban:</b> incluir grupos/canais onde a conta só
                 participa é o caminho mais rápido pra <code>PHONE_NUMBER_BANNED</code> —
                 admins desses grupos denunciam por spam e o Telegram derruba a conta
@@ -257,14 +257,14 @@ export function MtprotoCampaignForm() {
       {!isGlobal && (
         <>
           <div>
-            <label className="text-white/70 text-sm block mb-1">
+            <label className="input-label">
               Lista de alvos (opcional, um por linha — @username ou +telefone)
             </label>
             <textarea
               value={targetsRaw}
               onChange={(e) => setTargetsRaw(e.target.value)}
               rows={4}
-              className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-white font-mono text-sm"
+              className="input font-mono resize-y"
               placeholder="@user1&#10;@user2&#10;+5511999998888"
             />
           </div>
@@ -273,15 +273,15 @@ export function MtprotoCampaignForm() {
 
       {/* Seletor de dialogs — escondido em disparo global */}
       {!isGlobal && (
-      <div className="border border-white/10 rounded-lg p-4 bg-white/[0.02] space-y-3">
+      <div className="rounded-lg p-4 space-y-3 border border-(--border-subtle) bg-white/[0.02]">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-white text-sm font-medium">Selecionar do meu Telegram</h3>
-            <p className="text-white/40 text-xs">
+            <h3 className="text-foreground text-sm font-medium">Selecionar do meu Telegram</h3>
+            <p className="text-(--text-muted) text-xs">
               Contatos, conversas, grupos e canais sincronizados da conta MTProto.
             </p>
           </div>
-          <div className="text-white/60 text-xs">
+          <div className="text-(--text-secondary) text-xs">
             {selectedDialogIds.size > 0 && (
               <span>
                 {selectedDialogIds.size} selecionados
@@ -289,7 +289,7 @@ export function MtprotoCampaignForm() {
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="text-white/40 hover:text-red-400"
+                  className="text-(--text-muted) hover:text-(--red) transition-colors"
                 >
                   limpar
                 </button>
@@ -299,20 +299,20 @@ export function MtprotoCampaignForm() {
         </div>
 
         {accounts.length === 0 ? (
-          <p className="text-white/40 text-sm">
+          <p className="text-(--text-muted) text-sm">
             Nenhuma conta ativa. Conecte uma conta MTProto primeiro em <code>/dashboard/automations</code>.
           </p>
         ) : (
           <>
             <div>
-              <label className="text-white/60 text-xs block mb-1">Conta</label>
+              <label className="input-label">Conta</label>
               <select
                 value={selectedAccountId}
                 onChange={(e) => {
                   setSelectedAccountId(e.target.value);
                   setSelectedDialogIds(new Set());
                 }}
-                className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-white text-sm"
+                className="input"
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -328,35 +328,35 @@ export function MtprotoCampaignForm() {
               <button
                 type="button"
                 onClick={() => selectAllOfKind("contact")}
-                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-white"
+                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-foreground transition-colors"
               >
                 + Todos os contatos
               </button>
               <button
                 type="button"
                 onClick={() => selectAllOfKind("dm")}
-                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-white"
+                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-foreground transition-colors"
               >
                 + Todas as DMs
               </button>
               <button
                 type="button"
                 onClick={() => selectAllOfKind("group_admin")}
-                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-white"
+                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-foreground transition-colors"
               >
                 + Grupos que admin
               </button>
               <button
                 type="button"
                 onClick={() => selectAllOfKind("channel_owner")}
-                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-white"
+                className="px-2 py-1 text-xs rounded bg-(--accent)/10 hover:bg-(--accent)/20 text-foreground transition-colors"
               >
                 + Canais meus
               </button>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <span className="text-white/40 text-xs self-center mr-1">Filtrar lista:</span>
+              <span className="text-(--text-muted) text-xs self-center mr-1">Filtrar lista:</span>
               {ALL_FILTERABLE_KINDS.map((k) => (
                 <label
                   key={k}
@@ -368,7 +368,7 @@ export function MtprotoCampaignForm() {
                     onChange={() => toggleKind(k)}
                     className="accent-(--accent)"
                   />
-                  <span className={k.includes("member") || k.includes("subscriber") ? "text-amber-400" : "text-white/70"}>
+                  <span className={k.includes("member") || k.includes("subscriber") ? "text-(--amber)" : "text-(--text-secondary)"}>
                     {KIND_LABELS[k] ?? k}
                   </span>
                 </label>
@@ -380,14 +380,14 @@ export function MtprotoCampaignForm() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por nome..."
-              className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-white text-sm"
+              className="input"
             />
 
-            <div className="border border-white/5 rounded max-h-64 overflow-y-auto bg-black/20">
+            <div className="rounded-lg max-h-64 overflow-y-auto border border-(--border-subtle) bg-white/[0.02]">
               {loadingDialogs ? (
-                <p className="p-3 text-white/40 text-xs">Carregando...</p>
+                <p className="p-3 text-(--text-muted) text-xs">Carregando...</p>
               ) : dialogs.length === 0 ? (
-                <p className="p-3 text-white/40 text-xs">
+                <p className="p-3 text-(--text-muted) text-xs">
                   Sem resultados. Sincronize a conta em <code>/dashboard/automations</code> antes.
                 </p>
               ) : (
@@ -395,14 +395,14 @@ export function MtprotoCampaignForm() {
                   <button
                     type="button"
                     onClick={selectAllVisible}
-                    className="w-full text-left px-3 py-1.5 text-xs text-(--accent) hover:bg-white/5 border-b border-white/5"
+                    className="w-full text-left px-3 py-1.5 text-xs text-(--accent) hover:bg-white/[0.04] border-b border-(--border-subtle) transition-colors"
                   >
                     Selecionar todos os {dialogs.length} visíveis
                   </button>
                   {dialogs.map((d) => (
                     <label
                       key={d.id}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-xs"
+                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.04] cursor-pointer text-xs transition-colors"
                     >
                       <input
                         type="checkbox"
@@ -410,10 +410,10 @@ export function MtprotoCampaignForm() {
                         onChange={() => toggleDialog(d.id)}
                         className="accent-(--accent)"
                       />
-                      <span className="text-white/80 truncate flex-1">
+                      <span className="text-(--text-secondary) truncate flex-1">
                         {d.title || d.username || d.id}
                       </span>
-                      <span className="text-white/30 text-[10px]">
+                      <span className="text-(--text-ghost) text-[10px]">
                         {KIND_LABELS[d.kind] ?? d.kind}
                       </span>
                     </label>
@@ -428,35 +428,35 @@ export function MtprotoCampaignForm() {
 
       <div className="flex gap-4">
         <div className="flex-1">
-          <label className="text-white/70 text-sm block mb-1">Delay mín (s)</label>
+          <label className="input-label">Delay mín (s)</label>
           <input
             type="number"
             value={delayMin}
             onChange={(e) => setDelayMin(parseInt(e.target.value, 10) || 0)}
-            className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-white"
+            className="input"
           />
         </div>
         <div className="flex-1">
-          <label className="text-white/70 text-sm block mb-1">Delay máx (s)</label>
+          <label className="input-label">Delay máx (s)</label>
           <input
             type="number"
             value={delayMax}
             onChange={(e) => setDelayMax(parseInt(e.target.value, 10) || 0)}
-            className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-white"
+            className="input"
           />
         </div>
       </div>
 
       {totalSelected > 0 && (
-        <p className="text-white/50 text-xs">
-          Estimativa: <b className="text-white/80">{totalSelected}</b> alvo(s), delay médio{" "}
-          <b className="text-white/80">{Math.round(avgDelaySec)}s</b> ={" "}
-          <b className="text-white/80">~{estimatedMin} minuto(s)</b> por execução.
+        <p className="text-(--text-muted) text-xs">
+          Estimativa: <b className="text-foreground">{totalSelected}</b> alvo(s), delay médio{" "}
+          <b className="text-foreground">{Math.round(avgDelaySec)}s</b> ={" "}
+          <b className="text-foreground">~{estimatedMin} minuto(s)</b> por execução.
         </p>
       )}
 
       {/* Recurrence */}
-      <div className="border border-white/10 rounded-lg p-4 bg-white/[0.02] space-y-3">
+      <div className="rounded-lg p-4 space-y-3 border border-(--border-subtle) bg-white/[0.02]">
         <label className="flex items-start gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -465,8 +465,8 @@ export function MtprotoCampaignForm() {
             className="accent-(--accent) mt-1"
           />
           <div>
-            <div className="text-white text-sm font-medium">Repetir automaticamente (loop)</div>
-            <div className="text-white/50 text-xs">
+            <div className="text-foreground text-sm font-medium">Repetir automaticamente (loop)</div>
+            <div className="text-(--text-muted) text-xs">
               Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete a cada X horas (mínimo 6h).
               Os mesmos alvos recebem a mensagem em todo ciclo.
             </div>
@@ -474,15 +474,15 @@ export function MtprotoCampaignForm() {
         </label>
         {recurrenceEnabled && (
           <div className="pl-6">
-            <label className="text-white/60 text-xs block mb-1">Repetir a cada (horas)</label>
+            <label className="input-label">Repetir a cada (horas)</label>
             <input
               type="number"
               min={6}
               value={recurrenceHours}
               onChange={(e) => setRecurrenceHours(parseInt(e.target.value, 10) || 24)}
-              className="w-32 bg-black/20 border border-white/10 rounded px-2 py-1 text-white text-sm"
+              className="input w-32"
             />
-            <span className="text-white/40 text-xs ml-2">
+            <span className="text-(--text-muted) text-xs ml-2">
               {recurrenceHours === 24
                 ? "diário"
                 : recurrenceHours < 24
@@ -492,19 +492,19 @@ export function MtprotoCampaignForm() {
           </div>
         )}
       </div>
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <p className="text-(--red) text-sm">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={(e) => submit(e, false)}
           disabled={pending}
-          className="px-4 py-2 rounded border border-white/15 text-white/80 hover:bg-white/5"
+          className="btn-ghost"
         >
           Salvar rascunho
         </button>
         <button
           onClick={(e) => submit(e, true)}
           disabled={pending}
-          className="px-4 py-2 rounded bg-(--accent) text-black font-medium"
+          className="btn-primary"
         >
           Salvar e disparar
         </button>

@@ -848,4 +848,80 @@ export class MtprotoClient {
       }),
     );
   }
+
+  /** Acesso ao client cru para os adaptadores de clonagem. */
+  get raw(): TelegramClient {
+    return this.client;
+  }
+
+  /**
+   * Encaminha um lote de mensagens (máx. 100 ids) apagando a autoria, o que
+   * remove a marca "encaminhado de" e faz o post sair nativo no destino.
+   */
+  async forwardBatch(
+    from: Api.TypeInputPeer,
+    to: Api.TypeInputPeer,
+    messageIds: number[],
+  ): Promise<Api.TypeUpdates> {
+    await this.connect();
+    return this.client.invoke(
+      new Api.messages.ForwardMessages({
+        fromPeer: from,
+        toPeer: to,
+        id: messageIds,
+        randomId: messageIds.map(() => randomMessageId()),
+        dropAuthor: true,
+        silent: true,
+      }),
+    );
+  }
+
+  /** Promove um bot (por @username) a admin de um canal/supergrupo. */
+  async promoteBotToAdmin(
+    channelId: string,
+    accessHash: string,
+    botUsername: string,
+  ): Promise<void> {
+    await this.connect();
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    const bot = await this.client.getInputEntity(botUsername);
+    await this.client.invoke(
+      new Api.channels.InviteToChannel({ channel, users: [bot as never] }),
+    );
+    await this.client.invoke(
+      new Api.channels.EditAdmin({
+        channel,
+        userId: bot as never,
+        adminRights: new Api.ChatAdminRights({
+          postMessages: true,
+          editMessages: true,
+          deleteMessages: true,
+          pinMessages: true,
+          inviteUsers: true,
+        }),
+        rank: "clone",
+      }),
+    );
+  }
+
+  /** Define a descrição (about) de um canal/supergrupo. */
+  async setChannelAbout(
+    channelId: string,
+    accessHash: string,
+    about: string,
+  ): Promise<void> {
+    await this.connect();
+    await this.client.invoke(
+      new Api.messages.EditChatAbout({
+        peer: new Api.InputPeerChannel({
+          channelId: bigInt(channelId),
+          accessHash: bigInt(accessHash),
+        }),
+        about,
+      }),
+    );
+  }
 }

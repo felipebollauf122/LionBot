@@ -140,6 +140,18 @@ export class MtprotoClient {
     return { ok: true, needsPassword: false, sessionString };
   }
 
+  /**
+   * Autentica como BOT usando o token do BotFather. Verificado em
+   * client/auth.js:361-366 — o gramjs decide por duck-typing: sem
+   * `phoneNumber` no objeto, cai em signInBot(), que invoca
+   * Api.auth.ImportBotAuthorization. A session string resultante tem o mesmo
+   * formato da de conta de usuário (sessions/StringSession.js:91-114).
+   */
+  async signInAsBot(botAuthToken: string): Promise<string> {
+    await this.client.start({ botAuthToken });
+    return (this.client.session as StringSession).save();
+  }
+
   async sendMessage(
     target: string,
     targetType: "username" | "phone",

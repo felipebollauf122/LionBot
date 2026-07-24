@@ -888,9 +888,19 @@ export class MtprotoClient {
       accessHash: bigInt(accessHash),
     });
     const bot = await this.client.getInputEntity(botUsername);
-    await this.client.invoke(
-      new Api.channels.InviteToChannel({ channel, users: [bot as never] }),
-    );
+    // O convite e a promoção são passos SEPARADOS: se o bot já é membro (retomada
+    // de um job cuja 1ª tentativa entrou no canal mas falhou no EditAdmin), o
+    // InviteToChannel joga USER_ALREADY_PARTICIPANT. Engolir aqui dentro garante
+    // que o EditAdmin abaixo SEMPRE rode — senão o bot ficava membro e nunca admin,
+    // e a tolerância de nível acima (promoteBotTolerant) mascarava isso como sucesso.
+    try {
+      await this.client.invoke(
+        new Api.channels.InviteToChannel({ channel, users: [bot as never] }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/USER_ALREADY_PARTICIPANT|USER_ALREADY_INVITED/i.test(msg)) throw err;
+    }
     await this.client.invoke(
       new Api.channels.EditAdmin({
         channel,

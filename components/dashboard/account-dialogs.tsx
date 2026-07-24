@@ -59,20 +59,21 @@ export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBo
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         {TABS.map((t) => {
           const count = rows.filter((r) => t.kinds.includes(r.kind as never)).length;
+          const activeTab = tab === t.id;
           return (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-md text-sm ${
-                tab === t.id
-                  ? "bg-(--accent) text-black font-medium"
-                  : "border border-white/15 text-white/70 hover:bg-white/5"
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                activeTab
+                  ? "text-foreground border border-(--border-strong) bg-(--accent-muted)"
+                  : "text-(--text-secondary) border border-(--border-subtle) hover:bg-white/[0.03]"
               }`}
             >
-              {t.label} <span className="opacity-60">{count}</span>
+              {t.label} <span className="text-(--text-ghost)">{count}</span>
             </button>
           );
         })}
@@ -89,7 +90,7 @@ export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBo
             })
           }
           disabled={pending}
-          className="ml-auto text-white/40 hover:text-white text-xs disabled:opacity-50"
+          className="ml-auto btn-ghost text-xs px-3 py-1.5 disabled:opacity-50"
         >
           {pending ? "Sincronizando..." : "Sincronizar agora"}
         </button>
@@ -99,25 +100,25 @@ export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBo
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Buscar por nome ou @username"
-        className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white mb-4"
+        className="input mb-4"
       />
 
-      {loading && <p className="text-white/40 text-sm">Carregando...</p>}
+      {loading && <p className="py-6 text-center text-(--text-ghost) text-xs">Carregando...</p>}
       {!loading && visible.length === 0 && (
-        <p className="text-white/40 text-sm">
+        <p className="py-6 text-center text-(--text-ghost) text-xs">
           Nada aqui. Se a conta acabou de conectar, use &quot;Sincronizar agora&quot;.
         </p>
       )}
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {visible.map((d) => (
           <div
             key={d.id}
-            className="flex items-center justify-between px-3 py-2 rounded-md border border-white/10 bg-white/[0.02]"
+            className="row-hover flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-(--border-subtle) bg-white/[0.02]"
           >
             <div className="min-w-0">
-              <div className="text-white text-sm truncate">{d.title ?? d.username ?? d.id}</div>
-              <div className="text-white/40 text-xs">
+              <div className="text-foreground text-sm truncate">{d.title ?? d.username ?? d.id}</div>
+              <div className="text-(--text-muted) text-xs">
                 {d.username ? `@${d.username} · ` : ""}
                 {KIND_LABEL[d.kind] ?? d.kind}
               </div>
@@ -126,14 +127,14 @@ export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBo
               (hasBot ? (
                 <a
                   href={`/dashboard/automations/clones/new?dialogId=${d.id}`}
-                  className="shrink-0 px-3 py-1 rounded bg-(--accent) text-black text-xs font-medium"
+                  className="btn-primary text-xs px-3 py-1.5 shrink-0"
                 >
                   Clonar
                 </a>
               ) : (
                 <span
                   title="Cadastre o bot companheiro em Automações para poder clonar"
-                  className="shrink-0 px-3 py-1 rounded border border-white/10 text-white/30 text-xs cursor-not-allowed"
+                  className="shrink-0 px-3 py-1.5 rounded-lg border border-(--border-subtle) text-(--text-ghost) text-xs cursor-not-allowed"
                 >
                   Clonar
                 </span>

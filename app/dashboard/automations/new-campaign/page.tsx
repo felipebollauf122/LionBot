@@ -1,16 +1,30 @@
 import { MtprotoCampaignForm } from "@/components/dashboard/mtproto-campaign-form";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { notFound } from "next/navigation";
+import { CardShell } from "@/components/dashboard/analytics/card-shell";
+import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function NewCampaignPage() {
   if (!(await isOwner())) notFound();
   return (
-    <div className="p-8 max-w-3xl">
-      <a href="/dashboard/automations" className="text-white/40 hover:text-white text-sm">
+    <div className="p-6 md:p-8 max-w-2xl mx-auto">
+      <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
         ← Voltar
       </a>
-      <h1 className="text-2xl font-bold text-white mt-4 mb-6">Nova campanha</h1>
-      <MtprotoCampaignForm />
+      <header className="mt-3 mb-6 reveal">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Nova campanha</h1>
+        <p className="text-(--text-secondary) text-sm mt-1">
+          Dispare mensagens em massa pelas suas contas MTProto conectadas.
+        </p>
+      </header>
+      <CardShell
+        title="Nova campanha"
+        subtitle="Disparo MTProto"
+        icon={icons.megaphone}
+        accent="amber"
+      >
+        <MtprotoCampaignForm />
+      </CardShell>
     </div>
   );
 }

@@ -96,39 +96,42 @@ export default async function AutomationsPage() {
         />
       </div>
 
-      {/* Clonagem — seção-herói */}
+      {/* Contas conectadas — largura cheia */}
+      <div className="mb-6">
+        <CardShell
+          title="Contas conectadas"
+          subtitle="perfis do Telegram"
+          icon={icons.users}
+          accent="purple"
+          revealIndex={2}
+        >
+          <MtprotoAccounts accounts={accounts ?? []} />
+        </CardShell>
+      </div>
+
+      {/* Bot companheiro — largura cheia (é menor) */}
+      <div className="mb-6">
+        <CardShell
+          title="Bot companheiro"
+          subtitle="publica os clones"
+          icon={icons.bot}
+          accent="cyan"
+          revealIndex={3}
+        >
+          <AutomationBotCard bot={bot ?? null} />
+        </CardShell>
+      </div>
+
+      {/* Clonagem */}
       <div className="mb-6">
         <CardShell
           title="Clonagem"
           subtitle="clone canais e grupos"
           icon={icons.flow}
           accent="magenta"
-          revealIndex={2}
-        >
-          <CloneList clones={clones ?? []} />
-        </CardShell>
-      </div>
-
-      {/* Contas + Bot lado a lado */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <CardShell
-          title="Contas conectadas"
-          subtitle="perfis do Telegram"
-          icon={icons.users}
-          accent="purple"
-          revealIndex={3}
-        >
-          <MtprotoAccounts accounts={accounts ?? []} />
-        </CardShell>
-
-        <CardShell
-          title="Bot companheiro"
-          subtitle="publica os clones"
-          icon={icons.bot}
-          accent="cyan"
           revealIndex={4}
         >
-          <AutomationBotCard bot={bot ?? null} />
+          <CloneList clones={clones ?? []} />
         </CardShell>
       </div>
 
@@ -150,27 +153,6 @@ export default async function AutomationsPage() {
         </CardShell>
       </div>
 
-      {/* Monitoramento */}
-      <CardShell
-        title="Monitoramento de canais"
-        subtitle="substituição automática"
-        icon={icons.eye}
-        accent="cyan"
-        revealIndex={6}
-      >
-        <a
-          href="/dashboard/automations/channel-monitors"
-          className="row-hover reveal flex items-center gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
-        >
-          <div className="min-w-0">
-            <div className="text-foreground text-sm font-medium">🛡 Monitor + substituição automática</div>
-            <div className="text-(--text-muted) text-xs mt-0.5">
-              Quando um canal monitorado cai (banido ou conta freezada), o sistema cria um substituto
-              automaticamente com o template configurado.
-            </div>
-          </div>
-        </a>
-      </CardShell>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { CloneForm } from "@/components/dashboard/clone-form";
 import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/actions";
+import { CardShell } from "@/components/dashboard/analytics/card-shell";
+import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function NewClonePage({
   searchParams,
@@ -31,23 +33,32 @@ export default async function NewClonePage({
   const eligible = await listEligibleDestAccounts();
 
   return (
-    <div className="p-8 max-w-2xl">
-      <a href="/dashboard/automations" className="text-white/40 hover:text-white text-sm">
+    <div className="p-6 md:p-8 max-w-2xl mx-auto">
+      <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
         ← Voltar
       </a>
-      <h1 className="text-2xl font-bold text-white mt-4">Clonar</h1>
-      <p className="text-white/50 text-sm mt-1 mb-6">
-        Origem: <strong className="text-white/80">{dialog.title}</strong>
-      </p>
-      <CloneForm
-        dialogId={dialog.id}
-        sourceTitle={dialog.title ?? "Clone"}
-        sourceAccountId={dialog.account_id}
-        destAccounts={(eligible ?? []).map((a) => ({
-          id: a.id,
-          label: a.display_name || a.phone_number,
-        }))}
-      />
+      <header className="mt-3 mb-6 reveal">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Novo clone</h1>
+        <p className="text-(--text-secondary) text-sm mt-1">
+          Cria uma cópia da origem numa conta que você escolher.
+        </p>
+      </header>
+      <CardShell
+        title="Clonar"
+        subtitle={dialog.title ?? undefined}
+        icon={icons.flow}
+        accent="magenta"
+      >
+        <CloneForm
+          dialogId={dialog.id}
+          sourceTitle={dialog.title ?? "Clone"}
+          sourceAccountId={dialog.account_id}
+          destAccounts={(eligible ?? []).map((a) => ({
+            id: a.id,
+            label: a.display_name || a.phone_number,
+          }))}
+        />
+      </CardShell>
     </div>
   );
 }

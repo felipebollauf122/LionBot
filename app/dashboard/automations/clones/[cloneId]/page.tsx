@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { CloneProgress } from "@/components/dashboard/clone-progress";
+import { CardShell } from "@/components/dashboard/analytics/card-shell";
+import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function ClonePage({
   params,
@@ -25,15 +27,29 @@ export default async function ClonePage({
   if (!job) notFound();
 
   return (
-    <div className="p-8 max-w-2xl">
-      <a href="/dashboard/automations" className="text-white/40 hover:text-white text-sm">
+    <div className="p-6 md:p-8 max-w-2xl mx-auto">
+      <a
+        href="/dashboard/automations"
+        className="text-(--text-muted) hover:text-foreground text-sm transition-colors"
+      >
         ← Voltar
       </a>
-      <h1 className="text-2xl font-bold text-white mt-4">{job.dest_title}</h1>
-      <p className="text-white/50 text-sm mt-1 mb-6">
-        Clonando de <strong className="text-white/80">{job.source_title}</strong>
-      </p>
-      <CloneProgress initial={job} />
+      <header className="mt-3 mb-6 reveal">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+          Progresso do clone
+        </h1>
+        <p className="text-(--text-secondary) text-sm mt-1">
+          Acompanhe a cópia das mensagens em tempo real.
+        </p>
+      </header>
+      <CardShell
+        title={job.dest_title}
+        subtitle={`de ${job.source_title ?? "—"}`}
+        icon={icons.flow}
+        accent="magenta"
+      >
+        <CloneProgress initial={job} />
+      </CardShell>
     </div>
   );
 }

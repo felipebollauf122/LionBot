@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { AccountDialogs } from "@/components/dashboard/account-dialogs";
+import { CardShell } from "@/components/dashboard/analytics/card-shell";
+import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function AccountDialogsPage({
   params,
@@ -29,17 +31,24 @@ export default async function AccountDialogsPage({
     .maybeSingle();
 
   return (
-    <div className="p-8 max-w-4xl">
-      <a href="/dashboard/automations" className="text-white/40 hover:text-white text-sm">
+    <div className="p-6 md:p-8 max-w-4xl mx-auto">
+      <a
+        href="/dashboard/automations"
+        className="text-(--text-muted) hover:text-foreground text-sm transition-colors"
+      >
         ← Voltar
       </a>
-      <h1 className="text-2xl font-bold text-white mt-4">
-        Conteúdo — {account.display_name || account.phone_number}
-      </h1>
-      <p className="text-white/50 text-sm mt-1 mb-6">
-        Tudo que essa conta enxerga no Telegram. Canais e grupos podem ser clonados.
-      </p>
-      <AccountDialogs accountId={accountId} hasBot={Boolean(bot)} />
+      <header className="mt-3 mb-6 reveal">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+          Conteúdo — {account.display_name || account.phone_number}
+        </h1>
+        <p className="text-(--text-secondary) text-sm mt-1">
+          Tudo que essa conta enxerga no Telegram. Canais e grupos podem ser clonados.
+        </p>
+      </header>
+      <CardShell title="Conteúdo da conta" subtitle="canais, grupos, bots e contatos" icon={icons.users} accent="purple">
+        <AccountDialogs accountId={accountId} hasBot={Boolean(bot)} />
+      </CardShell>
     </div>
   );
 }

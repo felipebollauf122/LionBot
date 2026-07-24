@@ -175,30 +175,50 @@ export class SourceReader {
     await mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `msg_${msg.id}`);
     const out = createWriteStream(filePath);
-    // Falha de escrita (ENOSPC, permissão) emite 'error' na stream; sem
-    // listener isso vira unhandled error event e derruba o worker inteiro.
-    // Guardamos o erro aqui pra rejeitar a promise em vez de crashar.
+    // Falha de escrita (ENOSPC, permissão) dispara o autoDestroy do
+    // fs.WriteStream: 'error' e, poucos ms depois, 'close' (medido
+    // empiricamente: ~5ms e ~7ms). Um listener de 'close' registrado só
+    // depois do `for await` esgotar o download inteiro (como era antes,
+    // dentro do finally) chega tarde demais — o 'close' já disparou e não
+    // dispara de novo, então a promise nunca resolve nem rejeita e trava
+    // pra sempre (pior que o crash que o listener de 'error' evitava, e o
+    // loop ainda puxa o arquivo inteiro da rede à toa antes de travar).
+    // Por isso o listener de 'close' abaixo só é registrado se o erro
+    // ainda NÃO foi observado, e o loop de download corre em paralelo
+    // (Promise.race) com uma promise que rejeita assim que 'error' dispara,
+    // sem esperar o resto do arquivo ser puxado da rede.
     let streamError: Error | undefined;
-    out.on("error", (err) => {
-      streamError = err;
+    const errorPromise = new Promise<never>((_resolve, reject) => {
+      out.on("error", (err) => {
+        streamError = err;
+        reject(err);
+      });
     });
     try {
       try {
         // requestSize é obrigatório no .d.ts do gramjs mas opcional em runtime
         // (downloads.js:186 usa MAX_CHUNK_SIZE como default); repetimos o
         // mesmo valor aqui só para satisfazer o tipo, sem mudar o comportamento.
-        for await (const chunk of this.client.raw.iterDownload({
-          file: msg.media as never,
-          requestSize: 512 * 1024,
-        })) {
-          out.write(chunk);
-        }
+        const downloadLoop = (async () => {
+          for await (const chunk of this.client.raw.iterDownload({
+            file: msg.media as never,
+            requestSize: 512 * 1024,
+          })) {
+            // Stream já destruída: escrever viraria no-op silencioso e
+            // continuar puxando chunks da rede seria trabalho jogado fora.
+            if (streamError) break;
+            out.write(chunk);
+          }
+        })();
+        await Promise.race([downloadLoop, errorPromise]);
       } finally {
-        out.end();
-        // WriteStream tipa o listener de "close" como () => void; o executor
-        // da Promise expõe resolve com 1 parâmetro opcional, então empacota
-        // numa arrow sem argumentos pra satisfazer o tipo do evento.
-        await new Promise<void>((resolve) => out.on("close", () => resolve()));
+        if (!streamError) {
+          out.end();
+          // WriteStream tipa o listener de "close" como () => void; o executor
+          // da Promise expõe resolve com 1 parâmetro opcional, então empacota
+          // numa arrow sem argumentos pra satisfazer o tipo do evento.
+          await new Promise<void>((resolve) => out.on("close", () => resolve()));
+        }
       }
       if (streamError) throw streamError;
     } catch (err) {

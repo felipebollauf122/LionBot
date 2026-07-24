@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { Api } from "telegram";
+import bigInt from "big-integer";
 import {
   chooseStrategy,
   routeGroup,
@@ -39,6 +40,23 @@ describe("chooseStrategy", () => {
     expect(
       chooseStrategy({ requested: "download", sourceHasNoForwards: false, copyButtons: false }),
     ).toBe("download");
+  });
+
+  it("copyReplies força download mesmo com origem liberada (defeito I5: forward não ancora reply)", () => {
+    expect(
+      chooseStrategy({
+        requested: "auto",
+        sourceHasNoForwards: false,
+        copyButtons: false,
+        copyReplies: true,
+      }),
+    ).toBe("download");
+  });
+
+  it("copyReplies omitido continua batch (default false, compatível com call site que ainda não passa o campo)", () => {
+    expect(
+      chooseStrategy({ requested: "auto", sourceHasNoForwards: false, copyButtons: false }),
+    ).toBe("batch");
   });
 });
 
@@ -140,10 +158,32 @@ function sourceMessage(raw: Api.Message, groupedId = "g1"): SourceMessage {
   return { id: raw.id, groupedId, replyToMsgId: null, raw };
 }
 
+/**
+ * Mensagem-fonte de enquete: instâncias reais de Api.MessageMediaPoll/Api.Poll
+ * (não só className falso) porque SourceReader.pollData usa `instanceof` e lê
+ * poll.question/poll.answers de verdade.
+ */
+function pollRaw(id: number, question = "Gosta de gatos?", options = ["Sim", "Não"]): Api.Message {
+  const poll = new Api.Poll({
+    id: bigInt(1),
+    question: new Api.TextWithEntities({ text: question, entities: [] }),
+    answers: options.map(
+      (text, i) =>
+        new Api.PollAnswer({
+          text: new Api.TextWithEntities({ text, entities: [] }),
+          option: Buffer.from([i]),
+        }),
+    ),
+  } as never);
+  const media = new Api.MessageMediaPoll({ poll, results: {} } as never);
+  return { id, message: "", media, entities: undefined, replyMarkup: undefined } as unknown as Api.Message;
+}
+
 interface FakeBot {
   publishAlbum: ReturnType<typeof vi.fn>;
   publishMedia: ReturnType<typeof vi.fn>;
   publishText: ReturnType<typeof vi.fn>;
+  publishPoll: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeBot(): FakeBot {
@@ -151,6 +191,7 @@ function makeFakeBot(): FakeBot {
     publishAlbum: vi.fn(),
     publishMedia: vi.fn(),
     publishText: vi.fn(),
+    publishPoll: vi.fn(),
   };
 }
 
@@ -297,6 +338,54 @@ describe("createPublisher — rota album", () => {
     expect(bot.publishMedia).toHaveBeenCalledTimes(1);
     expect(bot.publishMedia.mock.calls[0][3]).toEqual(
       expect.objectContaining({ replyToMessageId: 777 }),
+    );
+  });
+});
+
+// --- createPublisher: rota download, enquete (defeito I7) -------------------
+//
+// Antes do fix, plan.kind === "poll" na rota download sempre virava
+// { status: "skipped", reason: "poll_sem_suporte_no_bot" }, mesmo com
+// copyPolls ligado — o toggle "recria enquete" da UI era um no-op.
+
+describe("createPublisher — rota download, enquete", () => {
+  function makePollCtx(reader: SourceReader, bot: FakeBot): PublisherContext {
+    return { ...makeCtx(reader, bot), copyPolls: true };
+  }
+
+  it("copyPolls ligado: recria a enquete via publishPoll em vez de pular", async () => {
+    const bot = makeFakeBot();
+    bot.publishPoll.mockResolvedValue(4242);
+    const reader = makeFakeReader();
+    const publish = createPublisher(makePollCtx(reader, bot));
+    const group = [sourceMessage(pollRaw(1, "Gosta de gatos?", ["Sim", "Não"]))];
+
+    const outcomes = await publish(group, null);
+
+    expect(bot.publishPoll).toHaveBeenCalledTimes(1);
+    expect(bot.publishPoll.mock.calls[0][0]).toEqual({
+      question: "Gosta de gatos?",
+      options: ["Sim", "Não"],
+      isAnonymous: true,
+      allowsMultipleAnswers: false,
+    });
+    // Enquete não tem arquivo: downloadToPath não deve ser chamado pra ela.
+    expect(reader.downloadToPath).not.toHaveBeenCalled();
+    expect(outcomes).toEqual([{ status: "copied", destMsgId: 4242 }]);
+  });
+
+  it("replyToDestId vai pra enquete quando ela é a primeira mensagem do grupo", async () => {
+    const bot = makeFakeBot();
+    bot.publishPoll.mockResolvedValue(5555);
+    const reader = makeFakeReader();
+    const publish = createPublisher(makePollCtx(reader, bot));
+    const group = [sourceMessage(pollRaw(1))];
+
+    await publish(group, 321);
+
+    expect(bot.publishPoll).toHaveBeenCalledWith(
+      expect.objectContaining({ question: "Gosta de gatos?" }),
+      expect.objectContaining({ replyToMessageId: 321 }),
     );
   });
 });

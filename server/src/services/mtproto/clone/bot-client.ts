@@ -2,6 +2,7 @@ import { Api } from "telegram";
 import { Bot, InputFile } from "grammy";
 import { MtprotoClient } from "../client.js";
 import type { CloneMediaKind } from "./media-plan.js";
+import { toBotApiEntities } from "./entities.js";
 
 export interface BotValidationDeps {
   getMe(token: string): Promise<{ id: number; username?: string; is_bot: boolean }>;
@@ -58,8 +59,22 @@ export function buildInlineKeyboard(links: InlineLink[]): {
 
 export interface PublishOptions {
   replyToMessageId?: number;
-  entities?: unknown[];
+  /** Entidades gramjs cruas (Api.MessageEntity*); convertidas via toBotApiEntities antes de ir pro grammy. */
+  entities?: Api.TypeMessageEntity[];
   inlineLinks?: InlineLink[];
+  /** Nome original do arquivo (DocumentAttributeFilename da origem), quando existir. */
+  fileName?: string;
+}
+
+/**
+ * Enquete lida da origem (Api.MessageMediaPoll), já no shape mínimo pra
+ * recriar via Bot API sendPoll. Produzida por SourceReader.pollData.
+ */
+export interface SourcePoll {
+  question: string;
+  options: string[];
+  isAnonymous: boolean;
+  allowsMultipleAnswers: boolean;
 }
 
 export interface BotMtprotoCreds {
@@ -96,7 +111,7 @@ export class CompanionBot {
 
   async publishText(text: string, opts: PublishOptions = {}): Promise<number> {
     const sent = await this.bot.api.sendMessage(this.destChatId, text, {
-      entities: opts.entities as never,
+      entities: toBotApiEntities(opts.entities),
       link_preview_options: { is_disabled: false },
       reply_parameters: opts.replyToMessageId
         ? { message_id: opts.replyToMessageId }
@@ -115,10 +130,13 @@ export class CompanionBot {
     caption: string,
     opts: PublishOptions = {},
   ): Promise<number> {
-    const file = new InputFile(filePath);
+    // Nome original (aula-03.pdf) em vez de msg_<id> sem extensão (defeito
+    // I2): sem 2º argumento, InputFile chuta o nome a partir do path no
+    // disco (o basename de um arquivo temporário sem extensão).
+    const file = new InputFile(filePath, opts.fileName);
     const common = {
       caption: caption || undefined,
-      caption_entities: opts.entities as never,
+      caption_entities: toBotApiEntities(opts.entities),
       reply_parameters: opts.replyToMessageId
         ? { message_id: opts.replyToMessageId }
         : undefined,
@@ -148,7 +166,12 @@ export class CompanionBot {
 
   /** Álbum. O caller já fatiou em no máximo 10 itens. */
   async publishAlbum(
-    items: Array<{ filePath: string; kind: "photo" | "video"; caption: string }>,
+    items: Array<{
+      filePath: string;
+      kind: "photo" | "video";
+      caption: string;
+      entities?: Api.TypeMessageEntity[];
+    }>,
     /**
      * Opcional, sem default de reply: o Telegram ancora o reply no primeiro
      * item do álbum automaticamente, então o caller só precisa passar o id.
@@ -159,14 +182,43 @@ export class CompanionBot {
       type: it.kind,
       media: new InputFile(it.filePath),
       caption: it.caption || undefined,
+      caption_entities: toBotApiEntities(it.entities),
     }));
-    const sent = await this.bot.api.sendMediaGroup(this.destChatId, media as never, {
+    const sent = await this.bot.api.sendMediaGroup(this.destChatId, media, {
       disable_notification: true,
       reply_parameters: opts.replyToMessageId
         ? { message_id: opts.replyToMessageId }
         : undefined,
     });
     return sent.map((m) => m.message_id);
+  }
+
+  /**
+   * Recria a enquete (defeito I7): a rota download não tinha como reproduzir
+   * `{kind:"poll"}` do media-plan — CompanionBot não tinha método de
+   * enquete e o publish-router pulava com poll_sem_suporte_no_bot mesmo com
+   * copyPolls ligado. Sempre enquete regular: quiz exigiria o índice da
+   * resposta correta, que só aparece pra quem já votou (fica escondido pra
+   * quem lê via conta MTProto sem ter votado).
+   */
+  async publishPoll(
+    poll: SourcePoll,
+    opts: { replyToMessageId?: number } = {},
+  ): Promise<number> {
+    const sent = await this.bot.api.sendPoll(
+      this.destChatId,
+      poll.question,
+      poll.options.map((text) => ({ text })),
+      {
+        is_anonymous: poll.isAnonymous,
+        allows_multiple_answers: poll.allowsMultipleAnswers,
+        disable_notification: true,
+        reply_parameters: opts.replyToMessageId
+          ? { message_id: opts.replyToMessageId }
+          : undefined,
+      },
+    );
+    return sent.message_id;
   }
 
   async pin(messageId: number): Promise<void> {

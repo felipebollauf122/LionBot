@@ -13,9 +13,20 @@ export function chooseStrategy(input: {
   requested: "auto" | "batch" | "download";
   sourceHasNoForwards: boolean;
   copyButtons: boolean;
+  /**
+   * Defeito I5: opcional com default false pra não quebrar o build enquanto
+   * o call site em clone-handler.ts ainda não passa esse campo (ver nota no
+   * relatório da task — o outro agente precisa somar `copyReplies:
+   * job.copy_replies` na chamada de lá).
+   */
+  copyReplies?: boolean;
 }): CloneStrategy {
   // Encaminhamento não permite anexar reply_markup: quem quer botão, baixa.
   if (input.copyButtons) return "download";
+  // ForwardMessages só aceita ids, sem como ancorar um reply_to no destino:
+  // quem liga "respostas encadeadas" (copyReplies) também precisa baixar,
+  // senão o replyToDestId calculado pelo runner é descartado em silêncio.
+  if (input.copyReplies) return "download";
   if (input.sourceHasNoForwards) return "download";
   return input.requested === "download" ? "download" : "batch";
 }
@@ -123,8 +134,13 @@ export function createPublisher(
       if (decision.mode === "album") {
         // Baixa tudo primeiro: um item grande demais não pode derrubar os
         // irmãos que couberam no teto (ver finding do review de Task 10).
-        const ok: Array<{ index: number; filePath: string; kind: "photo" | "video"; caption: string }> =
-          [];
+        const ok: Array<{
+          index: number;
+          filePath: string;
+          kind: "photo" | "video";
+          caption: string;
+          entities: Api.TypeMessageEntity[] | undefined;
+        }> = [];
         const tooLarge = new Set<number>();
         for (let i = 0; i < raws.length; i++) {
           const dl = await ctx.reader.downloadToPath(raws[i], ctx.tmpDir, MAX_FILE_BYTES);
@@ -139,6 +155,7 @@ export function createPublisher(
             filePath: dl.filePath,
             kind: plan.kind === "media" && plan.mediaKind === "video" ? "video" : "photo",
             caption: raws[i].message ?? "",
+            entities: raws[i].entities,
           });
         }
 
@@ -157,6 +174,7 @@ export function createPublisher(
           for (const item of ok) {
             const destMsgId = await ctx.bot.publishMedia(item.filePath, item.kind, item.caption, {
               replyToMessageId: !replyUsed && replyToDestId != null ? replyToDestId : undefined,
+              entities: item.entities,
             });
             degraded[item.index] = { status: "copied", destMsgId };
             replyUsed = true;
@@ -169,7 +187,12 @@ export function createPublisher(
 
         // Todos ok: álbum de verdade. O reply do grupo vai no álbum inteiro —
         // o Telegram ancora automaticamente no primeiro item do media group.
-        const items = ok.map(({ filePath, kind, caption }) => ({ filePath, kind, caption }));
+        const items = ok.map(({ filePath, kind, caption, entities }) => ({
+          filePath,
+          kind,
+          caption,
+          entities,
+        }));
         const destIds = await ctx.bot.publishAlbum(
           items,
           replyToDestId != null ? { replyToMessageId: replyToDestId } : undefined,
@@ -194,7 +217,7 @@ export function createPublisher(
         const plan = plans[i];
         const opts = {
           replyToMessageId: i === 0 && replyToDestId ? replyToDestId : undefined,
-          entities: raw.entities as unknown[] | undefined,
+          entities: raw.entities,
           inlineLinks: ctx.copyButtons ? SourceReader.extractInlineLinks(raw) : undefined,
         };
 
@@ -208,7 +231,22 @@ export function createPublisher(
           continue;
         }
         if (plan.kind === "poll") {
-          outcomes.push({ status: "skipped", reason: "poll_sem_suporte_no_bot" });
+          // Defeito I7: com copyPolls ligado, planForMessage já marcou a
+          // mensagem como "poll" — recria via Bot API em vez de pular. Sem
+          // arquivo pra baixar aqui: enquete não passa por downloadToPath.
+          const pollData = SourceReader.pollData(raw);
+          if (!pollData) {
+            outcomes.push({ status: "skipped", reason: "poll_sem_suporte_no_bot" });
+            continue;
+          }
+          try {
+            const destMsgId = await ctx.bot.publishPoll(pollData, {
+              replyToMessageId: opts.replyToMessageId,
+            });
+            outcomes.push({ status: "copied", destMsgId });
+          } catch {
+            outcomes.push({ status: "skipped", reason: "poll_sem_suporte_no_bot" });
+          }
           continue;
         }
         const dl = await ctx.reader.downloadToPath(raw, ctx.tmpDir, MAX_FILE_BYTES);
@@ -221,7 +259,7 @@ export function createPublisher(
           dl.filePath,
           plan.mediaKind,
           raw.message ?? "",
-          opts,
+          { ...opts, fileName: dl.fileName ?? undefined },
         );
         outcomes.push({ status: "copied", destMsgId });
       }

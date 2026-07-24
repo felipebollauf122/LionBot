@@ -9,7 +9,7 @@ import type { HistorySource } from "./history-iterator.js";
 import type { ClonePeer } from "./types.js";
 import type { SourceIdentity } from "./dest-builder.js";
 import type { PlanInput } from "./media-plan.js";
-import type { InlineLink } from "./bot-client.js";
+import type { InlineLink, SourcePoll } from "./bot-client.js";
 
 /**
  * Pausa entre chunks de leitura. Leitura é barata comparada a publicação, mas
@@ -170,7 +170,7 @@ export class SourceReader {
     msg: Api.Message,
     dir: string,
     maxBytes: number,
-  ): Promise<{ filePath: string; sizeBytes: number } | null> {
+  ): Promise<{ filePath: string; sizeBytes: number; fileName: string | null } | null> {
     if (!msg.media) return null;
     await mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `msg_${msg.id}`);
@@ -234,7 +234,7 @@ export class SourceReader {
       await unlink(filePath).catch(() => {});
       return null;
     }
-    return { filePath, sizeBytes: size };
+    return { filePath, sizeBytes: size, fileName: SourceReader.originalFileName(msg) };
   }
 
   /** Encaminha um lote apagando a autoria. Chamado com no máximo 100 ids. */
@@ -267,6 +267,43 @@ export class SourceReader {
       }
     }
     return out;
+  }
+
+  /**
+   * Nome original do arquivo (defeito I2): sem isso um documento reenviado
+   * pelo bot vira `msg_<id>` sem extensão no destino. Só documento carrega
+   * DocumentAttributeFilename; foto/vídeo sem esse atributo devolvem null e
+   * o caller decide o fallback.
+   */
+  static originalFileName(msg: Api.Message): string | null {
+    const media = msg.media;
+    if (!(media instanceof Api.MessageMediaDocument)) return null;
+    if (!(media.document instanceof Api.Document)) return null;
+    const attr = media.document.attributes.find(
+      (a): a is Api.DocumentAttributeFilename => a instanceof Api.DocumentAttributeFilename,
+    );
+    return attr?.fileName ?? null;
+  }
+
+  /**
+   * Lê a enquete original pra recriar via Bot API (defeito I7). Devolve null
+   * quando a mídia não é enquete de verdade ou tem menos de 2 opções (a Bot
+   * API exige 2-12) — defensivo: o publish-router só chama isso quando
+   * planForMessage já classificou a mensagem como "poll".
+   */
+  static pollData(msg: Api.Message): SourcePoll | null {
+    const media = msg.media;
+    if (!(media instanceof Api.MessageMediaPoll)) return null;
+    const poll = media.poll;
+    const options = poll.answers.map((a) => a.text.text);
+    if (options.length < 2) return null;
+    return {
+      question: poll.question.text,
+      options,
+      // publicVoters=true significa votos públicos, ou seja, NÃO anônima.
+      isAnonymous: !poll.publicVoters,
+      allowsMultipleAnswers: Boolean(poll.multipleChoice),
+    };
   }
 
   /** Traduz a mensagem para a entrada do planForMessage. */

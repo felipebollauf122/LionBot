@@ -114,7 +114,16 @@ export function CloneForm({
               setError(res.error);
               return;
             }
-            await launchClone(res.cloneJobId);
+            // launchClone lanca (throw) se o bot-server estiver fora do ar. O
+            // job "draft" ja foi criado no banco, entao mesmo se isso falhar a
+            // gente navega pra tela de progresso: la o usuario ve o status real
+            // (inclusive last_error) e pode tentar "Retomar", em vez de travar
+            // o formulario ou deixar o throw sem catch derrubar a pagina.
+            try {
+              await launchClone(res.cloneJobId);
+            } catch {
+              // Ignorado de proposito: a tela de progresso e quem reporta a falha.
+            }
             router.push(`/dashboard/automations/clones/${res.cloneJobId}`);
           })
         }

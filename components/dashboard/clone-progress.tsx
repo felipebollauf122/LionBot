@@ -32,6 +32,9 @@ export function CloneProgress({ initial }: { initial: Job }) {
   const [job, setJob] = useState(initial);
   const [report, setReport] = useState<Array<{ reason: string; count: number }>>([]);
   const [pending, start] = useTransition();
+  // Erro de pausar/retomar/apagar: as Server Actions lancam (throw) em vez de
+  // devolver { ok, error }, entao precisamos capturar e mostrar pro usuario.
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Polling de 3s, mesmo padrão das campanhas.
   useEffect(() => {
@@ -84,7 +87,16 @@ export function CloneProgress({ initial }: { initial: Job }) {
       <div className="flex gap-2">
         {LIVE.has(job.status) ? (
           <button
-            onClick={() => start(() => void pauseClone(job.id))}
+            onClick={() =>
+              start(async () => {
+                setActionError(null);
+                try {
+                  await pauseClone(job.id);
+                } catch (err) {
+                  setActionError(err instanceof Error ? err.message : String(err));
+                }
+              })
+            }
             disabled={pending}
             className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-sm"
           >
@@ -93,7 +105,16 @@ export function CloneProgress({ initial }: { initial: Job }) {
         ) : (
           job.status !== "completed" && (
             <button
-              onClick={() => start(() => void launchClone(job.id))}
+              onClick={() =>
+                start(async () => {
+                  setActionError(null);
+                  try {
+                    await launchClone(job.id);
+                  } catch (err) {
+                    setActionError(err instanceof Error ? err.message : String(err));
+                  }
+                })
+              }
               disabled={pending}
               className="px-3 py-1.5 rounded bg-(--accent) text-black text-sm"
             >
@@ -102,13 +123,23 @@ export function CloneProgress({ initial }: { initial: Job }) {
           )
         )}
         <button
-          onClick={() => start(() => void deleteClone(job.id))}
+          onClick={() =>
+            start(async () => {
+              setActionError(null);
+              try {
+                await deleteClone(job.id);
+              } catch (err) {
+                setActionError(err instanceof Error ? err.message : String(err));
+              }
+            })
+          }
           disabled={pending}
           className="px-3 py-1.5 text-white/40 hover:text-red-400 text-sm"
         >
           Apagar
         </button>
       </div>
+      {actionError && <p className="text-red-400 text-xs">{actionError}</p>}
 
       {report.length > 0 && (
         <div>

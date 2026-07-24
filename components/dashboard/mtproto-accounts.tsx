@@ -99,24 +99,29 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
   return (
     <div className="space-y-3">
       {accounts.length === 0 && (
-        <p className="text-white/40 text-sm">Nenhuma conta conectada ainda.</p>
+        <p className="text-(--text-muted) text-sm">Nenhuma conta conectada ainda.</p>
       )}
       {accounts.map((a) => (
         <div
           key={a.id}
-          className="flex items-center justify-between p-3 rounded-lg border border-white/10 bg-white/[0.02]"
+          className="card row-hover reveal p-4 flex items-center justify-between gap-4"
         >
-          <div>
-            <div className="text-white text-sm font-medium">
-              {a.display_name || a.phone_number}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-(--text-primary) text-sm font-medium truncate">
+                {a.display_name || a.phone_number}
+              </span>
+              {a.status === "active" ? (
+                <span className="badge badge-active">ATIVO</span>
+              ) : (
+                <span className="badge badge-pending">{a.status.toUpperCase()}</span>
+              )}
             </div>
-            <div className="text-white/40 text-xs">
-              {a.phone_number} · {a.status}
-            </div>
+            <div className="text-(--text-muted) text-xs mt-1">{a.phone_number}</div>
             {a.create_restricted && (
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-2">
                 <span
-                  className="text-amber-400 text-xs"
+                  className="badge badge-pending"
                   title="O Telegram limitou esta conta de criar canais (USER_RESTRICTED). Ela ainda lê e baixa, mas não cria destino de clone. Resolva no @SpamBot e depois libere aqui."
                 >
                   ⚠ restrita — não cria canais
@@ -127,22 +132,22 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
                       clearAccountRestriction(a.id).then(() => window.location.reload()),
                     )
                   }
-                  className="text-(--accent) hover:underline text-xs"
+                  className="btn-ghost text-xs px-3 py-1.5"
                 >
                   marcar como liberada
                 </button>
               </div>
             )}
             {a.last_error && (
-              <div className="text-red-400 text-xs mt-1">{a.last_error}</div>
+              <div className="text-(--red) text-xs mt-2">{a.last_error}</div>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             {a.status === "active" && (
               <>
                 <a
                   href={`/dashboard/automations/accounts/${a.id}/inbox`}
-                  className="text-(--accent) hover:underline text-xs"
+                  className="btn-ghost text-xs px-3 py-1.5"
                   title="Mensagens recebidas do Telegram oficial (códigos de login, alertas)"
                 >
                   Mensagens
@@ -158,7 +163,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
                       }
                     })
                   }
-                  className="text-(--accent) hover:underline text-xs"
+                  className="btn-ghost text-xs px-3 py-1.5"
                   title="Sincroniza contatos, DMs, grupos e canais da conta — pode levar 10-30s em contas grandes"
                 >
                   Sincronizar contatos/grupos
@@ -167,7 +172,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
             )}
             <a
               href={`/dashboard/automations/accounts/${a.id}/dialogs`}
-              className="text-white/40 hover:text-white text-xs"
+              className="btn-ghost text-xs px-3 py-1.5"
             >
               Ver conteúdo
             </a>
@@ -177,7 +182,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
                   removeAccount(a.id).then(() => window.location.reload()),
                 )
               }
-              className="text-white/40 hover:text-red-400 text-xs"
+              className="btn-ghost text-xs px-3 py-1.5"
             >
               Remover
             </button>
@@ -186,34 +191,34 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
       ))}
 
       {!adding && (
-        <button
-          onClick={() => setAdding(true)}
-          className="px-3 py-1.5 rounded-md border border-white/15 text-white/80 text-sm hover:bg-white/5"
-        >
+        <button onClick={() => setAdding(true)} className="btn-ghost text-sm">
           + Conectar conta
         </button>
       )}
 
       {adding && step === "form" && (
-        <form
-          onSubmit={submitPhone}
-          className="p-4 rounded-lg border border-white/10 bg-white/[0.02] space-y-2"
-        >
-          <input
-            placeholder="Nome (ex: Conta principal)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white"
-          />
-          <input
-            placeholder="+5511999998888"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white"
-          />
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+        <form onSubmit={submitPhone} className="card p-4 space-y-3">
+          <div>
+            <label className="input-label">Nome da conta</label>
+            <input
+              placeholder="Nome (ex: Conta principal)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="input-label">Telefone</label>
+            <input
+              placeholder="+5511999998888"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="input"
+            />
+          </div>
+          {error && <p className="text-(--red) text-xs">{error}</p>}
           <div className="flex gap-2">
-            <button type="submit" className="px-3 py-1.5 rounded bg-(--accent) text-black text-sm">
+            <button type="submit" className="btn-primary">
               Pedir código
             </button>
             <button
@@ -222,7 +227,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
                 setAdding(false);
                 setError(null);
               }}
-              className="px-3 py-1.5 text-white/60 text-sm"
+              className="btn-ghost"
             >
               Cancelar
             </button>
@@ -231,39 +236,33 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
       )}
 
       {adding && step === "code" && (
-        <form
-          onSubmit={submitCodeStep}
-          className="p-4 rounded-lg border border-white/10 bg-white/[0.02] space-y-2"
-        >
-          <p className="text-white/70 text-sm">
+        <form onSubmit={submitCodeStep} className="card p-4 space-y-3">
+          <p className="text-(--text-secondary) text-sm">
             Digite o código que chegou no seu Telegram:
           </p>
           <input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white"
+            className="input"
           />
-          {error && <p className="text-red-400 text-xs">{error}</p>}
-          <button type="submit" className="px-3 py-1.5 rounded bg-(--accent) text-black text-sm">
+          {error && <p className="text-(--red) text-xs">{error}</p>}
+          <button type="submit" className="btn-primary">
             Entrar
           </button>
         </form>
       )}
 
       {adding && step === "password" && (
-        <form
-          onSubmit={submitPasswordStep}
-          className="p-4 rounded-lg border border-white/10 bg-white/[0.02] space-y-2"
-        >
-          <p className="text-white/70 text-sm">Sua conta tem 2FA — digite a senha:</p>
+        <form onSubmit={submitPasswordStep} className="card p-4 space-y-3">
+          <p className="text-(--text-secondary) text-sm">Sua conta tem 2FA — digite a senha:</p>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white"
+            className="input"
           />
-          {error && <p className="text-red-400 text-xs">{error}</p>}
-          <button type="submit" className="px-3 py-1.5 rounded bg-(--accent) text-black text-sm">
+          {error && <p className="text-(--red) text-xs">{error}</p>}
+          <button type="submit" className="btn-primary">
             Entrar
           </button>
         </form>

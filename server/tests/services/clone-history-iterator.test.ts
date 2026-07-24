@@ -57,7 +57,16 @@ describe("normalizeMessage", () => {
 
 describe("iterHistoryAscending", () => {
   it("rende em ordem crescente, pulando service, e aplica o throttle entre itens", async () => {
-    const delay = vi.fn(async () => {});
+    // events registra a intercalação real entre consumo e delay. Um delay
+    // "fire-and-forget" (sem await) reordenaria isso: os dois msg:N sairiam
+    // antes dos dois delay:N, já que o setImmediate abaixo só resolve depois
+    // do loop síncrono do gerador ter avançado até o fim. Só um await
+    // genuíno produz msg,delay,msg,delay.
+    const events: string[] = [];
+    const delay = vi.fn(async (ms: number) => {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      events.push(`delay:${ms}`);
+    });
     const source: HistorySource = {
       fetch: async function* () {
         yield msg(1);
@@ -71,10 +80,34 @@ describe("iterHistoryAscending", () => {
     };
 
     const ids: number[] = [];
-    for await (const m of iterHistoryAscending(source, { throttleMs: 1500 })) ids.push(m.id);
+    for await (const m of iterHistoryAscending(source, { throttleMs: 1500 })) {
+      ids.push(m.id);
+      events.push(`msg:${m.id}`);
+    }
 
     expect(ids).toEqual([1, 3]);
+    // MessageService (id 2) é filtrado, então só 2 mensagens reais passam
+    // pelo yield — e o throttle deve disparar exatamente 2 vezes, nunca 3.
+    expect(delay).toHaveBeenCalledTimes(2);
     expect(delay).toHaveBeenCalledWith(1500);
+    expect(events).toEqual(["msg:1", "delay:1500", "msg:3", "delay:1500"]);
+  });
+
+  it("usa o throttle padrão de 1000ms quando throttleMs não é informado", async () => {
+    const delay = vi.fn(async () => {});
+    const source: HistorySource = {
+      fetch: async function* () {
+        yield msg(7);
+      },
+      delay,
+    };
+
+    const ids: number[] = [];
+    for await (const m of iterHistoryAscending(source)) ids.push(m.id);
+
+    expect(ids).toEqual([7]);
+    expect(delay).toHaveBeenCalledTimes(1);
+    expect(delay).toHaveBeenCalledWith(1000);
   });
 
   it("repassa sinceMsgId para o fetch", async () => {

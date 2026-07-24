@@ -888,18 +888,23 @@ export class MtprotoClient {
       accessHash: bigInt(accessHash),
     });
     const bot = await this.client.getInputEntity(botUsername);
-    // O convite e a promoção são passos SEPARADOS: se o bot já é membro (retomada
-    // de um job cuja 1ª tentativa entrou no canal mas falhou no EditAdmin), o
-    // InviteToChannel joga USER_ALREADY_PARTICIPANT. Engolir aqui dentro garante
-    // que o EditAdmin abaixo SEMPRE rode — senão o bot ficava membro e nunca admin,
-    // e a tolerância de nível acima (promoteBotTolerant) mascarava isso como sucesso.
+    // O convite e a promoção são passos SEPARADOS, e o InviteToChannel pode
+    // falhar de formas que NÃO impedem a promoção — engolimos essas e deixamos
+    // o EditAdmin abaixo SEMPRE rodar (é ele quem de fato torna o bot admin):
+    //   - USER_ALREADY_PARTICIPANT/USER_ALREADY_INVITED: o bot já é membro
+    //     (retomada de um job cuja 1ª tentativa entrou no canal mas falhou no
+    //     EditAdmin). Sem isso o bot ficava membro e nunca admin.
+    //   - USER_BOT: em canal broadcast, bot NÃO pode ser membro comum — só
+    //     admin. O InviteToChannel (que adiciona como membro) volta USER_BOT,
+    //     mas o EditAdmin adiciona+promove o bot direto. Sem tolerar aqui, o
+    //     clone quebrava com "400: USER_BOT" em todo canal broadcast.
     try {
       await this.client.invoke(
         new Api.channels.InviteToChannel({ channel, users: [bot as never] }),
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!/USER_ALREADY_PARTICIPANT|USER_ALREADY_INVITED/i.test(msg)) throw err;
+      if (!/USER_ALREADY_PARTICIPANT|USER_ALREADY_INVITED|USER_BOT/i.test(msg)) throw err;
     }
     await this.client.invoke(
       new Api.channels.EditAdmin({

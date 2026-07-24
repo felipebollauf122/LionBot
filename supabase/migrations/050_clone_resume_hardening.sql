@@ -12,6 +12,17 @@
 -- queries), aqui basta a própria coluna de timestamp: reivindicar é um único
 -- UPDATE condicionado a "livre ou velha o bastante pra presumir crash"
 -- (handleCloneRun em clone-handler.ts), sem precisar de um SELECT prévio.
+--
+-- Re-review (issue 2, TOCTOU): o WHERE desse UPDATE também precisa checar
+-- status IN ('running','waiting_flood') — não só a coluna aqui adicionada.
+-- Sem isso, uma pausa emitida entre a leitura do job e este claim passava
+-- batido (o status era lido uma vez, bem antes do UPDATE, e nunca
+-- revisitado): o claim reivindicava a trava pra um job que já não deveria
+-- rodar mais. Dobrando a condição de status pra dentro do próprio WHERE do
+-- claim, ele e a guarda de status viram uma operação atômica só — não há
+-- mais janela entre "ler status" e "reivindicar trava" pra uma pausa se
+-- intrometer. Nenhuma coluna nova precisa disso: `status` já existe desde
+-- 049_channel_clone.sql.
 
 alter table public.clone_jobs
   add column if not exists processing_started_at timestamptz;

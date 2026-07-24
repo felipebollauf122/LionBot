@@ -20,6 +20,7 @@ import {
 import { iterHistoryAscending } from "../services/mtproto/clone/history-iterator.js";
 import { CloneRunner } from "../services/mtproto/clone/clone-runner.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
+import { extractWaitSeconds } from "../services/mtproto/flood.js";
 import type {
   CloneMapRow,
   CloneStatus,
@@ -61,6 +62,26 @@ async function promoteBotTolerant(
 /** Janela de obsolescência da trava de processamento (defeito I6b). */
 const PROCESSING_CLAIM_STALE_MS = 10 * 60 * 1000;
 
+/**
+ * Agenda a retomada de um FLOOD_WAIT/SLOWMODE_WAIT: escreve `resume_after` e
+ * reenfileira `clone.run` com o mesmo delay (+5s de folga sobre o que o
+ * Telegram pediu — reenfileirar na hora giraria em loop no mesmo flood).
+ * Compartilhado entre o loop de publicação (CloneRunnerDeps.scheduleResume,
+ * abaixo) e o catch do setup (issue 1 do re-review): antes só o loop de
+ * publicação tratava flood como resumable — um flood durante createChannel/
+ * identity/promoteBot/exportInvite matava o job via fail(), mesmo sendo
+ * transitório. Centralizar aqui evita a matemática do delay divergir entre
+ * os dois caminhos.
+ */
+async function scheduleCloneResume(cloneJobId: string, seconds: number): Promise<void> {
+  const waitMs = (seconds + 5) * 1000;
+  await supabase
+    .from("clone_jobs")
+    .update({ resume_after: new Date(Date.now() + waitMs).toISOString() })
+    .eq("id", cloneJobId);
+  await enqueueMtproto({ kind: "clone.run", cloneJobId }, { delayMs: waitMs });
+}
+
 export async function handleCloneRun(cloneJobId: string): Promise<void> {
   const { data: job } = await supabase
     .from("clone_jobs")
@@ -96,11 +117,21 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
   // Telegram). Reivindica atomicamente só se ninguém segura a trava, ou se
   // ela está velha o bastante (>10min) pra presumir que o worker anterior
   // crashou sem limpar.
+  // Issue 2 do re-review (TOCTOU): o status era lido uma vez lá em cima e
+  // nunca revisitado até aqui — uma pausa emitida na janela entre aquela
+  // leitura e este UPDATE passava batido, e o claim reivindicava a trava pra
+  // um job que já não deveria rodar. Dobrar a condição de status pra DENTRO
+  // do WHERE do próprio UPDATE atômico fecha a janela: claim e guarda de
+  // status viram uma operação só. Se nenhuma linha voltar, ou outro worker
+  // segura a trava, ou o job não é mais 'running'/'waiting_flood' (pausado,
+  // concluído, apagado) — os dois casos significam "não rodar", sem
+  // distinguir qual foi (a leitura de status lá em cima já serve pro log).
   const staleBefore = new Date(Date.now() - PROCESSING_CLAIM_STALE_MS).toISOString();
   const { data: claimed, error: claimErr } = await supabase
     .from("clone_jobs")
     .update({ processing_started_at: new Date().toISOString() })
     .eq("id", cloneJobId)
+    .in("status", ["running", "waiting_flood"])
     .or(`processing_started_at.is.null,processing_started_at.lt.${staleBefore}`)
     .select("id")
     .maybeSingle();
@@ -109,7 +140,9 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
     return;
   }
   if (!claimed) {
-    console.log(`[clone] job ${cloneJobId} já está sendo processado por outro worker, ignorando`);
+    console.log(
+      `[clone] job ${cloneJobId} não reivindicado (trava de outro worker ou status não roda mais), ignorando`,
+    );
     return;
   }
 
@@ -371,16 +404,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               console.warn(`[clone] heartbeat falhou pro job ${id}: ${writeError.message}`);
             }
           },
-          scheduleResume: async (id, seconds) => {
-            // +5s de folga sobre o que o Telegram pediu. O job volta pela fila
-            // com delay real: reenfileirar na hora giraria em loop no mesmo flood.
-            const waitMs = (seconds + 5) * 1000;
-            await supabase
-              .from("clone_jobs")
-              .update({ resume_after: new Date(Date.now() + waitMs).toISOString() })
-              .eq("id", id);
-            await enqueueMtproto({ kind: "clone.run", cloneJobId: id }, { delayMs: waitMs });
-          },
+          scheduleResume: (id, seconds) => scheduleCloneResume(id, seconds),
           sourcePinnedIds: () => reader.pinnedIds(),
           pinInDest: async (ids) => {
             for (const id of ids) {
@@ -402,8 +426,32 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
 
       await runner.run();
     } catch (err) {
-      console.error(`[clone] job ${cloneJobId} falhou:`, err);
-      await fail(cloneJobId, err instanceof Error ? err.message : String(err));
+      // Issue 1 do re-review: a promoção do bot passou a rodar em TODA
+      // retomada (defeito I4, ver ensureDestination/promoteBotTolerant acima),
+      // e as RPCs de admin extras (InviteToChannel/EditAdmin) podem disparar
+      // FLOOD_WAIT mesmo numa repromoção redundante. O loop de publicação
+      // (CloneRunner.run) já sabe agendar retomada em vez de falhar num
+      // flood — mas esse catch aqui, que cobre todo o setup (createChannel,
+      // identity, promote, invite export), até então SÓ sabia fail(). Um
+      // flood transitório no setup de um resume matava permanentemente um
+      // job saudável no meio da clonagem. Tratamos igual ao runner: flood
+      // → waiting_flood + scheduleCloneResume; qualquer
+      // outro erro (BOT_GROUPS_BLOCKED, RIGHT_FORBIDDEN, erro de DB, etc.)
+      // continua genuíno e fatal.
+      const wait = extractWaitSeconds(err);
+      if (wait !== null) {
+        console.warn(
+          `[clone] job ${cloneJobId} flood durante o setup (${wait}s), agendando retomada em vez de falhar`,
+        );
+        await supabase
+          .from("clone_jobs")
+          .update({ status: "waiting_flood", last_error: `flood_wait_${wait}s` })
+          .eq("id", cloneJobId);
+        await scheduleCloneResume(cloneJobId, wait);
+      } else {
+        console.error(`[clone] job ${cloneJobId} falhou:`, err);
+        await fail(cloneJobId, err instanceof Error ? err.message : String(err));
+      }
     } finally {
       await bot?.disconnect().catch(() => {});
       await client.disconnect().catch(() => {});

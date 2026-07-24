@@ -61,6 +61,26 @@ describe("ensureDestination", () => {
     expect(d.persist).toHaveBeenCalledWith("j1", out);
   });
 
+  it("persiste o canal assim que ele existe, antes do promoteBot (fatal)", async () => {
+    const d = deps({
+      promoteBot: vi.fn(async () => {
+        throw new Error("BOT_GROUPS_BLOCKED");
+      }),
+    });
+
+    await expect(ensureDestination(d, input)).rejects.toThrow(/BOT_GROUPS_BLOCKED/);
+
+    // O canal criado tem que já estar gravado quando promoteBot explode,
+    // senão a retomada do job cria um segundo canal e queima outra unidade
+    // da cota diária de CreateChannel.
+    expect(d.persist).toHaveBeenCalledWith("j1", {
+      channelId: "111",
+      accessHash: "222",
+      inviteLink: null,
+    });
+    expect(d.persist).toHaveBeenCalledTimes(1);
+  });
+
   it("cria supergrupo quando destKind é megagroup", async () => {
     const d = deps();
     await ensureDestination(d, { ...input, destKind: "megagroup" });
@@ -81,8 +101,17 @@ describe("ensureDestination", () => {
     const d = deps();
     const existing = { channelId: "77", accessHash: "88", inviteLink: null };
     const out = await ensureDestination(d, { ...input, existing });
+
+    // Nenhuma dependência pode ser chamada no caminho de retomada — inclusive
+    // persist e readIdentity, que uma regressão poderia reintroduzir sem
+    // quebrar o retorno.
+    expect(d.readIdentity).not.toHaveBeenCalled();
     expect(d.createChannel).not.toHaveBeenCalled();
+    expect(d.setAbout).not.toHaveBeenCalled();
+    expect(d.setPhoto).not.toHaveBeenCalled();
     expect(d.promoteBot).not.toHaveBeenCalled();
+    expect(d.exportInvite).not.toHaveBeenCalled();
+    expect(d.persist).not.toHaveBeenCalled();
     expect(out).toEqual(existing);
   });
 
@@ -103,6 +132,12 @@ describe("ensureDestination", () => {
     const out = await ensureDestination(d, input);
     expect(out.channelId).toBe("111");
     expect(out.inviteLink).toBeNull();
+    expect(d.setPhoto).toHaveBeenCalledWith("111", "222", Buffer.from("x"));
+    expect(d.persist).toHaveBeenCalledWith("j1", {
+      channelId: "111",
+      accessHash: "222",
+      inviteLink: null,
+    });
   });
 
   it("falha de promoção do bot é fatal (sem bot não há publicação)", async () => {

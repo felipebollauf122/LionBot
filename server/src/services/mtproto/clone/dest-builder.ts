@@ -75,6 +75,11 @@ export async function ensureDestination(
     megagroup: input.destKind === "megagroup",
   });
 
+  // O canal já existe na conta do usuário a partir daqui — persiste agora,
+  // antes do promoteBot (fatal por baixo), pra retomada não criar um segundo
+  // canal e queimar mais uma unidade da cota diária de CreateChannel.
+  await deps.persist(input.jobId, { ...created, inviteLink: null });
+
   if (input.copyIdentity) {
     if (about) {
       try {
@@ -103,6 +108,8 @@ export async function ensureDestination(
   }
 
   const dest: DestinationRef = { ...created, inviteLink };
-  await deps.persist(input.jobId, dest);
+  if (inviteLink !== null) {
+    await deps.persist(input.jobId, dest);
+  }
   return dest;
 }

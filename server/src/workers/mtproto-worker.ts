@@ -9,6 +9,7 @@ import {
   type CampaignTargetRow,
 } from "../services/mtproto/campaign-runner.js";
 import { enqueueMtproto, type MtprotoJobData } from "../queue-mtproto.js";
+import { handleCloneRun } from "./clone-handler.js";
 
 // Kinds elegíveis pra disparo global. Inclui grupos/canais onde só participa
 // — o owner aceita o risco de ban por spam em troca de alcance máximo.
@@ -754,6 +755,8 @@ export function startMtprotoWorker(): void {
           return handleCampaignRun(d.campaignId);
         case "account.sync-dialogs":
           return handleSyncDialogs(d.accountId);
+        case "clone.run":
+          return handleCloneRun(d.cloneJobId);
       }
     },
     { connection, concurrency: 4 },

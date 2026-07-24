@@ -143,6 +143,12 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
                 </button>
               </>
             )}
+            <a
+              href={`/dashboard/automations/accounts/${a.id}/dialogs`}
+              className="text-white/40 hover:text-white text-xs"
+            >
+              Ver conteúdo
+            </a>
             <button
               onClick={() =>
                 startTransition(() =>

@@ -140,6 +140,18 @@ export class MtprotoClient {
     return { ok: true, needsPassword: false, sessionString };
   }
 
+  /**
+   * Autentica como BOT usando o token do BotFather. Verificado em
+   * client/auth.js:361-366 — o gramjs decide por duck-typing: sem
+   * `phoneNumber` no objeto, cai em signInBot(), que invoca
+   * Api.auth.ImportBotAuthorization. A session string resultante tem o mesmo
+   * formato da de conta de usuário (sessions/StringSession.js:91-114).
+   */
+  async signInAsBot(botAuthToken: string): Promise<string> {
+    await this.client.start({ botAuthToken });
+    return (this.client.session as StringSession).save();
+  }
+
   async sendMessage(
     target: string,
     targetType: "username" | "phone",
@@ -604,21 +616,26 @@ export class MtprotoClient {
   }
 
   /**
-   * Cria um canal novo (broadcast) com título + about. Retorna identidade
-   * do canal pra postar e exportar link de convite. Pode estourar FLOOD_WAIT
-   * se a conta criou muitos canais recentemente.
+   * Cria um canal novo. `megagroup: true` cria supergrupo em vez de canal
+   * broadcast — usado pela clonagem quando a origem é grupo. Pode estourar
+   * FLOOD_WAIT se a conta criou muitos canais recentemente.
    */
-  async createChannel(title: string, about: string): Promise<{
+  async createChannel(
+    title: string,
+    about: string,
+    opts: { megagroup?: boolean } = {},
+  ): Promise<{
     channelId: string;
     accessHash: string;
   }> {
     await this.connect();
+    const megagroup = opts.megagroup === true;
     const result = await this.client.invoke(
       new Api.channels.CreateChannel({
         title,
         about,
-        broadcast: true,
-        megagroup: false,
+        broadcast: !megagroup,
+        megagroup,
       }),
     );
     if (
@@ -640,6 +657,23 @@ export class MtprotoClient {
   }
 
   /**
+   * Sobe um arquivo que já está em disco. Acima de 20MB o gramjs abre o 3º
+   * argumento do CustomFile como CAMINHO (uploads.js:64) — passar o nome ali,
+   * como sendMediaToChannel fazia, quebra em arquivo grande.
+   */
+  async uploadFromPath(
+    filePath: string,
+    fileName: string,
+    sizeBytes: number,
+  ): Promise<Api.TypeInputFile> {
+    await this.connect();
+    return this.client.uploadFile({
+      file: new CustomFile(fileName, sizeBytes, filePath),
+      workers: 4,
+    });
+  }
+
+  /**
    * Faz upload de um Buffer e envia como foto ou vídeo pro canal.
    * O caller é responsável por baixar a mídia da URL antes (multi-step
    * porque pode ser URL externa, Supabase Storage signed URL, etc.).
@@ -652,6 +686,13 @@ export class MtprotoClient {
     kind: "photo" | "video",
   ): Promise<void> {
     await this.connect();
+    const BUFFER_UPLOAD_LIMIT = 20 * 1024 * 1024;
+    if (media.buffer.length >= BUFFER_UPLOAD_LIMIT) {
+      throw new Error(
+        `MEDIA_TOO_LARGE_FOR_BUFFER_UPLOAD: ${media.fileName} tem ${media.buffer.length} bytes; ` +
+          `use uploadFromPath com o arquivo em disco`,
+      );
+    }
     const peer = new Api.InputPeerChannel({
       channelId: bigInt(channelId),
       accessHash: bigInt(accessHash),
@@ -804,6 +845,92 @@ export class MtprotoClient {
           accessHash: channel.accessHash,
         }),
         enabled,
+      }),
+    );
+  }
+
+  /** Acesso ao client cru para os adaptadores de clonagem. */
+  get raw(): TelegramClient {
+    return this.client;
+  }
+
+  /**
+   * Encaminha um lote de mensagens (máx. 100 ids) apagando a autoria, o que
+   * remove a marca "encaminhado de" e faz o post sair nativo no destino.
+   */
+  async forwardBatch(
+    from: Api.TypeInputPeer,
+    to: Api.TypeInputPeer,
+    messageIds: number[],
+  ): Promise<Api.TypeUpdates> {
+    await this.connect();
+    return this.client.invoke(
+      new Api.messages.ForwardMessages({
+        fromPeer: from,
+        toPeer: to,
+        id: messageIds,
+        randomId: messageIds.map(() => randomMessageId()),
+        dropAuthor: true,
+        silent: true,
+      }),
+    );
+  }
+
+  /** Promove um bot (por @username) a admin de um canal/supergrupo. */
+  async promoteBotToAdmin(
+    channelId: string,
+    accessHash: string,
+    botUsername: string,
+  ): Promise<void> {
+    await this.connect();
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    const bot = await this.client.getInputEntity(botUsername);
+    // O convite e a promoção são passos SEPARADOS: se o bot já é membro (retomada
+    // de um job cuja 1ª tentativa entrou no canal mas falhou no EditAdmin), o
+    // InviteToChannel joga USER_ALREADY_PARTICIPANT. Engolir aqui dentro garante
+    // que o EditAdmin abaixo SEMPRE rode — senão o bot ficava membro e nunca admin,
+    // e a tolerância de nível acima (promoteBotTolerant) mascarava isso como sucesso.
+    try {
+      await this.client.invoke(
+        new Api.channels.InviteToChannel({ channel, users: [bot as never] }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/USER_ALREADY_PARTICIPANT|USER_ALREADY_INVITED/i.test(msg)) throw err;
+    }
+    await this.client.invoke(
+      new Api.channels.EditAdmin({
+        channel,
+        userId: bot as never,
+        adminRights: new Api.ChatAdminRights({
+          postMessages: true,
+          editMessages: true,
+          deleteMessages: true,
+          pinMessages: true,
+          inviteUsers: true,
+        }),
+        rank: "clone",
+      }),
+    );
+  }
+
+  /** Define a descrição (about) de um canal/supergrupo. */
+  async setChannelAbout(
+    channelId: string,
+    accessHash: string,
+    about: string,
+  ): Promise<void> {
+    await this.connect();
+    await this.client.invoke(
+      new Api.messages.EditChatAbout({
+        peer: new Api.InputPeerChannel({
+          channelId: bigInt(channelId),
+          accessHash: bigInt(accessHash),
+        }),
+        about,
       }),
     );
   }

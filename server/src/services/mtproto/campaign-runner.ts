@@ -1,4 +1,5 @@
 import type { AccountPool } from "./pool.js";
+import { extractWaitSeconds } from "./flood.js";
 
 export interface CampaignTargetRow {
   id: string;
@@ -76,20 +77,6 @@ export interface CampaignConfig {
   messageText: string;
   delayMinSeconds: number;
   delayMaxSeconds: number;
-}
-
-interface FloodWaitErrorLike {
-  seconds?: number;
-  message?: string;
-}
-
-function extractFloodWait(err: unknown): number | null {
-  if (err && typeof err === "object") {
-    const e = err as FloodWaitErrorLike;
-    const msg = e.message ?? String(err);
-    if (/FLOOD/i.test(msg) && typeof e.seconds === "number") return e.seconds;
-  }
-  return null;
 }
 
 function isFatalAccountError(err: unknown): boolean {
@@ -181,7 +168,7 @@ export class CampaignRunner {
         await this.deps.markTargetSent(target.id, account.id);
         await this.deps.incrementCounters(this.cfg.campaignId, "sent");
       } catch (err) {
-        const floodSeconds = extractFloodWait(err);
+        const floodSeconds = extractWaitSeconds(err);
         if (floodSeconds !== null) {
           this.pool.markFloodWait(account.id, floodSeconds);
           // Em targets pinned não dá pra trocar de conta (access_hash

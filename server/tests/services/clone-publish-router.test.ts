@@ -58,6 +58,24 @@ describe("chooseStrategy", () => {
       chooseStrategy({ requested: "auto", sourceHasNoForwards: false, copyButtons: false }),
     ).toBe("batch");
   });
+
+  it("crossAccount força download mesmo quando a rota rápida seria escolhida", () => {
+    // origem liberada, sem botões, sem reply — seria "batch" se fosse mesma conta.
+    expect(
+      chooseStrategy({
+        requested: "auto",
+        sourceHasNoForwards: false,
+        copyButtons: false,
+        crossAccount: true,
+      }),
+    ).toBe("download");
+  });
+
+  it("crossAccount omitido continua batch (default false = mesma conta)", () => {
+    expect(
+      chooseStrategy({ requested: "auto", sourceHasNoForwards: false, copyButtons: false }),
+    ).toBe("batch");
+  });
 });
 
 describe("routeGroup", () => {

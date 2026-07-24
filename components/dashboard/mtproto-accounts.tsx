@@ -8,6 +8,7 @@ import {
   removeAccount,
   syncAccountDialogs,
 } from "@/app/dashboard/automations/actions";
+import { clearAccountRestriction } from "@/app/dashboard/automations/clones/actions";
 import { createClient } from "@/lib/supabase/client";
 
 interface Account {
@@ -16,6 +17,7 @@ interface Account {
   display_name: string | null;
   status: string;
   last_error: string | null;
+  create_restricted?: boolean;
 }
 
 export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
@@ -111,6 +113,26 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
             <div className="text-white/40 text-xs">
               {a.phone_number} · {a.status}
             </div>
+            {a.create_restricted && (
+              <div className="flex items-center gap-2 mt-1">
+                <span
+                  className="text-amber-400 text-xs"
+                  title="O Telegram limitou esta conta de criar canais (USER_RESTRICTED). Ela ainda lê e baixa, mas não cria destino de clone. Resolva no @SpamBot e depois libere aqui."
+                >
+                  ⚠ restrita — não cria canais
+                </span>
+                <button
+                  onClick={() =>
+                    startTransition(() =>
+                      clearAccountRestriction(a.id).then(() => window.location.reload()),
+                    )
+                  }
+                  className="text-(--accent) hover:underline text-xs"
+                >
+                  marcar como liberada
+                </button>
+              </div>
+            )}
             {a.last_error && (
               <div className="text-red-400 text-xs mt-1">{a.last_error}</div>
             )}

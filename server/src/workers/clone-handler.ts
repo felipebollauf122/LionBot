@@ -21,6 +21,7 @@ import { iterHistoryAscending } from "../services/mtproto/clone/history-iterator
 import { CloneRunner } from "../services/mtproto/clone/clone-runner.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
 import { extractWaitSeconds } from "../services/mtproto/flood.js";
+import { isUserRestricted } from "../services/mtproto/clone/user-restricted.js";
 import type {
   CloneMapRow,
   CloneStatus,
@@ -147,14 +148,38 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
   }
 
   try {
+    // Clone cross-account: a conta que LÊ a origem (job.account_id, dona do
+    // canal) pode ser diferente da que CRIA o destino (job.dest_account_id).
+    // Caso comum (dest null ou igual): as duas apontam pra mesma conta e um
+    // objeto de client só, sem abrir duas conexões à toa.
+    const sourceAccountId = job.account_id;
+    const destAccountId = job.dest_account_id ?? job.account_id;
+    const crossAccount = destAccountId !== sourceAccountId;
+
     const { data: account } = await supabase
       .from("mtproto_accounts")
       .select("id, session_string, status")
-      .eq("id", job.account_id)
+      .eq("id", sourceAccountId)
       .single();
     if (!account?.session_string || account.status !== "active") {
-      await fail(cloneJobId, "conta MTProto inativa ou sem sessão");
+      await fail(cloneJobId, "conta MTProto de origem inativa ou sem sessão");
       return;
+    }
+
+    // Conta de destino (só carrega separado quando é cross-account).
+    let destAccount = account;
+    if (crossAccount) {
+      const { data: da } = await supabase
+        .from("mtproto_accounts")
+        .select("id, session_string, status")
+        .eq("id", destAccountId)
+        .eq("tenant_id", job.tenant_id)
+        .single();
+      if (!da?.session_string || da.status !== "active") {
+        await fail(cloneJobId, "conta de destino inativa ou sem sessão — escolha outra conta");
+        return;
+      }
+      destAccount = da;
     }
 
     // Bot companheiro é pré-requisito obrigatório: sem ele não existe rota de
@@ -176,6 +201,11 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       config.telegramApiHash,
       account.session_string,
     );
+    // destClient cria o canal e promove o bot. Mesma conta → mesmo objeto (não
+    // reconecta à toa). Cross-account → sessão da conta de destino.
+    const destClient = crossAccount
+      ? new MtprotoClient(config.telegramApiId, config.telegramApiHash, destAccount.session_string)
+      : client;
     const source: ClonePeer = {
       peerId: job.source_peer_id,
       peerType: job.source_peer_type,
@@ -190,18 +220,30 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
 
     try {
       await client.connect();
+      if (crossAccount) await destClient.connect();
 
       // 1) Destino (idempotente na retomada — ensureDestination devolve
       // `existing` direto se o job já tiver dest_channel_id persistido, mas
       // sempre repromove o bot: ver defeito I4 em dest-builder.ts).
+      // A LEITURA da identidade usa o client de ORIGEM (reader); a CRIAÇÃO
+      // (canal, about, foto, promoção do bot, invite) usa o destClient.
       const dest = await ensureDestination(
         {
           readIdentity: () => reader.readIdentity(),
-          createChannel: (title, about, opts) => client.createChannel(title, about, opts),
-          setAbout: (cid, hash, about) => client.setChannelAbout(cid, hash, about),
-          setPhoto: (cid, hash, photo) => client.setChannelPhoto(cid, hash, photo),
-          promoteBot: (cid, hash, username) => promoteBotTolerant(client, cid, hash, username),
-          exportInvite: (cid, hash) => client.exportChannelInvite(cid, hash),
+          createChannel: async (title, about, opts) => {
+            const created = await destClient.createChannel(title, about, opts);
+            // CreateChannel deu certo → a conta de destino NÃO está restrita.
+            // Limpa o flag reativo (ela pode ter sido marcada num job antigo).
+            await supabase
+              .from("mtproto_accounts")
+              .update({ create_restricted: false })
+              .eq("id", destAccountId);
+            return created;
+          },
+          setAbout: (cid, hash, about) => destClient.setChannelAbout(cid, hash, about),
+          setPhoto: (cid, hash, photo) => destClient.setChannelPhoto(cid, hash, photo),
+          promoteBot: (cid, hash, username) => promoteBotTolerant(destClient, cid, hash, username),
+          exportInvite: (cid, hash) => destClient.exportChannelInvite(cid, hash),
           // Chamado até 2x por job: uma vez logo após createChannel (com
           // inviteLink: null, pra retomada não recriar o canal e queimar
           // outra unidade da cota diária de CreateChannel) e outra no final
@@ -243,6 +285,8 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
         // batch/forward (que não carrega reply_to), e o runner calculava o
         // replyToDestId à toa — descartado em silêncio no forward.
         copyReplies: job.copy_replies,
+        // Cross-account: forward entre sessões diferentes não existe → download.
+        crossAccount,
       });
       await supabase
         .from("clone_jobs")
@@ -449,12 +493,25 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
           .eq("id", cloneJobId);
         await scheduleCloneResume(cloneJobId, wait);
       } else {
+        // USER_RESTRICTED no createChannel: a conta de destino está limitada
+        // pelo Telegram (anti-spam) e não cria canais. Marca reativamente pra
+        // ela sumir do seletor de "criar destino em" nos próximos clones.
+        if (isUserRestricted(err)) {
+          await supabase
+            .from("mtproto_accounts")
+            .update({ create_restricted: true })
+            .eq("id", destAccountId)
+            .then(undefined, () => {});
+        }
         console.error(`[clone] job ${cloneJobId} falhou:`, err);
         await fail(cloneJobId, err instanceof Error ? err.message : String(err));
       }
     } finally {
       await bot?.disconnect().catch(() => {});
       await client.disconnect().catch(() => {});
+      // destClient só é objeto separado no cross-account; senão é o mesmo
+      // `client` já desconectado acima.
+      if (crossAccount) await destClient.disconnect().catch(() => {});
       await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   } finally {

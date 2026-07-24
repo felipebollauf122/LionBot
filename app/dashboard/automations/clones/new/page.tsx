@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { CloneForm } from "@/components/dashboard/clone-form";
+import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/actions";
 
 export default async function NewClonePage({
   searchParams,
@@ -18,11 +19,16 @@ export default async function NewClonePage({
 
   const { data: dialog } = await supabase
     .from("mtproto_dialogs")
-    .select("id, title, kind, mtproto_accounts!inner(tenant_id)")
+    .select("id, title, kind, account_id, mtproto_accounts!inner(tenant_id)")
     .eq("id", dialogId)
     .eq("mtproto_accounts.tenant_id", user.id)
     .single();
   if (!dialog) notFound();
+
+  // Contas que podem CRIAR o destino: ativas e não-restritas. A conta da
+  // origem entra na lista só se ela mesma puder criar (não estiver restrita).
+  // Reusa a mesma action que valida a fonte da verdade, sem duplicar a query.
+  const eligible = await listEligibleDestAccounts();
 
   return (
     <div className="p-8 max-w-2xl">
@@ -33,7 +39,15 @@ export default async function NewClonePage({
       <p className="text-white/50 text-sm mt-1 mb-6">
         Origem: <strong className="text-white/80">{dialog.title}</strong>
       </p>
-      <CloneForm dialogId={dialog.id} sourceTitle={dialog.title ?? "Clone"} />
+      <CloneForm
+        dialogId={dialog.id}
+        sourceTitle={dialog.title ?? "Clone"}
+        sourceAccountId={dialog.account_id}
+        destAccounts={(eligible ?? []).map((a) => ({
+          id: a.id,
+          label: a.display_name || a.phone_number,
+        }))}
+      />
     </div>
   );
 }

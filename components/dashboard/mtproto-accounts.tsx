@@ -104,20 +104,21 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
       {accounts.map((a) => (
         <div
           key={a.id}
-          className="row-hover reveal flex items-center justify-between gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
+          className="row-hover reveal flex flex-col gap-2.5 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
         >
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-(--text-primary) text-sm font-medium truncate">
-                {a.display_name || a.phone_number}
-              </span>
-              {a.status === "active" ? (
-                <span className="badge badge-active">ATIVO</span>
-              ) : (
-                <span className="badge badge-pending">{a.status.toUpperCase()}</span>
-              )}
-            </div>
-            <div className="text-(--text-muted) text-xs mt-1">{a.phone_number}</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-(--text-primary) text-sm font-medium">
+              {a.display_name || a.phone_number}
+            </span>
+            {a.status === "active" ? (
+              <span className="badge badge-active">ATIVO</span>
+            ) : (
+              <span className="badge badge-pending">{a.status.toUpperCase()}</span>
+            )}
+            <span className="text-(--text-muted) text-xs ml-auto whitespace-nowrap">
+              {a.phone_number}
+            </span>
+          </div>
             {a.create_restricted && (
               <div className="flex items-center gap-2 mt-2">
                 <span
@@ -139,10 +140,9 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
               </div>
             )}
             {a.last_error && (
-              <div className="text-(--red) text-xs mt-2">{a.last_error}</div>
+              <div className="text-(--red) text-xs">{a.last_error}</div>
             )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 mt-1">
             {a.status === "active" && (
               <>
                 <a
@@ -166,7 +166,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
                   className="btn-ghost text-xs px-3 py-1.5"
                   title="Sincroniza contatos, DMs, grupos e canais da conta — pode levar 10-30s em contas grandes"
                 >
-                  Sincronizar contatos/grupos
+                  Sincronizar
                 </button>
               </>
             )}

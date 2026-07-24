@@ -9,6 +9,10 @@
  *
  * Usado pelo clone-handler pra marcar mtproto_accounts.create_restricted e tirar
  * a conta do seletor de "criar destino em".
+ *
+ * Só USER_RESTRICTED — é o erro real/confirmado (visto nos logs de produção). Se
+ * outra variante de restrição aparecer nos logs, some aqui E na regra
+ * correspondente de lib/mtproto/clone-errors.ts (manter as duas em sincronia).
  */
 export function isUserRestricted(err: unknown): boolean {
   if (typeof err === "string") return /USER_RESTRICTED/i.test(err);

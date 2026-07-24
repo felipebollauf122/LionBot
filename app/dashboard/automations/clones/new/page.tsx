@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { isOwner } from "@/lib/actions/owner-actions";
 import { CloneForm } from "@/components/dashboard/clone-form";
+import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/actions";
 
 export default async function NewClonePage({
   searchParams,
@@ -26,13 +27,8 @@ export default async function NewClonePage({
 
   // Contas que podem CRIAR o destino: ativas e não-restritas. A conta da
   // origem entra na lista só se ela mesma puder criar (não estiver restrita).
-  const { data: eligible } = await supabase
-    .from("mtproto_accounts")
-    .select("id, display_name, phone_number")
-    .eq("tenant_id", user.id)
-    .eq("status", "active")
-    .eq("create_restricted", false)
-    .order("created_at", { ascending: false });
+  // Reusa a mesma action que valida a fonte da verdade, sem duplicar a query.
+  const eligible = await listEligibleDestAccounts();
 
   return (
     <div className="p-8 max-w-2xl">

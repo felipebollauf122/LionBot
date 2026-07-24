@@ -16,9 +16,9 @@ const RULES: Rule[] = [
   {
     // Conta flagada pelo anti-spam: não cria canal, não fala com estranho.
     // É o caso mais comum em conta nova / número VoIP / conta denunciada.
-    test: /USER_RESTRICTED|USER_CHANNELS_TOO_MUCH_RESTRICTED/i,
+    test: /USER_RESTRICTED/i,
     message:
-      "Sua conta do Telegram está limitada pelo anti-spam (não consegue criar canais). Verifique o status no @SpamBot dentro do Telegram e tente com outra conta, de preferência antiga e com número real (não VoIP).",
+      "A conta escolhida para criar o destino está limitada pelo anti-spam do Telegram (não cria canais). Ela já foi marcada como restrita e sumiu do seletor — escolha outra conta para criar o destino, ou resolva no @SpamBot e libere a conta no card dela.",
   },
   {
     // Limite de spam ao interagir com peers — parente do USER_RESTRICTED.

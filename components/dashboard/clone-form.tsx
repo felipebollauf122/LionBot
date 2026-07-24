@@ -14,12 +14,25 @@ const TOGGLES = [
 export function CloneForm({
   dialogId,
   sourceTitle,
+  sourceAccountId,
+  destAccounts,
 }: {
   dialogId: string;
   sourceTitle: string;
+  /** Conta que lê a origem (dona do canal clicado). */
+  sourceAccountId: string;
+  /** Contas ativas e não-restritas que podem criar o destino. */
+  destAccounts: Array<{ id: string; label: string }>;
 }) {
   const router = useRouter();
   const [destTitle, setDestTitle] = useState(`${sourceTitle} (clone)`);
+  // Default: a conta da origem, se ela puder criar (está na lista de elegíveis);
+  // senão a primeira conta elegível; se não houver nenhuma, vazio (submit bloqueado).
+  const [destAccountId, setDestAccountId] = useState(
+    destAccounts.some((a) => a.id === sourceAccountId)
+      ? sourceAccountId
+      : destAccounts[0]?.id ?? "",
+  );
   const [copyIdentity, setCopyIdentity] = useState(true);
   const [limit, setLimit] = useState("");
   const [throttle, setThrottle] = useState("3000");
@@ -56,6 +69,33 @@ export function CloneForm({
             Traz descrição e foto de perfil. O @username público não dá para copiar — o
             destino nasce privado, com link de convite.
           </span>
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="text-white/70 text-sm">Criar o destino na conta</span>
+        {destAccounts.length > 0 ? (
+          <select
+            value={destAccountId}
+            onChange={(e) => setDestAccountId(e.target.value)}
+            className="mt-1 w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-white"
+          >
+            {destAccounts.map((a) => (
+              <option key={a.id} value={a.id} className="bg-black">
+                {a.label}
+                {a.id === sourceAccountId ? " (mesma da origem)" : ""}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="mt-1 text-red-400 text-xs">
+            Nenhuma conta pode criar canais agora (todas restritas ou inativas). Conecte uma
+            conta não-restrita, ou libere uma no card da conta em Automações.
+          </p>
+        )}
+        <span className="block text-white/40 text-xs mt-1">
+          A leitura da origem usa a conta dona do canal. Se ela estiver restrita de criar
+          canais, escolha outra conta aqui para criar o destino.
         </span>
       </label>
 
@@ -108,6 +148,7 @@ export function CloneForm({
               copyIdentity,
               messageLimit: limit ? Number(limit) : null,
               throttleMs: Math.max(500, Number(throttle) || 3000),
+              destAccountId,
               ...flags,
             });
             if (!res.ok) {
@@ -127,7 +168,7 @@ export function CloneForm({
             router.push(`/dashboard/automations/clones/${res.cloneJobId}`);
           })
         }
-        disabled={pending}
+        disabled={pending || !destAccountId}
         className="px-4 py-2 rounded bg-(--accent) text-black text-sm font-medium disabled:opacity-50"
       >
         {pending ? "Criando..." : "Criar e começar a clonar"}

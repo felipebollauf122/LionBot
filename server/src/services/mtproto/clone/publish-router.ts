@@ -20,7 +20,17 @@ export function chooseStrategy(input: {
    * job.copy_replies` na chamada de lá).
    */
   copyReplies?: boolean;
+  /**
+   * Clone cross-account: a conta que lê a origem é diferente da que cria o
+   * destino. O ForwardMessages encaminha de um chat pro outro DENTRO da mesma
+   * sessão — com contas diferentes ninguém está nos dois lados, então a rota
+   * lote é impossível. Opcional com default false (mesma conta = comportamento
+   * atual).
+   */
+  crossAccount?: boolean;
 }): CloneStrategy {
+  // Contas diferentes na origem e no destino: forward entre sessões não existe.
+  if (input.crossAccount) return "download";
   // Encaminhamento não permite anexar reply_markup: quem quer botão, baixa.
   if (input.copyButtons) return "download";
   // ForwardMessages só aceita ids, sem como ancorar um reply_to no destino:

@@ -97,6 +97,8 @@ export async function createCloneJob(input: {
   copyPins: boolean;
   copyButtons: boolean;
   copyPolls: boolean;
+  /** Conta que cria o destino. Omitido/igual à origem = mesma conta. */
+  destAccountId?: string;
 }): Promise<CreateCloneResult> {
   try {
     await requireOwner();
@@ -126,11 +128,31 @@ export async function createCloneJob(input: {
       return { ok: false, error: "O limite de mensagens vai de 1 a 50.000." };
     }
 
+    // Conta que cria o destino: default = a mesma da origem. Se for outra,
+    // valida que é do tenant, ativa e NÃO restrita (senão o createChannel
+    // falharia com USER_RESTRICTED).
+    const destAccountId = input.destAccountId?.trim() || dialog.account_id;
+    if (destAccountId !== dialog.account_id) {
+      const { data: destAcc } = await supabase
+        .from("mtproto_accounts")
+        .select("id, status, create_restricted")
+        .eq("id", destAccountId)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (!destAcc || destAcc.status !== "active") {
+        return { ok: false, error: "A conta de destino não existe ou não está ativa." };
+      }
+      if (destAcc.create_restricted) {
+        return { ok: false, error: "A conta de destino está restrita e não cria canais. Escolha outra." };
+      }
+    }
+
     const { data: job, error } = await supabase
       .from("clone_jobs")
       .insert({
         tenant_id: tenantId,
         account_id: dialog.account_id,
+        dest_account_id: destAccountId,
         source_dialog_id: dialog.id,
         source_peer_id: dialog.peer_id,
         source_peer_type: dialog.peer_type,
@@ -236,4 +258,42 @@ export async function listCloneSkipReport(
   return [...counts.entries()]
     .map(([reason, count]) => ({ reason, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Contas que podem CRIAR o destino de um clone: ativas e não-restritas pelo
+ * anti-spam do Telegram (create_restricted=false). Alimenta o seletor "criar
+ * destino em" do formulário de clone.
+ */
+export async function listEligibleDestAccounts(): Promise<
+  Array<{ id: string; display_name: string | null; phone_number: string }>
+> {
+  const tenantId = await currentTenantId();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("mtproto_accounts")
+    .select("id, display_name, phone_number")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .eq("create_restricted", false)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Array<{ id: string; display_name: string | null; phone_number: string }>;
+}
+
+/**
+ * Limpa o flag create_restricted de uma conta — pro owner usar depois de
+ * resolver a restrição no @SpamBot. Owner-only, escopado por tenant.
+ */
+export async function clearAccountRestriction(accountId: string): Promise<void> {
+  await requireOwner();
+  const tenantId = await currentTenantId();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("mtproto_accounts")
+    .update({ create_restricted: false })
+    .eq("id", accountId)
+    .eq("tenant_id", tenantId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard/automations");
 }

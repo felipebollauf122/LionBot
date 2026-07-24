@@ -23,7 +23,8 @@ type MtprotoJob =
   | { kind: "auth.sign-in"; accountId: string; phoneNumber: string; code: string }
   | { kind: "auth.submit-password"; accountId: string; password: string }
   | { kind: "campaign.run"; campaignId: string }
-  | { kind: "account.sync-dialogs"; accountId: string };
+  | { kind: "account.sync-dialogs"; accountId: string }
+  | { kind: "clone.run"; cloneJobId: string };
 
 async function enqueueJob(job: MtprotoJob): Promise<void> {
   const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(/\/+$/, "");

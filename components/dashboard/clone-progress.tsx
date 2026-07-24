@@ -7,6 +7,7 @@ import {
   deleteClone,
   listCloneSkipReport,
 } from "@/app/dashboard/automations/clones/actions";
+import { friendlyCloneError } from "@/lib/mtproto/clone-errors";
 
 type Job = {
   id: string;
@@ -70,7 +71,9 @@ export function CloneProgress({ initial }: { initial: Job }) {
           <span className="text-white/40">{job.skipped_count} puladas</span>
           <span className="text-red-400/70">{job.failed_count} falhas</span>
         </div>
-        {job.last_error && <p className="text-red-400 text-xs mt-2">{job.last_error}</p>}
+        {job.last_error && (
+          <p className="text-red-400 text-xs mt-2">{friendlyCloneError(job.last_error)}</p>
+        )}
       </div>
 
       {job.dest_invite_link && (

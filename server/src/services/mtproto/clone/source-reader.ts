@@ -100,8 +100,25 @@ export class SourceReader {
    * download), então decide a rota do clone.
    */
   async hasNoForwards(): Promise<boolean> {
-    if (this.source.peerType === "chat") return false;
     await this.client.connect();
+    if (this.source.peerType === "chat") {
+      // Api.Chat também carrega noforwards (api.d.ts:998 e :1020) — "proteger
+      // conteúdo" não é exclusivo de canal, grupo legacy pode ter também. Não
+      // reintroduzir o atalho `return false` daqui. Se a busca falhar ou não
+      // achar o chat, assume protegido: errar nessa direção só deixa o clone
+      // mais lento (rota de download); o contrário quebra em runtime com
+      // CHAT_FORWARDS_RESTRICTED.
+      try {
+        const res = await this.client.raw.invoke(
+          new Api.messages.GetChats({ id: [bigInt(this.source.peerId)] }),
+        );
+        const chats = res instanceof Api.messages.Chats ? res.chats : [];
+        const chat = chats.find((c): c is Api.Chat => c instanceof Api.Chat);
+        return chat ? Boolean(chat.noforwards) : true;
+      } catch {
+        return true;
+      }
+    }
     const res = await this.client.raw.invoke(
       new Api.channels.GetChannels({
         id: [
@@ -158,22 +175,39 @@ export class SourceReader {
     await mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `msg_${msg.id}`);
     const out = createWriteStream(filePath);
+    // Falha de escrita (ENOSPC, permissão) emite 'error' na stream; sem
+    // listener isso vira unhandled error event e derruba o worker inteiro.
+    // Guardamos o erro aqui pra rejeitar a promise em vez de crashar.
+    let streamError: Error | undefined;
+    out.on("error", (err) => {
+      streamError = err;
+    });
     try {
-      // requestSize é obrigatório no .d.ts do gramjs mas opcional em runtime
-      // (downloads.js:186 usa MAX_CHUNK_SIZE como default); repetimos o
-      // mesmo valor aqui só para satisfazer o tipo, sem mudar o comportamento.
-      for await (const chunk of this.client.raw.iterDownload({
-        file: msg.media as never,
-        requestSize: 512 * 1024,
-      })) {
-        out.write(chunk);
+      try {
+        // requestSize é obrigatório no .d.ts do gramjs mas opcional em runtime
+        // (downloads.js:186 usa MAX_CHUNK_SIZE como default); repetimos o
+        // mesmo valor aqui só para satisfazer o tipo, sem mudar o comportamento.
+        for await (const chunk of this.client.raw.iterDownload({
+          file: msg.media as never,
+          requestSize: 512 * 1024,
+        })) {
+          out.write(chunk);
+        }
+      } finally {
+        out.end();
+        // WriteStream tipa o listener de "close" como () => void; o executor
+        // da Promise expõe resolve com 1 parâmetro opcional, então empacota
+        // numa arrow sem argumentos pra satisfazer o tipo do evento.
+        await new Promise<void>((resolve) => out.on("close", () => resolve()));
       }
-    } finally {
-      out.end();
-      // WriteStream tipa o listener de "close" como () => void; o executor
-      // da Promise expõe resolve com 1 parâmetro opcional, então empacota
-      // numa arrow sem argumentos pra satisfazer o tipo do evento.
-      await new Promise<void>((resolve) => out.on("close", () => resolve()));
+      if (streamError) throw streamError;
+    } catch (err) {
+      // Download interrompido (queda de rede, FLOOD_WAIT,
+      // FILE_REFERENCE_EXPIRED) ou falha de escrita: sem isso o arquivo
+      // parcial `msg_<id>` fica órfão em disco pra sempre — clone histórico
+      // longo bate nesse caminho com frequência real.
+      await unlink(filePath).catch(() => {});
+      throw err;
     }
     const { size } = await stat(filePath);
     if (size > maxBytes) {

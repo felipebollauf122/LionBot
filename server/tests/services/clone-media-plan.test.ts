@@ -59,6 +59,22 @@ describe("planForMessage", () => {
     ).toEqual({ kind: "media", mediaKind: "audio" });
   });
 
+  it.each([
+    // Sticker e GIF de verdade também carregam DocumentAttributeVideo — o
+    // atributo de vídeo vem listado primeiro de propósito, pra garantir que
+    // é a ORDEM dos ifs (sticker/animation antes de video) que decide, e não
+    // a posição no array.
+    [["DocumentAttributeVideo", "DocumentAttributeSticker"], "sticker"],
+    [["DocumentAttributeVideo", "DocumentAttributeAnimated"], "animation"],
+    [["DocumentAttributeVideo", "DocumentAttributeAudio"], "video"],
+  ])("com atributos %j, a ordem de checagem decide %s", (attrs, expected) => {
+    expect(
+      planForMessage(
+        input({ mediaClassName: "MessageMediaDocument", documentAttributeClassNames: attrs }),
+      ),
+    ).toEqual({ kind: "media", mediaKind: expected });
+  });
+
   it("documento sem atributo conhecido vira document", () => {
     expect(
       planForMessage(input({ mediaClassName: "MessageMediaDocument" })),
@@ -83,6 +99,7 @@ describe("planForMessage", () => {
     ["MessageMediaPaidMedia", "media_paid"],
     ["MessageMediaStory", "media_story"],
     ["MessageMediaGeoLive", "media_geo_live"],
+    ["MessageMediaDice", "media_dice"],
     ["MessageMediaUnsupported", "media_unsupported"],
   ])("%s é pulado com motivo %s", (className, reason) => {
     expect(planForMessage(input({ mediaClassName: className }))).toEqual({

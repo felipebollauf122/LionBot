@@ -1,0 +1,203 @@
+import { extractWaitSeconds } from "../flood.js";
+import type {
+  CloneJobConfig,
+  CloneMapRow,
+  CloneOutcome,
+  CloneStatus,
+  SourceMessage,
+} from "./types.js";
+
+/** Máximo de itens por álbum aceito pelo Telegram. */
+const ALBUM_MAX = 10;
+
+export interface CloneStatusPatch {
+  copiedCount?: number;
+  skippedCount?: number;
+  failedCount?: number;
+  totalSeen?: number;
+  lastError?: string | null;
+}
+
+export interface CloneRunnerDeps {
+  /** Mensagens da origem em ordem crescente, começando depois de sinceMsgId. */
+  iterate(sinceMsgId: number): AsyncIterable<SourceMessage>;
+  /** Publica um grupo (1 mensagem, ou um álbum já fatiado) no destino. */
+  publish(group: SourceMessage[], replyToDestId: number | null): Promise<CloneOutcome[]>;
+  persist(jobId: string, rows: CloneMapRow[], cursor: number): Promise<void>;
+  loadIdMap(jobId: string): Promise<Array<[number, number]>>;
+  getStatus(jobId: string): Promise<string | null>;
+  setStatus(jobId: string, status: CloneStatus, patch: CloneStatusPatch): Promise<void>;
+  scheduleResume(jobId: string, seconds: number): Promise<void>;
+  sourcePinnedIds(): Promise<number[]>;
+  pinInDest(destMsgIds: number[]): Promise<void>;
+  delay(ms: number): Promise<void>;
+}
+
+export class CloneRunner {
+  private idMap = new Map<number, number>();
+  private copied = 0;
+  private skipped = 0;
+  private failed = 0;
+  private seen = 0;
+
+  constructor(
+    private deps: CloneRunnerDeps,
+    private cfg: CloneJobConfig,
+  ) {}
+
+  async run(): Promise<void> {
+    for (const [src, dest] of await this.deps.loadIdMap(this.cfg.jobId)) {
+      this.idMap.set(src, dest);
+    }
+
+    const cursor = this.highestCopiedSource();
+    await this.deps.setStatus(this.cfg.jobId, "running", {});
+
+    let pendingGroup: SourceMessage[] = [];
+    let pendingGroupId: string | null = null;
+
+    try {
+      for await (const msg of this.deps.iterate(cursor)) {
+        if (await this.shouldStop()) return;
+        if (this.limitReached()) break;
+
+        // Álbum só fecha quando muda o groupedId (ou quando enche).
+        if (msg.groupedId && msg.groupedId === pendingGroupId) {
+          pendingGroup.push(msg);
+          if (pendingGroup.length === ALBUM_MAX) {
+            await this.flush(pendingGroup);
+            pendingGroup = [];
+            pendingGroupId = null;
+          }
+          continue;
+        }
+
+        if (pendingGroup.length > 0) {
+          await this.flush(pendingGroup);
+          if (await this.shouldStop()) return;
+          if (this.limitReached()) break;
+        }
+
+        pendingGroup = [msg];
+        pendingGroupId = msg.groupedId;
+
+        if (!msg.groupedId) {
+          await this.flush(pendingGroup);
+          pendingGroup = [];
+          pendingGroupId = null;
+        }
+      }
+
+      if (pendingGroup.length > 0 && !this.limitReached()) {
+        await this.flush(pendingGroup);
+      }
+    } catch (err) {
+      const wait = extractWaitSeconds(err);
+      if (wait !== null) {
+        // O cursor já está persistido: retomar é só rechamar o job.
+        await this.deps.setStatus(this.cfg.jobId, "waiting_flood", {
+          ...this.counters(),
+          lastError: `flood_wait_${wait}s`,
+        });
+        await this.deps.scheduleResume(this.cfg.jobId, wait);
+        return;
+      }
+      await this.deps.setStatus(this.cfg.jobId, "failed", {
+        ...this.counters(),
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+
+    // Pins só depois de todo o envio: os ids de destino dos pins não
+    // existem até a mensagem correspondente já ter sido clonada.
+    if (this.cfg.copyPins) await this.applyPins();
+
+    await this.deps.setStatus(this.cfg.jobId, "completed", this.counters());
+  }
+
+  /** Publica um grupo, grava o resultado e avança o cursor. */
+  private async flush(group: SourceMessage[]): Promise<void> {
+    const replyToDestId = this.resolveReply(group[0]);
+    const cursor = group[group.length - 1].id;
+
+    let outcomes: CloneOutcome[];
+    try {
+      outcomes = await this.deps.publish(group, replyToDestId);
+    } catch (err) {
+      if (extractWaitSeconds(err) !== null) throw err; // flood sobe pro run()
+      const reason = err instanceof Error ? err.message : String(err);
+      outcomes = group.map(() => ({ status: "failed" as const, reason }));
+    }
+
+    const rows: CloneMapRow[] = group.map((msg, i) => {
+      const outcome = outcomes[i] ?? { status: "failed" as const, reason: "sem_resultado" };
+      this.seen++;
+      if (outcome.status === "copied") {
+        this.copied++;
+        this.idMap.set(msg.id, outcome.destMsgId);
+        return {
+          sourceMsgId: msg.id,
+          destMsgId: outcome.destMsgId,
+          groupedId: msg.groupedId,
+          status: "copied",
+          reason: null,
+        };
+      }
+      if (outcome.status === "skipped") this.skipped++;
+      else this.failed++;
+      return {
+        sourceMsgId: msg.id,
+        destMsgId: null,
+        groupedId: msg.groupedId,
+        status: outcome.status,
+        reason: outcome.reason,
+      };
+    });
+
+    await this.deps.persist(this.cfg.jobId, rows, cursor);
+    if (this.cfg.throttleMs > 0) await this.deps.delay(this.cfg.throttleMs);
+  }
+
+  /**
+   * Resposta só é remapeada se o alvo já foi clonado. Alvo fora do
+   * messageLimit vira envio sem resposta — perder o encadeamento é melhor
+   * que perder a mensagem.
+   */
+  private resolveReply(first: SourceMessage): number | null {
+    if (!this.cfg.copyReplies || first.replyToMsgId === null) return null;
+    return this.idMap.get(first.replyToMsgId) ?? null;
+  }
+
+  private async applyPins(): Promise<void> {
+    const sourceIds = await this.deps.sourcePinnedIds();
+    const destIds = sourceIds
+      .map((id) => this.idMap.get(id))
+      .filter((id): id is number => typeof id === "number");
+    if (destIds.length > 0) await this.deps.pinInDest(destIds);
+  }
+
+  private async shouldStop(): Promise<boolean> {
+    const status = await this.deps.getStatus(this.cfg.jobId);
+    return status === null || status === "paused" || status === "failed";
+  }
+
+  private limitReached(): boolean {
+    return this.cfg.messageLimit !== null && this.seen >= this.cfg.messageLimit;
+  }
+
+  private highestCopiedSource(): number {
+    let max = 0;
+    for (const src of this.idMap.keys()) if (src > max) max = src;
+    return max;
+  }
+
+  private counters(): CloneStatusPatch {
+    return {
+      copiedCount: this.copied,
+      skippedCount: this.skipped,
+      failedCount: this.failed,
+      totalSeen: this.seen,
+    };
+  }
+}

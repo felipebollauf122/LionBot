@@ -97,14 +97,14 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1.5">
       {accounts.length === 0 && (
-        <p className="text-(--text-muted) text-sm">Nenhuma conta conectada ainda.</p>
+        <p className="py-6 text-center text-(--text-ghost) text-xs">Nenhuma conta conectada ainda.</p>
       )}
       {accounts.map((a) => (
         <div
           key={a.id}
-          className="card row-hover reveal p-4 flex items-center justify-between gap-4"
+          className="row-hover reveal flex items-center justify-between gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
         >
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -197,7 +197,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
       )}
 
       {adding && step === "form" && (
-        <form onSubmit={submitPhone} className="card p-4 space-y-3">
+        <form onSubmit={submitPhone} className="rounded-lg bg-white/[0.02] border border-(--border-subtle) p-4 space-y-3">
           <div>
             <label className="input-label">Nome da conta</label>
             <input
@@ -236,7 +236,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
       )}
 
       {adding && step === "code" && (
-        <form onSubmit={submitCodeStep} className="card p-4 space-y-3">
+        <form onSubmit={submitCodeStep} className="rounded-lg bg-white/[0.02] border border-(--border-subtle) p-4 space-y-3">
           <p className="text-(--text-secondary) text-sm">
             Digite o código que chegou no seu Telegram:
           </p>
@@ -253,7 +253,7 @@ export function MtprotoAccounts({ accounts }: { accounts: Account[] }) {
       )}
 
       {adding && step === "password" && (
-        <form onSubmit={submitPasswordStep} className="card p-4 space-y-3">
+        <form onSubmit={submitPasswordStep} className="rounded-lg bg-white/[0.02] border border-(--border-subtle) p-4 space-y-3">
           <p className="text-(--text-secondary) text-sm">Sua conta tem 2FA — digite a senha:</p>
           <input
             type="password"

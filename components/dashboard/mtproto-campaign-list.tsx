@@ -63,11 +63,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   const [, startTransition] = useTransition();
 
   if (campaigns.length === 0) {
-    return (
-      <div className="card p-4">
-        <p className="text-(--text-muted) text-sm">Nenhuma campanha ainda.</p>
-      </div>
-    );
+    return <div className="py-8 text-center text-(--text-ghost) text-xs">Nenhuma campanha ainda.</div>;
   }
 
   function handleDelete(e: React.MouseEvent, c: Campaign) {
@@ -88,7 +84,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1.5">
       {campaigns.map((c, i) => {
         const isRecurrent = !!c.recurrence_hours;
         const nextRun = formatNextRun(c.next_run_at);
@@ -101,7 +97,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
         return (
           <div
             key={c.id}
-            className={`card-interactive p-4 flex items-center gap-3 reveal-${Math.min(i + 1, 8)} ${deleting ? "opacity-50" : ""}`}
+            className={`row-hover flex items-center gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) reveal-${Math.min(i + 1, 8)} ${deleting ? "opacity-50" : ""}`}
           >
             <a
               href={`/dashboard/automations/campaigns/${c.id}`}

@@ -1,0 +1,195 @@
+import { Api } from "telegram";
+import { rm } from "node:fs/promises";
+import { planForMessage } from "./media-plan.js";
+import type { MediaPlan } from "./media-plan.js";
+import { SourceReader } from "./source-reader.js";
+import type { CompanionBot } from "./bot-client.js";
+import type { CloneOutcome, CloneStrategy, SourceMessage } from "./types.js";
+
+/** Só foto e vídeo entram num álbum do Telegram. */
+const ALBUMABLE = new Set(["photo", "video"]);
+
+export function chooseStrategy(input: {
+  requested: "auto" | "batch" | "download";
+  sourceHasNoForwards: boolean;
+  copyButtons: boolean;
+}): CloneStrategy {
+  // Encaminhamento não permite anexar reply_markup: quem quer botão, baixa.
+  if (input.copyButtons) return "download";
+  if (input.sourceHasNoForwards) return "download";
+  return input.requested === "download" ? "download" : "batch";
+}
+
+export type RouteDecision =
+  | { mode: "forward"; skipIndexes?: number[] }
+  | { mode: "album" }
+  | { mode: "single" }
+  | { mode: "skip_all" };
+
+export interface RouteInput {
+  strategy: CloneStrategy;
+  plans: MediaPlan[];
+  copyPolls: boolean;
+  copyButtons: boolean;
+}
+
+export function routeGroup(input: RouteInput): RouteDecision {
+  const { strategy, plans } = input;
+  const skipIndexes = plans
+    .map((p, i) => (p.kind === "skip" ? i : -1))
+    .filter((i) => i >= 0);
+
+  if (skipIndexes.length === plans.length) return { mode: "skip_all" };
+
+  if (strategy === "batch") {
+    return skipIndexes.length > 0 ? { mode: "forward", skipIndexes } : { mode: "forward" };
+  }
+
+  const albumable =
+    plans.length > 1 &&
+    plans.every((p) => p.kind === "media" && ALBUMABLE.has(p.mediaKind));
+  return albumable ? { mode: "album" } : { mode: "single" };
+}
+
+/** Teto por arquivo. Acima disso a mensagem é pulada com reason file_too_large. */
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+export interface PublisherContext {
+  reader: SourceReader;
+  bot: CompanionBot;
+  destChannelId: string;
+  destAccessHash: string;
+  strategy: CloneStrategy;
+  copyPolls: boolean;
+  copyButtons: boolean;
+  tmpDir: string;
+}
+
+/**
+ * Devolve a função `publish` que o CloneRunner injeta. Toda a decisão já foi
+ * tomada por chooseStrategy/routeGroup; aqui é só execução.
+ */
+export function createPublisher(
+  ctx: PublisherContext,
+): (group: SourceMessage[], replyToDestId: number | null) => Promise<CloneOutcome[]> {
+  return async (group, replyToDestId) => {
+    const raws = group.map((m) => m.raw as Api.Message);
+    const plans = raws.map((r) =>
+      planForMessage(SourceReader.mediaPlanInput(r, ctx.copyPolls)),
+    );
+    const decision = routeGroup({
+      strategy: ctx.strategy,
+      plans,
+      copyPolls: ctx.copyPolls,
+      copyButtons: ctx.copyButtons,
+    });
+
+    if (decision.mode === "skip_all") {
+      return plans.map((p) => ({
+        status: "skipped" as const,
+        reason: p.kind === "skip" ? p.reason : "skip",
+      }));
+    }
+
+    if (decision.mode === "forward") {
+      const skip = new Set(decision.skipIndexes ?? []);
+      const ids = raws.filter((_, i) => !skip.has(i)).map((r) => r.id);
+      // ForwardMessages exige ids em ordem crescente.
+      const updates = await ctx.reader.forwardBatch(
+        ctx.destChannelId,
+        ctx.destAccessHash,
+        [...ids].sort((a, b) => a - b),
+      );
+      const destIds = extractNewMessageIds(updates);
+      let cursor = 0;
+      return plans.map((p, i) => {
+        if (skip.has(i)) {
+          return { status: "skipped" as const, reason: p.kind === "skip" ? p.reason : "skip" };
+        }
+        const destMsgId = destIds[cursor++];
+        return destMsgId
+          ? { status: "copied" as const, destMsgId }
+          : { status: "failed" as const, reason: "sem_id_no_retorno" };
+      });
+    }
+
+    // Rotas de download: a conta baixa, o bot publica.
+    const outcomes: CloneOutcome[] = [];
+    const downloaded: string[] = [];
+    try {
+      if (decision.mode === "album") {
+        const items: Array<{ filePath: string; kind: "photo" | "video"; caption: string }> = [];
+        for (let i = 0; i < raws.length; i++) {
+          const dl = await ctx.reader.downloadToPath(raws[i], ctx.tmpDir, MAX_FILE_BYTES);
+          if (!dl) return plans.map(() => ({ status: "skipped" as const, reason: "file_too_large" }));
+          downloaded.push(dl.filePath);
+          const plan = plans[i];
+          items.push({
+            filePath: dl.filePath,
+            kind: plan.kind === "media" && plan.mediaKind === "video" ? "video" : "photo",
+            caption: raws[i].message ?? "",
+          });
+        }
+        const destIds = await ctx.bot.publishAlbum(items);
+        return destIds.map((destMsgId) => ({ status: "copied" as const, destMsgId }));
+      }
+
+      for (let i = 0; i < raws.length; i++) {
+        const raw = raws[i];
+        const plan = plans[i];
+        const opts = {
+          replyToMessageId: i === 0 && replyToDestId ? replyToDestId : undefined,
+          entities: raw.entities as unknown[] | undefined,
+          inlineLinks: ctx.copyButtons ? SourceReader.extractInlineLinks(raw) : undefined,
+        };
+
+        if (plan.kind === "skip") {
+          outcomes.push({ status: "skipped", reason: plan.reason });
+          continue;
+        }
+        if (plan.kind === "text") {
+          const destMsgId = await ctx.bot.publishText(raw.message ?? "", opts);
+          outcomes.push({ status: "copied", destMsgId });
+          continue;
+        }
+        if (plan.kind === "poll") {
+          outcomes.push({ status: "skipped", reason: "poll_sem_suporte_no_bot" });
+          continue;
+        }
+        const dl = await ctx.reader.downloadToPath(raw, ctx.tmpDir, MAX_FILE_BYTES);
+        if (!dl) {
+          outcomes.push({ status: "skipped", reason: "file_too_large" });
+          continue;
+        }
+        downloaded.push(dl.filePath);
+        const destMsgId = await ctx.bot.publishMedia(
+          dl.filePath,
+          plan.mediaKind,
+          raw.message ?? "",
+          opts,
+        );
+        outcomes.push({ status: "copied", destMsgId });
+      }
+      return outcomes;
+    } finally {
+      // Limpeza por grupo: um clone de canal grande encheria o disco.
+      for (const f of downloaded) await rm(f, { force: true }).catch(() => {});
+    }
+  };
+}
+
+/** Colhe os ids criados no destino a partir do Updates do ForwardMessages. */
+export function extractNewMessageIds(updates: Api.TypeUpdates): number[] {
+  const list =
+    updates instanceof Api.Updates || updates instanceof Api.UpdatesCombined
+      ? updates.updates
+      : [];
+  const ids: number[] = [];
+  for (const u of list) {
+    if (u instanceof Api.UpdateNewChannelMessage || u instanceof Api.UpdateNewMessage) {
+      const msg = u.message;
+      if (msg instanceof Api.Message) ids.push(msg.id);
+    }
+  }
+  return ids.sort((a, b) => a - b);
+}

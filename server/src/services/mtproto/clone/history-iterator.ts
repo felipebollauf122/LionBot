@@ -31,6 +31,7 @@ export function buildHistoryPeer(peer: ClonePeer): Api.TypeInputPeer {
 export function normalizeMessage(raw: unknown): SourceMessage | null {
   if (!(raw instanceof Api.Message)) return null;
   const replyTo = raw.replyTo;
+  const isForumTopicReply = replyTo instanceof Api.MessageReplyHeader && replyTo.forumTopic === true;
   return {
     id: raw.id,
     groupedId: raw.groupedId ? raw.groupedId.toString() : null,
@@ -38,6 +39,15 @@ export function normalizeMessage(raw: unknown): SourceMessage | null {
       replyTo instanceof Api.MessageReplyHeader && typeof replyTo.replyToMsgId === "number"
         ? replyTo.replyToMsgId
         : null,
+    // replyToTopId é a raiz do tópico; ausente quando a msg responde
+    // DIRETO à raiz (aí replyToMsgId já É a raiz) — replyToTopId ??
+    // replyToMsgId cobre os dois casos. Sem forumTopic=true no header, não é
+    // mensagem de tópico (General, ou canal sem fórum): topicId null.
+    topicId: isForumTopicReply
+      ? ((replyTo as Api.MessageReplyHeader).replyToTopId ??
+          (replyTo as Api.MessageReplyHeader).replyToMsgId ??
+          null)
+      : null,
     raw,
   };
 }

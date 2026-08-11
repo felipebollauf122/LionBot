@@ -19,7 +19,7 @@ export interface DestBuilderDeps {
   createChannel(
     title: string,
     about: string,
-    opts: { megagroup: boolean },
+    opts: { megagroup: boolean; forum: boolean },
   ): Promise<{ channelId: string; accessHash: string }>;
   setAbout(channelId: string, accessHash: string, about: string): Promise<void>;
   setPhoto(channelId: string, accessHash: string, photo: Buffer): Promise<void>;
@@ -35,6 +35,8 @@ export interface EnsureDestinationInput {
   destTitle: string;
   copyIdentity: boolean;
   botUsername: string;
+  /** Origem é fórum (Topics ligado) e o destino deve nascer fórum também. */
+  forum: boolean;
   /**
    * Destino já criado numa execução anterior. Quando presente, canal e
    * identidade não são refeitos — mas a promoção do bot SEMPRE roda de novo
@@ -94,6 +96,7 @@ export async function ensureDestination(
   const about = input.copyIdentity ? identity.about : "";
   const created = await deps.createChannel(input.destTitle, about, {
     megagroup: input.destKind === "megagroup",
+    forum: input.forum,
   });
 
   // O canal já existe na conta do usuário a partir daqui — persiste agora,

@@ -617,25 +617,31 @@ export class MtprotoClient {
 
   /**
    * Cria um canal novo. `megagroup: true` cria supergrupo em vez de canal
-   * broadcast — usado pela clonagem quando a origem é grupo. Pode estourar
-   * FLOOD_WAIT se a conta criou muitos canais recentemente.
+   * broadcast — usado pela clonagem quando a origem é grupo. `forum: true`
+   * já cria o supergrupo com Topics ligado (CreateChannel aceita os dois
+   * flags numa chamada só, sem precisar de channels.ToggleForum depois) —
+   * só tem efeito com megagroup, nunca com canal broadcast (fórum não
+   * existe fora de supergrupo). Pode estourar FLOOD_WAIT se a conta criou
+   * muitos canais recentemente.
    */
   async createChannel(
     title: string,
     about: string,
-    opts: { megagroup?: boolean } = {},
+    opts: { megagroup?: boolean; forum?: boolean } = {},
   ): Promise<{
     channelId: string;
     accessHash: string;
   }> {
     await this.connect();
     const megagroup = opts.megagroup === true;
+    const forum = megagroup && opts.forum === true;
     const result = await this.client.invoke(
       new Api.channels.CreateChannel({
         title,
         about,
         broadcast: !megagroup,
         megagroup,
+        forum,
       }),
     );
     if (
@@ -857,11 +863,14 @@ export class MtprotoClient {
   /**
    * Encaminha um lote de mensagens (máx. 100 ids) apagando a autoria, o que
    * remove a marca "encaminhado de" e faz o post sair nativo no destino.
+   * `topMsgId` ancora o lote inteiro num tópico de fórum específico do
+   * destino — omitido, cai no General (comportamento de sempre).
    */
   async forwardBatch(
     from: Api.TypeInputPeer,
     to: Api.TypeInputPeer,
     messageIds: number[],
+    topMsgId?: number,
   ): Promise<Api.TypeUpdates> {
     await this.connect();
     return this.client.invoke(
@@ -872,6 +881,114 @@ export class MtprotoClient {
         randomId: messageIds.map(() => randomMessageId()),
         dropAuthor: true,
         silent: true,
+        topMsgId,
+      }),
+    );
+  }
+
+  /**
+   * Lista os tópicos de fórum de um canal, paginando channels.GetForumTopics
+   * (mesmo padrão de listDialogs: pagina internamente, devolve array já
+   * montado). Descarta ForumTopicDeleted. O cursor de paginação usa
+   * topic.topMessage (id da última mensagem do tópico, muda com o tempo) —
+   * NÃO topic.id (identificador permanente do tópico, usado em todo o
+   * resto como "id do tópico"/topMsgId). Confundir os dois campos paginaria
+   * errado.
+   */
+  async listForumTopics(channelId: string, accessHash: string): Promise<Api.ForumTopic[]> {
+    await this.connect();
+    const channel = new Api.InputChannel({
+      channelId: bigInt(channelId),
+      accessHash: bigInt(accessHash),
+    });
+    const out: Api.ForumTopic[] = [];
+    let offsetDate = 0;
+    let offsetId = 0;
+    let offsetTopic = 0;
+    const limit = 100;
+    const maxIterations = 50; // limite de segurança: até 5000 tópicos
+    for (let iter = 0; iter < maxIterations; iter++) {
+      const result = await this.client.invoke(
+        new Api.channels.GetForumTopics({ channel, offsetDate, offsetId, offsetTopic, limit }),
+      );
+      if (!(result instanceof Api.messages.ForumTopics)) break;
+      const real = result.topics.filter((t): t is Api.ForumTopic => t instanceof Api.ForumTopic);
+      out.push(...real);
+      if (result.topics.length < limit) break;
+      const last = result.topics[result.topics.length - 1];
+      if (!(last instanceof Api.ForumTopic)) break;
+      offsetDate = last.date;
+      offsetId = last.topMessage;
+      offsetTopic = last.id;
+    }
+    return out;
+  }
+
+  /**
+   * Cria um tópico de fórum. iconColor/iconEmojiId replicam o ícone da
+   * origem quando presentes — iconEmojiId é opcional no request, então um
+   * emoji indisponível (ex.: exige Premium) não deveria impedir a criação
+   * do tópico em si.
+   */
+  async createForumTopic(
+    channelId: string,
+    accessHash: string,
+    input: { title: string; iconColor: number; iconEmojiId: string | null },
+  ): Promise<number> {
+    await this.connect();
+    const result = await this.client.invoke(
+      new Api.channels.CreateForumTopic({
+        channel: new Api.InputChannel({
+          channelId: bigInt(channelId),
+          accessHash: bigInt(accessHash),
+        }),
+        title: input.title,
+        iconColor: input.iconColor,
+        iconEmojiId: input.iconEmojiId ? bigInt(input.iconEmojiId) : undefined,
+        randomId: randomMessageId(),
+      }),
+    );
+    const topicId = extractNewTopicId(result);
+    if (topicId === null) throw new Error("createForumTopic: no topic id in response");
+    return topicId;
+  }
+
+  /** Fecha ou reabre um tópico de fórum. */
+  async setForumTopicClosed(
+    channelId: string,
+    accessHash: string,
+    topicId: number,
+    closed: boolean,
+  ): Promise<void> {
+    await this.connect();
+    await this.client.invoke(
+      new Api.channels.EditForumTopic({
+        channel: new Api.InputChannel({
+          channelId: bigInt(channelId),
+          accessHash: bigInt(accessHash),
+        }),
+        topicId,
+        closed,
+      }),
+    );
+  }
+
+  /** Fixa ou desfixa um tópico de fórum. */
+  async setForumTopicPinned(
+    channelId: string,
+    accessHash: string,
+    topicId: number,
+    pinned: boolean,
+  ): Promise<void> {
+    await this.connect();
+    await this.client.invoke(
+      new Api.channels.UpdatePinnedForumTopic({
+        channel: new Api.InputChannel({
+          channelId: bigInt(channelId),
+          accessHash: bigInt(accessHash),
+        }),
+        topicId,
+        pinned,
       }),
     );
   }
@@ -939,4 +1056,25 @@ export class MtprotoClient {
       }),
     );
   }
+}
+
+/**
+ * Extrai o id do tópico recém-criado do Updates de channels.CreateForumTopic.
+ * A criação produz uma MessageService (não uma Api.Message) — por isso não
+ * reaproveita extractNewMessageIds (publish-router.ts), que é Api.Message-only
+ * de propósito: generalizar aquela função pra aceitar serviço arriscaria uma
+ * update de serviço qualquer ser contada como mensagem copiada na rota de
+ * forward, que não tem nada a ver com tópicos.
+ */
+export function extractNewTopicId(updates: Api.TypeUpdates): number | null {
+  const list =
+    updates instanceof Api.Updates || updates instanceof Api.UpdatesCombined
+      ? updates.updates
+      : [];
+  for (const u of list) {
+    if (u instanceof Api.UpdateNewChannelMessage || u instanceof Api.UpdateNewMessage) {
+      if (u.message instanceof Api.MessageService) return u.message.id;
+    }
+  }
+  return null;
 }

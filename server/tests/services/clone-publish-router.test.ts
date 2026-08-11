@@ -172,8 +172,8 @@ function videoRaw(id: number, message = ""): Api.Message {
   return { id, message, media, entities: undefined, replyMarkup: undefined } as unknown as Api.Message;
 }
 
-function sourceMessage(raw: Api.Message, groupedId = "g1"): SourceMessage {
-  return { id: raw.id, groupedId, replyToMsgId: null, raw };
+function sourceMessage(raw: Api.Message, groupedId = "g1", topicId: number | null = null): SourceMessage {
+  return { id: raw.id, groupedId, replyToMsgId: null, topicId, raw };
 }
 
 /**
@@ -223,7 +223,11 @@ function makeFakeReader(tooLargeIds: Set<number> = new Set()): SourceReader {
   } as unknown as SourceReader;
 }
 
-function makeCtx(reader: SourceReader, bot: FakeBot): PublisherContext {
+function makeCtx(
+  reader: SourceReader,
+  bot: FakeBot,
+  topicMap: Map<number, number> | null = null,
+): PublisherContext {
   return {
     reader,
     bot: bot as unknown as CompanionBot,
@@ -233,6 +237,7 @@ function makeCtx(reader: SourceReader, bot: FakeBot): PublisherContext {
     copyPolls: false,
     copyButtons: false,
     tmpDir: "/fake/tmp",
+    topicMap,
   };
 }
 
@@ -404,6 +409,138 @@ describe("createPublisher — rota download, enquete", () => {
     expect(bot.publishPoll).toHaveBeenCalledWith(
       expect.objectContaining({ question: "Gosta de gatos?" }),
       expect.objectContaining({ replyToMessageId: 321 }),
+    );
+  });
+});
+
+// --- createPublisher: tópicos de fórum ---------------------------------
+
+/** Mensagem-fonte de texto simples: mediaClassName null, hasText true -> plan {kind:"text"}. */
+function textRaw(id: number, message = "oi"): Api.Message {
+  return { id, message, media: null, entities: undefined, replyMarkup: undefined } as unknown as Api.Message;
+}
+
+/** Monta um Api.Updates real o bastante pra extractNewMessageIds reconhecer os ids criados. */
+function fakeForwardUpdates(ids: number[]): Api.TypeUpdates {
+  return new Api.Updates({
+    updates: ids.map(
+      (id) =>
+        new Api.UpdateNewChannelMessage({
+          message: new Api.Message({ id, message: "" } as never),
+          pts: 1,
+          ptsCount: 1,
+        } as never),
+    ),
+    users: [],
+    chats: [],
+    date: 0,
+    seq: 0,
+  } as never);
+}
+
+function makeFakeForwardReader(forwardBatch: ReturnType<typeof vi.fn>): SourceReader {
+  return { forwardBatch } as unknown as SourceReader;
+}
+
+describe("createPublisher — tópicos de fórum", () => {
+  it("rota forward: tópico mapeado vira topMsgId (4º argumento de forwardBatch)", async () => {
+    const forwardBatch = vi.fn(async () => fakeForwardUpdates([9000]));
+    const reader = makeFakeForwardReader(forwardBatch);
+    const bot = makeFakeBot();
+    const ctx = { ...makeCtx(reader, bot, new Map([[15, 555]])), strategy: "batch" as const };
+    const publish = createPublisher(ctx);
+
+    const outcomes = await publish([sourceMessage(textRaw(1), "g1", 15)], null);
+
+    expect(forwardBatch).toHaveBeenCalledWith("1", "0", [1], 555);
+    expect(outcomes).toEqual([{ status: "copied", destMsgId: 9000 }]);
+  });
+
+  it("rota forward: tópico sem mapeamento (falhou ao criar) cai em General (1)", async () => {
+    const forwardBatch = vi.fn(async () => fakeForwardUpdates([9001]));
+    const reader = makeFakeForwardReader(forwardBatch);
+    const bot = makeFakeBot();
+    const ctx = { ...makeCtx(reader, bot, new Map()), strategy: "batch" as const };
+    const publish = createPublisher(ctx);
+
+    await publish([sourceMessage(textRaw(1), "g1", 15)], null);
+
+    expect(forwardBatch).toHaveBeenCalledWith("1", "0", [1], 1);
+  });
+
+  it("rota forward: job sem fórum (topicMap null) nunca passa topMsgId, mesmo com msg.topicId setado", async () => {
+    const forwardBatch = vi.fn(async () => fakeForwardUpdates([9002]));
+    const reader = makeFakeForwardReader(forwardBatch);
+    const bot = makeFakeBot();
+    const ctx = { ...makeCtx(reader, bot, null), strategy: "batch" as const };
+    const publish = createPublisher(ctx);
+
+    await publish([sourceMessage(textRaw(1), "g1", 15)], null);
+
+    expect(forwardBatch).toHaveBeenCalledWith("1", "0", [1], undefined);
+  });
+
+  it("rota álbum: messageThreadId repassado pro publishAlbum quando o tópico está mapeado", async () => {
+    const bot = makeFakeBot();
+    bot.publishAlbum.mockResolvedValue([1000, 1001]);
+    const reader = makeFakeReader();
+    const ctx = makeCtx(reader, bot, new Map([[20, 700]]));
+    const publish = createPublisher(ctx);
+    const group = [
+      sourceMessage(photoRaw(1), "g1", 20),
+      sourceMessage(photoRaw(2), "g1", 20),
+    ];
+
+    await publish(group, null);
+
+    expect(bot.publishAlbum).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ messageThreadId: 700 }),
+    );
+  });
+
+  it("rota single (texto): messageThreadId repassado pro publishText", async () => {
+    const bot = makeFakeBot();
+    bot.publishText.mockResolvedValue(2000);
+    const reader = makeFakeReader();
+    const ctx = makeCtx(reader, bot, new Map([[21, 800]]));
+    const publish = createPublisher(ctx);
+
+    await publish([sourceMessage(textRaw(1), "g1", 21)], null);
+
+    expect(bot.publishText).toHaveBeenCalledWith(
+      "oi",
+      expect.objectContaining({ messageThreadId: 800 }),
+    );
+  });
+
+  it("rota enquete: messageThreadId repassado pro publishPoll (opts hand-built, não reusa o objeto opts inteiro)", async () => {
+    const bot = makeFakeBot();
+    bot.publishPoll.mockResolvedValue(3000);
+    const reader = makeFakeReader();
+    const ctx = { ...makeCtx(reader, bot, new Map([[22, 900]])), copyPolls: true };
+    const publish = createPublisher(ctx);
+
+    await publish([sourceMessage(pollRaw(1), "g1", 22)], null);
+
+    expect(bot.publishPoll).toHaveBeenCalledWith(
+      expect.objectContaining({ question: "Gosta de gatos?" }),
+      expect.objectContaining({ messageThreadId: 900 }),
+    );
+  });
+
+  it("mensagem sem tópico (topicId null) num job com fórum: messageThreadId fica undefined (General)", async () => {
+    const bot = makeFakeBot();
+    bot.publishText.mockResolvedValue(2100);
+    const reader = makeFakeReader();
+    const ctx = makeCtx(reader, bot, new Map([[21, 800]]));
+    const publish = createPublisher(ctx);
+
+    await publish([sourceMessage(textRaw(1), "g1", null)], null);
+
+    expect(bot.publishText).toHaveBeenCalledWith(
+      "oi",
+      expect.objectContaining({ messageThreadId: undefined }),
     );
   });
 });

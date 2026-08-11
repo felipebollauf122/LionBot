@@ -25,6 +25,7 @@ const input = {
   destTitle: "Canal X (clone)",
   copyIdentity: true,
   botUsername: "meu_bot",
+  forum: false,
   existing: null,
 };
 
@@ -50,6 +51,7 @@ describe("ensureDestination", () => {
 
     expect(d.createChannel).toHaveBeenCalledWith("Canal X (clone)", "sobre", {
       megagroup: false,
+      forum: false,
     });
     expect(d.setAbout).toHaveBeenCalled();
     expect(d.promoteBot).toHaveBeenCalledWith("111", "222", "meu_bot");
@@ -86,13 +88,26 @@ describe("ensureDestination", () => {
     await ensureDestination(d, { ...input, destKind: "megagroup" });
     expect(d.createChannel).toHaveBeenCalledWith("Canal X (clone)", "sobre", {
       megagroup: true,
+      forum: false,
+    });
+  });
+
+  it("cria supergrupo com fórum quando input.forum é true", async () => {
+    const d = deps();
+    await ensureDestination(d, { ...input, destKind: "megagroup", forum: true });
+    expect(d.createChannel).toHaveBeenCalledWith("Canal X (clone)", "sobre", {
+      megagroup: true,
+      forum: true,
     });
   });
 
   it("não copia about nem foto quando copyIdentity é false", async () => {
     const d = deps();
     await ensureDestination(d, { ...input, copyIdentity: false });
-    expect(d.createChannel).toHaveBeenCalledWith("Canal X (clone)", "", { megagroup: false });
+    expect(d.createChannel).toHaveBeenCalledWith("Canal X (clone)", "", {
+      megagroup: false,
+      forum: false,
+    });
     expect(d.setAbout).not.toHaveBeenCalled();
     expect(d.setPhoto).not.toHaveBeenCalled();
   });

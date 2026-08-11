@@ -6,7 +6,7 @@ import path from "node:path";
 import type { MtprotoClient } from "../client.js";
 import { buildHistoryPeer } from "./history-iterator.js";
 import type { HistorySource } from "./history-iterator.js";
-import type { ClonePeer } from "./types.js";
+import type { ClonePeer, SourceTopic } from "./types.js";
 import type { SourceIdentity } from "./dest-builder.js";
 import type { PlanInput } from "./media-plan.js";
 import type { InlineLink, SourcePoll } from "./bot-client.js";
@@ -124,6 +124,50 @@ export class SourceReader {
       // getInputPeer joga TypeError em canal `min` ou sem accessHash.
       return null;
     }
+  }
+
+  /**
+   * A origem é um supergrupo com Topics ligado? Grupo legacy (peerType
+   * "chat") nunca é fórum — Telegram só permite Topics em supergrupo.
+   * Round-trip separado de hasNoForwards(): são preocupações ortogonais
+   * (proteção de conteúdo decide estratégia; fórum decide tópicos), e
+   * juntar os dois alargaria o retorno de uma função já usada em produção
+   * sem ganho real.
+   */
+  async isForum(): Promise<boolean> {
+    if (this.source.peerType === "chat") return false;
+    await this.client.connect();
+    const res = await this.client.raw.invoke(
+      new Api.channels.GetChannels({
+        id: [
+          new Api.InputChannel({
+            channelId: bigInt(this.source.peerId),
+            accessHash: bigInt(this.source.accessHash ?? "0"),
+          }),
+        ],
+      }),
+    );
+    const chats = res instanceof Api.messages.Chats ? res.chats : [];
+    const chan = chats[0];
+    return chan instanceof Api.Channel ? Boolean(chan.forum) : false;
+  }
+
+  /** Tópicos de fórum da origem, normalizados. Grupo legacy: lista vazia. */
+  async listTopics(): Promise<SourceTopic[]> {
+    if (this.source.peerType === "chat") return [];
+    await this.client.connect();
+    const topics = await this.client.listForumTopics(
+      this.source.peerId,
+      this.source.accessHash ?? "0",
+    );
+    return topics.map((t) => ({
+      id: t.id,
+      title: t.title,
+      iconColor: t.iconColor,
+      iconEmojiId: t.iconEmojiId ? t.iconEmojiId.toString() : null,
+      closed: Boolean(t.closed),
+      pinned: Boolean(t.pinned),
+    }));
   }
 
   /**
@@ -268,11 +312,15 @@ export class SourceReader {
     return { filePath, sizeBytes: size, fileName: SourceReader.originalFileName(msg) };
   }
 
-  /** Encaminha um lote apagando a autoria. Chamado com no máximo 100 ids. */
+  /**
+   * Encaminha um lote apagando a autoria. Chamado com no máximo 100 ids.
+   * `topMsgId` ancora o lote no tópico de fórum correspondente do destino.
+   */
   async forwardBatch(
     destChannelId: string,
     destAccessHash: string,
     ids: number[],
+    topMsgId?: number,
   ): Promise<Api.TypeUpdates> {
     return this.client.forwardBatch(
       this.peer,
@@ -281,6 +329,7 @@ export class SourceReader {
         accessHash: bigInt(destAccessHash),
       }),
       ids,
+      topMsgId,
     );
   }
 

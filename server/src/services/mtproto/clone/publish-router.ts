@@ -87,6 +87,25 @@ export interface PublisherContext {
   copyPolls: boolean;
   copyButtons: boolean;
   tmpDir: string;
+  /** Mapa origem->destino de tópicos de fórum. null = job sem fórum (comportamento de sempre). */
+  topicMap: Map<number, number> | null;
+}
+
+/**
+ * Resolve o tópico de destino de um grupo já fatiado (flush do CloneRunner).
+ * Um grupo é sempre de um único tópico por construção: mensagem solta flusha
+ * sozinha, e álbum (mesmo groupedId) é sempre uma ação atômica de um cliente
+ * num único chat — o Telegram não deixa um álbum atravessar tópicos. Por
+ * isso só o primeiro item do grupo é consultado.
+ */
+function resolveDestTopicId(
+  topicMap: Map<number, number> | null,
+  group: SourceMessage[],
+): number | undefined {
+  if (!topicMap) return undefined; // job sem fórum: nunca toca message_thread_id/topMsgId
+  const sourceTopicId = group[0].topicId;
+  if (sourceTopicId === null) return undefined; // General, ou mensagem fora de tópico
+  return topicMap.get(sourceTopicId) ?? 1; // tópico mapeado, ou General se aquele tópico falhou ao criar
 }
 
 /**
@@ -97,6 +116,7 @@ export function createPublisher(
   ctx: PublisherContext,
 ): (group: SourceMessage[], replyToDestId: number | null) => Promise<CloneOutcome[]> {
   return async (group, replyToDestId) => {
+    const destTopicId = resolveDestTopicId(ctx.topicMap, group);
     const raws = group.map((m) => m.raw as Api.Message);
     const plans = raws.map((r) =>
       planForMessage(SourceReader.mediaPlanInput(r, ctx.copyPolls)),
@@ -123,6 +143,7 @@ export function createPublisher(
         ctx.destChannelId,
         ctx.destAccessHash,
         [...ids].sort((a, b) => a - b),
+        destTopicId,
       );
       const destIds = extractNewMessageIds(updates);
       let cursor = 0;
@@ -185,6 +206,7 @@ export function createPublisher(
             const destMsgId = await ctx.bot.publishMedia(item.filePath, item.kind, item.caption, {
               replyToMessageId: !replyUsed && replyToDestId != null ? replyToDestId : undefined,
               entities: item.entities,
+              messageThreadId: destTopicId,
             });
             degraded[item.index] = { status: "copied", destMsgId };
             replyUsed = true;
@@ -203,10 +225,10 @@ export function createPublisher(
           caption,
           entities,
         }));
-        const destIds = await ctx.bot.publishAlbum(
-          items,
-          replyToDestId != null ? { replyToMessageId: replyToDestId } : undefined,
-        );
+        const destIds = await ctx.bot.publishAlbum(items, {
+          replyToMessageId: replyToDestId != null ? replyToDestId : undefined,
+          messageThreadId: destTopicId,
+        });
         // Guarda de alinhamento: sem isso, um retorno mais curto (ou fora de
         // ordem) do publishAlbum atribuiria o destMsgId errado a uma
         // mensagem de origem errada. Mapeia o que dá pra mapear
@@ -229,6 +251,7 @@ export function createPublisher(
           replyToMessageId: i === 0 && replyToDestId ? replyToDestId : undefined,
           entities: raw.entities,
           inlineLinks: ctx.copyButtons ? SourceReader.extractInlineLinks(raw) : undefined,
+          messageThreadId: destTopicId,
         };
 
         if (plan.kind === "skip") {
@@ -252,6 +275,7 @@ export function createPublisher(
           try {
             const destMsgId = await ctx.bot.publishPoll(pollData, {
               replyToMessageId: opts.replyToMessageId,
+              messageThreadId: opts.messageThreadId,
             });
             outcomes.push({ status: "copied", destMsgId });
           } catch {

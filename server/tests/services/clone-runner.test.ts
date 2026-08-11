@@ -7,7 +7,7 @@ import {
 import type { CloneJobConfig, SourceMessage } from "../../src/services/mtproto/clone/types.js";
 
 function m(id: number, over: Partial<SourceMessage> = {}): SourceMessage {
-  return { id, groupedId: null, replyToMsgId: null, raw: { id }, ...over };
+  return { id, groupedId: null, replyToMsgId: null, topicId: null, raw: { id }, ...over };
 }
 
 function cfg(over: Partial<CloneJobConfig> = {}): CloneJobConfig {

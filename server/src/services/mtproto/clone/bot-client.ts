@@ -64,6 +64,8 @@ export interface PublishOptions {
   inlineLinks?: InlineLink[];
   /** Nome original do arquivo (DocumentAttributeFilename da origem), quando existir. */
   fileName?: string;
+  /** Id do tópico de fórum de destino (message_thread_id da Bot API). Omitido = General. */
+  messageThreadId?: number;
 }
 
 /**
@@ -120,6 +122,7 @@ export class CompanionBot {
         ? buildInlineKeyboard(opts.inlineLinks)
         : undefined,
       disable_notification: true,
+      message_thread_id: opts.messageThreadId,
     });
     return sent.message_id;
   }
@@ -144,6 +147,7 @@ export class CompanionBot {
         ? buildInlineKeyboard(opts.inlineLinks)
         : undefined,
       disable_notification: true,
+      message_thread_id: opts.messageThreadId,
     };
     const api = this.bot.api;
     const sent =
@@ -159,6 +163,7 @@ export class CompanionBot {
                 ? await api.sendSticker(this.destChatId, file, {
                     reply_parameters: common.reply_parameters,
                     disable_notification: true,
+                    message_thread_id: common.message_thread_id,
                   })
                 : await api.sendDocument(this.destChatId, file, common);
     return sent.message_id;
@@ -176,7 +181,7 @@ export class CompanionBot {
      * Opcional, sem default de reply: o Telegram ancora o reply no primeiro
      * item do álbum automaticamente, então o caller só precisa passar o id.
      */
-    opts: { replyToMessageId?: number } = {},
+    opts: { replyToMessageId?: number; messageThreadId?: number } = {},
   ): Promise<number[]> {
     const media = items.map((it) => ({
       type: it.kind,
@@ -189,6 +194,7 @@ export class CompanionBot {
       reply_parameters: opts.replyToMessageId
         ? { message_id: opts.replyToMessageId }
         : undefined,
+      message_thread_id: opts.messageThreadId,
     });
     return sent.map((m) => m.message_id);
   }
@@ -203,7 +209,7 @@ export class CompanionBot {
    */
   async publishPoll(
     poll: SourcePoll,
-    opts: { replyToMessageId?: number } = {},
+    opts: { replyToMessageId?: number; messageThreadId?: number } = {},
   ): Promise<number> {
     const sent = await this.bot.api.sendPoll(
       this.destChatId,
@@ -216,6 +222,7 @@ export class CompanionBot {
         reply_parameters: opts.replyToMessageId
           ? { message_id: opts.replyToMessageId }
           : undefined,
+        message_thread_id: opts.messageThreadId,
       },
     );
     return sent.message_id;

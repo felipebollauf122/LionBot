@@ -34,12 +34,54 @@ describe("buildHistoryPeer", () => {
 describe("normalizeMessage", () => {
   it("normaliza uma Api.Message", () => {
     const out = normalizeMessage(msg(10, { groupedId: bigInt(42) }));
-    expect(out).toEqual({ id: 10, groupedId: "42", replyToMsgId: null, raw: expect.anything() });
+    expect(out).toEqual({
+      id: 10,
+      groupedId: "42",
+      replyToMsgId: null,
+      topicId: null,
+      raw: expect.anything(),
+    });
   });
 
   it("lê o id da mensagem respondida", () => {
     const m = msg(11, { replyTo: new Api.MessageReplyHeader({ replyToMsgId: 5 } as never) });
     expect(normalizeMessage(m)?.replyToMsgId).toBe(5);
+  });
+
+  describe("topicId", () => {
+    it("forumTopic com replyToTopId presente: topicId é a raiz do tópico", () => {
+      const m = msg(20, {
+        replyTo: new Api.MessageReplyHeader({
+          forumTopic: true,
+          replyToMsgId: 30,
+          replyToTopId: 15,
+        } as never),
+      });
+      expect(normalizeMessage(m)?.topicId).toBe(15);
+    });
+
+    it("forumTopic sem replyToTopId (resposta direta à raiz): cai pra replyToMsgId", () => {
+      const m = msg(21, {
+        replyTo: new Api.MessageReplyHeader({
+          forumTopic: true,
+          replyToMsgId: 15,
+        } as never),
+      });
+      expect(normalizeMessage(m)?.topicId).toBe(15);
+    });
+
+    it("resposta comum sem forumTopic: topicId null, replyToMsgId preservado (independência)", () => {
+      const m = msg(22, {
+        replyTo: new Api.MessageReplyHeader({ replyToMsgId: 5 } as never),
+      });
+      const out = normalizeMessage(m);
+      expect(out?.topicId).toBeNull();
+      expect(out?.replyToMsgId).toBe(5);
+    });
+
+    it("sem replyTo nenhum: topicId null", () => {
+      expect(normalizeMessage(msg(23))?.topicId).toBeNull();
+    });
   });
 
   it("descarta MessageService e MessageEmpty", () => {

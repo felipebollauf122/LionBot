@@ -19,6 +19,7 @@ import {
 } from "../services/mtproto/clone/publish-router.js";
 import { iterHistoryAscending } from "../services/mtproto/clone/history-iterator.js";
 import { CloneRunner } from "../services/mtproto/clone/clone-runner.js";
+import { syncTopics, finalizeTopics } from "../services/mtproto/clone/topic-sync.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
 import { extractWaitSeconds } from "../services/mtproto/flood.js";
 import { isUserRestricted } from "../services/mtproto/clone/user-restricted.js";
@@ -26,6 +27,7 @@ import type {
   CloneMapRow,
   CloneStatus,
   ClonePeer,
+  CloneTopicMapRow,
 } from "../services/mtproto/clone/types.js";
 
 /**
@@ -222,6 +224,21 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       await client.connect();
       if (crossAccount) await destClient.connect();
 
+      // 0) Fórum: grupo legacy (peerType "chat") nunca é fórum — Topics só
+      // existe em supergrupo. Recalculado do zero em toda execução (mesmo
+      // idioma de effective_strategy, mais abaixo) e persistido só pro
+      // dashboard; nunca é lido de volta pra decidir fluxo.
+      const sourceIsForum = source.peerType === "channel" && (await reader.isForum());
+      await supabase
+        .from("clone_jobs")
+        .update({ source_is_forum: sourceIsForum })
+        .eq("id", cloneJobId);
+      // Fórum só existe em supergrupo — Api.Channel.forum nunca é true sem
+      // megagroup no Telegram, e deriveDestKind já garante isso pro lado da
+      // origem; o check aqui é defensivo (ex.: dest_kind desatualizado), não
+      // a fonte de verdade.
+      const wantsForum = sourceIsForum && job.dest_kind === "megagroup";
+
       // 1) Destino (idempotente na retomada — ensureDestination devolve
       // `existing` direto se o job já tiver dest_channel_id persistido, mas
       // sempre repromove o bot: ver defeito I4 em dest-builder.ts).
@@ -266,6 +283,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
           destTitle: job.dest_title,
           copyIdentity: job.copy_identity,
           botUsername: botRow.username,
+          forum: wantsForum,
           existing: job.dest_channel_id
             ? {
                 channelId: job.dest_channel_id,
@@ -275,6 +293,60 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
             : null,
         },
       );
+
+      // 1b) Tópicos de fórum: cria no destino os que faltam e monta o mapa
+      // origem->destino ANTES de qualquer publicação (createPublisher
+      // precisa do mapa pronto pra rotear cada grupo pro tópico certo).
+      // Igual à promoção do bot, roda inteiro dentro do try de setup — um
+      // FLOOD_WAIT aqui sobe pro catch de baixo, que já sabe agendar
+      // retomada em vez de falhar o job (syncTopics relança flood de
+      // propósito, ver topic-sync.ts).
+      let topicSync: Awaited<ReturnType<typeof syncTopics>> | null = null;
+      if (wantsForum) {
+        topicSync = await syncTopics(
+          {
+            listSourceTopics: () => reader.listTopics(),
+            createDestTopic: (topicInput) =>
+              destClient.createForumTopic(dest.channelId, dest.accessHash, topicInput),
+            setClosed: (topicId, closed) =>
+              destClient.setForumTopicClosed(dest.channelId, dest.accessHash, topicId, closed),
+            setPinned: (topicId, pinned) =>
+              destClient.setForumTopicPinned(dest.channelId, dest.accessHash, topicId, pinned),
+            loadExisting: async (id) => {
+              const { data } = await supabase
+                .from("clone_topic_map")
+                .select("source_topic_id, dest_topic_id, title, status, reason")
+                .eq("job_id", id);
+              return (data ?? []).map(
+                (r): CloneTopicMapRow => ({
+                  sourceTopicId: Number(r.source_topic_id),
+                  destTopicId: r.dest_topic_id === null ? null : Number(r.dest_topic_id),
+                  title: r.title,
+                  status: r.status,
+                  reason: r.reason,
+                }),
+              );
+            },
+            persist: async (id, row) => {
+              // upsert, não insert: um tópico 'failed' é retentado a cada
+              // resume (ver topic-sync.ts) — sem onConflict, a 2ª tentativa
+              // bateria na unique (job_id, source_topic_id) da 1ª.
+              await supabase.from("clone_topic_map").upsert(
+                {
+                  job_id: id,
+                  source_topic_id: row.sourceTopicId,
+                  dest_topic_id: row.destTopicId,
+                  title: row.title,
+                  status: row.status,
+                  reason: row.reason,
+                },
+                { onConflict: "job_id,source_topic_id" },
+              );
+            },
+          },
+          { jobId: cloneJobId },
+        );
+      }
 
       // 2) Estratégia
       const strategy = chooseStrategy({
@@ -312,6 +384,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
         copyPolls: job.copy_polls,
         copyButtons: job.copy_buttons,
         tmpDir,
+        topicMap: topicSync?.topicMap ?? null,
       });
 
       // Defeito I8: "últimas N mensagens" tem que clonar as N mais NOVAS, não
@@ -469,6 +542,33 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       );
 
       await runner.run();
+
+      // Fecha/fixa tópicos só depois de confirmar (releitura fresca, não o
+      // simples retorno de run() — que também acontece em pausa/flood/falha)
+      // que o job chegou a 'completed' de verdade. Ver o porquê em
+      // topic-sync.ts: fechar um tópico antes de terminar de publicar nele
+      // arriscaria bloquear posts futuros do bot mesmo sendo admin.
+      if (wantsForum && topicSync) {
+        const { data: finalRow } = await supabase
+          .from("clone_jobs")
+          .select("status")
+          .eq("id", cloneJobId)
+          .maybeSingle();
+        if (finalRow?.status === "completed") {
+          await finalizeTopics(
+            {
+              setClosed: (topicId, closed) =>
+                destClient.setForumTopicClosed(dest.channelId, dest.accessHash, topicId, closed),
+              setPinned: (topicId, pinned) =>
+                destClient.setForumTopicPinned(dest.channelId, dest.accessHash, topicId, pinned),
+            },
+            topicSync.topicMap,
+            topicSync.sourceTopics,
+          ).catch((err) =>
+            console.warn(`[clone] finalizeTopics falhou pro job ${cloneJobId} (não fatal):`, err),
+          );
+        }
+      }
     } catch (err) {
       // Issue 1 do re-review: a promoção do bot passou a rodar em TODA
       // retomada (defeito I4, ver ensureDestination/promoteBotTolerant acima),

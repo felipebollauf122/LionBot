@@ -24,7 +24,27 @@ export interface SourceMessage {
   id: number;
   groupedId: string | null;
   replyToMsgId: number | null;
+  /** Id do tópico de fórum dono da mensagem (raiz do tópico). null = General ou canal sem fórum. */
+  topicId: number | null;
   raw: unknown;
+}
+
+/** Tópico de fórum da origem, normalizado — DTO puro, sem tipos do gramjs. */
+export interface SourceTopic {
+  id: number;
+  title: string;
+  iconColor: number;
+  iconEmojiId: string | null;
+  closed: boolean;
+  pinned: boolean;
+}
+
+export interface CloneTopicMapRow {
+  sourceTopicId: number;
+  destTopicId: number | null;
+  title: string;
+  status: "copied" | "skipped" | "failed";
+  reason: string | null;
 }
 
 export type CloneOutcome =

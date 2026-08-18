@@ -93,7 +93,8 @@ export async function handlePaymentBundleNode(
   // e mostram o botão na cor padrão — compatível.
   type InlineBtn = {
     text: string;
-    callback_data: string;
+    callback_data?: string;
+    url?: string;
     style?: "danger" | "success" | "primary";
   };
 
@@ -136,6 +137,31 @@ export async function handlePaymentBundleNode(
     }
   }
 
+  // Botões extras (qualquer tipo de venda) — configurados livremente no
+  // editor, sempre aparecem embaixo dos preços. "link" abre uma URL direto
+  // (sem passar pelo fluxo, sem callback nenhum — o Telegram cuida sozinho);
+  // "flow" vira um handle próprio no nó (ver payment-button-node.tsx), roteado
+  // pelo mesmo mecanismo genérico "${nodeId}:${id}" que já roteia Recusar/
+  // extras de upsell-downsell (FlowProcessor.handleCallbackQuery, sem
+  // allowlist de ids — qualquer id com uma edge correspondente funciona).
+  const customButtonsCfg = (Array.isArray(ctx.node.data.custom_buttons)
+    ? ctx.node.data.custom_buttons
+    : []) as { id?: string; label?: string; kind?: string; url?: string }[];
+  const customButtons: InlineBtn[] = [];
+  for (const b of customButtonsCfg) {
+    const label = String(b.label ?? "").trim();
+    if (!label) continue;
+    if (b.kind === "link") {
+      const url = String(b.url ?? "").trim();
+      if (!url) continue; // sem URL configurada — não manda um botão quebrado
+      customButtons.push({ text: label, url });
+    } else {
+      const id = String(b.id ?? "").trim();
+      if (!id) continue;
+      customButtons.push({ text: label, callback_data: `${ctx.node.id}:${id}` });
+    }
+  }
+
   // Layout: vertical = um botão por linha; horizontal = todos na mesma linha.
   const layout = String(ctx.node.data.button_layout ?? "vertical");
   let inlineKeyboard: InlineBtn[][];
@@ -147,6 +173,9 @@ export async function handlePaymentBundleNode(
     // vertical (padrão): tudo empilhado
     inlineKeyboard = [...productButtons, ...extraButtons].map((b) => [b]);
   }
+  // Botões extras sempre em suas próprias linhas, depois de tudo — ficam
+  // "embaixo dos preços" independente do layout escolhido acima.
+  if (customButtons.length > 0) inlineKeyboard.push(...customButtons.map((b) => [b]));
 
   // Send single message with header text + all product buttons
   const messageIds: number[] = [];
@@ -214,7 +243,7 @@ export async function handleProductPaymentCallback(
   gateway: PaymentGateway,
   baseWebhookUrl: string,
   productId: string,
-  gatewayKind: "sigilopay" | "evpay" = "sigilopay",
+  gatewayKind: "sigilopay" | "evpay" | "zuckpay" = "sigilopay",
 ): Promise<NodeResult> {
   // Fetch product
   const { data: product } = await db
@@ -252,12 +281,16 @@ export async function handleProductPaymentCallback(
   const clientPhone = String(ctx.lead.state.phone ?? "11999999999");
   const clientDocument = String(ctx.lead.state.document ?? "52998224725");
 
-  // Webhook callback (sigilopay manda no body da request; evpay tem webhook
-  // pré-registrado no projeto e ignora callbackUrl no payload do payment).
+  // Webhook callback:
+  //  - sigilopay: manda no body da request → /webhook/payment
+  //  - evpay: webhook pré-registrado no projeto (ignora callbackUrl)  → /webhook/evpay
+  //  - zuckpay: manda no body (urlnoty) e assina HMAC → /webhook/zuckpay
   const callbackUrl =
     gatewayKind === "evpay"
       ? `${baseWebhookUrl}/webhook/evpay`
-      : `${baseWebhookUrl}/webhook/payment`;
+      : gatewayKind === "zuckpay"
+        ? `${baseWebhookUrl}/webhook/zuckpay`
+        : `${baseWebhookUrl}/webhook/payment`;
 
   // Instant feedback — send before generating pix (fire-and-forget)
   const loadingMsg = await ctx.telegram.sendMessage({

@@ -7,6 +7,8 @@ import { rm } from "node:fs/promises";
 import { supabase } from "../db.js";
 import { config } from "../config.js";
 import { MtprotoClient } from "../services/mtproto/client.js";
+import type { PeerKind } from "../services/mtproto/client.js";
+import { parseLinkIdentifier } from "../services/mtproto/link-parse.js";
 import { CompanionBot } from "../services/mtproto/clone/bot-client.js";
 import {
   SourceReader,
@@ -349,6 +351,9 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       }
 
       // 2) Estratégia
+      const linkReplaceConfigured = Boolean(
+        job.link_replace_bot || job.link_replace_group || job.link_replace_channel,
+      );
       const strategy = chooseStrategy({
         requested: job.strategy,
         sourceHasNoForwards: await reader.hasNoForwards(),
@@ -359,11 +364,19 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
         copyReplies: job.copy_replies,
         // Cross-account: forward entre sessões diferentes não existe → download.
         crossAccount,
+        // Troca de link: ForwardMessages copia server-side, o app nunca vê
+        // texto/entities nessa rota — impossível trocar link ali.
+        linkReplaceConfigured,
       });
       await supabase
         .from("clone_jobs")
         .update({ effective_strategy: strategy })
         .eq("id", cloneJobId);
+      if (linkReplaceConfigured) {
+        console.log(
+          `[clone] job ${cloneJobId}: troca de link ativada — RPCs extras de resolução podem alongar o tempo total do clone`,
+        );
+      }
 
       // 3) Bot publicador. Creds injetadas (não importadas de config.ts dentro
       // de bot-client.ts) — só usadas de fato se bot.mtproto() for chamado;
@@ -375,6 +388,24 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
         { apiId: config.telegramApiId, apiHash: config.telegramApiHash },
       );
 
+      // Resolve pela conta de LEITURA (mesma que lê a origem) — nunca pelo
+      // bot nem pela conta de destino. classify() nunca lança pra erro
+      // não-flood (client.classifyLink já degrada pra "unknown"); flood
+      // propaga e é pego pelo catch já existente do CloneRunner.flush().
+      const linkReplace = linkReplaceConfigured
+        ? {
+            classify: (identifier: string): Promise<PeerKind> => {
+              const parsed = parseLinkIdentifier(identifier);
+              return parsed ? client.classifyLink(parsed) : Promise.resolve("unknown" as PeerKind);
+            },
+            values: {
+              botUsername: job.link_replace_bot ?? undefined,
+              groupLink: job.link_replace_group ?? undefined,
+              channelLink: job.link_replace_channel ?? undefined,
+            },
+          }
+        : null;
+
       const publish = createPublisher({
         reader,
         bot,
@@ -385,6 +416,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
         copyButtons: job.copy_buttons,
         tmpDir,
         topicMap: topicSync?.topicMap ?? null,
+        linkReplace,
       });
 
       // Defeito I8: "últimas N mensagens" tem que clonar as N mais NOVAS, não

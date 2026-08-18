@@ -1,9 +1,9 @@
 import { Api } from "telegram";
 import bigInt from "big-integer";
-import { createWriteStream } from "node:fs";
-import { mkdir, stat, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { MtprotoClient } from "../client.js";
+import { downloadMediaToPath } from "../download-media.js";
 import { buildHistoryPeer } from "./history-iterator.js";
 import type { HistorySource } from "./history-iterator.js";
 import type { ClonePeer, SourceTopic } from "./types.js";
@@ -249,66 +249,12 @@ export class SourceReader {
     if (!msg.media) return null;
     await mkdir(dir, { recursive: true });
     const filePath = path.join(dir, `msg_${msg.id}`);
-    const out = createWriteStream(filePath);
-    // Falha de escrita (ENOSPC, permissão) dispara o autoDestroy do
-    // fs.WriteStream: 'error' e, poucos ms depois, 'close' (medido
-    // empiricamente: ~5ms e ~7ms). Um listener de 'close' registrado só
-    // depois do `for await` esgotar o download inteiro (como era antes,
-    // dentro do finally) chega tarde demais — o 'close' já disparou e não
-    // dispara de novo, então a promise nunca resolve nem rejeita e trava
-    // pra sempre (pior que o crash que o listener de 'error' evitava, e o
-    // loop ainda puxa o arquivo inteiro da rede à toa antes de travar).
-    // Por isso o listener de 'close' abaixo só é registrado se o erro
-    // ainda NÃO foi observado, e o loop de download corre em paralelo
-    // (Promise.race) com uma promise que rejeita assim que 'error' dispara,
-    // sem esperar o resto do arquivo ser puxado da rede.
-    let streamError: Error | undefined;
-    const errorPromise = new Promise<never>((_resolve, reject) => {
-      out.on("error", (err) => {
-        streamError = err;
-        reject(err);
-      });
-    });
-    try {
-      try {
-        // requestSize é obrigatório no .d.ts do gramjs mas opcional em runtime
-        // (downloads.js:186 usa MAX_CHUNK_SIZE como default); repetimos o
-        // mesmo valor aqui só para satisfazer o tipo, sem mudar o comportamento.
-        const downloadLoop = (async () => {
-          for await (const chunk of this.client.raw.iterDownload({
-            file: msg.media as never,
-            requestSize: 512 * 1024,
-          })) {
-            // Stream já destruída: escrever viraria no-op silencioso e
-            // continuar puxando chunks da rede seria trabalho jogado fora.
-            if (streamError) break;
-            out.write(chunk);
-          }
-        })();
-        await Promise.race([downloadLoop, errorPromise]);
-      } finally {
-        if (!streamError) {
-          out.end();
-          // WriteStream tipa o listener de "close" como () => void; o executor
-          // da Promise expõe resolve com 1 parâmetro opcional, então empacota
-          // numa arrow sem argumentos pra satisfazer o tipo do evento.
-          await new Promise<void>((resolve) => out.on("close", () => resolve()));
-        }
-      }
-      if (streamError) throw streamError;
-    } catch (err) {
-      // Download interrompido (queda de rede, FLOOD_WAIT,
-      // FILE_REFERENCE_EXPIRED) ou falha de escrita: sem isso o arquivo
-      // parcial `msg_<id>` fica órfão em disco pra sempre — clone histórico
-      // longo bate nesse caminho com frequência real.
-      await unlink(filePath).catch(() => {});
-      throw err;
-    }
-    const { size } = await stat(filePath);
-    if (size > maxBytes) {
-      await unlink(filePath).catch(() => {});
-      return null;
-    }
+    // Núcleo de streaming (defesa de timing 'error'/'close', cleanup de
+    // arquivo parcial em falha) mora em download-media.ts — reaproveitado
+    // também pelo bot-flow-clone (media-rehost.ts), sem duplicar essa
+    // lógica frágil em dois lugares.
+    const size = await downloadMediaToPath(this.client.raw, msg.media, filePath, maxBytes);
+    if (size === null) return null;
     return { filePath, sizeBytes: size, fileName: SourceReader.originalFileName(msg) };
   }
 

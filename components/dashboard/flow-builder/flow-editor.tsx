@@ -29,6 +29,7 @@ import { InputNode } from "./nodes/input-node";
 import { ActionNode } from "./nodes/action-node";
 import { VideoNode } from "./nodes/video-node";
 import { PaymentButtonNode } from "./nodes/payment-button-node";
+import { UnmappedNode } from "./nodes/unmapped-node";
 import { saveFlow } from "@/lib/actions/flow-actions";
 import { LionMark } from "@/components/brand/lion-mark";
 import type { FlowData, FlowNode, NodeType } from "@/lib/types/database";
@@ -59,6 +60,7 @@ const nodeTypeComponents = {
   action: ActionNode,
   video: VideoNode,
   payment_button: PaymentButtonNode,
+  unmapped: UnmappedNode,
 };
 
 const defaultNodeData: Record<string, Record<string, unknown>> = {
@@ -72,6 +74,7 @@ const defaultNodeData: Record<string, Record<string, unknown>> = {
   action: { action_type: "set_variable", variable: "", value: "" },
   video: { video_url: "", caption: "" },
   payment_button: { bundle_id: "", payment_timeout_minutes: 15, sale_type: "main" },
+  unmapped: { kind: "unmapped" },
 };
 
 let nodeIdCounter = 0;

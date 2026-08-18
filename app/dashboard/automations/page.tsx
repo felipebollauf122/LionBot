@@ -3,6 +3,7 @@ import { MtprotoAccounts } from "@/components/dashboard/mtproto-accounts";
 import { MtprotoCampaignList } from "@/components/dashboard/mtproto-campaign-list";
 import { AutomationBotCard } from "@/components/dashboard/automation-bot-card";
 import { CloneList } from "@/components/dashboard/clone-list";
+import { BotCloneList } from "@/components/dashboard/bot-clone-list";
 import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
@@ -36,6 +37,12 @@ export default async function AutomationsPage() {
   const { data: clones } = await supabase
     .from("clone_jobs")
     .select("id, dest_title, source_title, status, copied_count, total_seen")
+    .eq("tenant_id", user.id)
+    .order("created_at", { ascending: false });
+
+  const { data: botClones } = await supabase
+    .from("bot_clone_jobs")
+    .select("id, target_bot_username, status, nodes_discovered")
     .eq("tenant_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -135,6 +142,24 @@ export default async function AutomationsPage() {
         </CardShell>
       </div>
 
+      {/* Clonar bot (fluxo) */}
+      <div className="mb-6">
+        <CardShell
+          title="Clonar bot (fluxo)"
+          subtitle="clone a conversa de outro bot"
+          icon={icons.flow}
+          accent="purple"
+          revealIndex={5}
+          right={
+            <a href="/dashboard/automations/botclones/new" className="btn-primary text-xs px-4 py-2">
+              Novo
+            </a>
+          }
+        >
+          <BotCloneList clones={botClones ?? []} />
+        </CardShell>
+      </div>
+
       {/* Campanhas */}
       <div className="mb-6">
         <CardShell
@@ -142,7 +167,7 @@ export default async function AutomationsPage() {
           subtitle="disparo em massa"
           icon={icons.megaphone}
           accent="amber"
-          revealIndex={5}
+          revealIndex={6}
           right={
             <a href="/dashboard/automations/new-campaign" className="btn-primary text-xs px-4 py-2">
               Nova campanha

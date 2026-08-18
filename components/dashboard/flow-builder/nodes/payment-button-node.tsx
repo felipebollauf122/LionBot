@@ -16,6 +16,14 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
       : []
   ).filter((b) => String(b.id ?? "") !== "accept");
 
+  // Botões extras (qualquer tipo de venda): "flow" vira handle próprio, do
+  // lado de Pagou/Não Pagou; "link" não conecta a nada (abre URL direto),
+  // só mostra um chip informativo.
+  type CustomBtn = { id?: string; label?: string; kind?: string; url?: string };
+  const customButtons: CustomBtn[] = Array.isArray(data.custom_buttons) ? (data.custom_buttons as CustomBtn[]) : [];
+  const flowCustomButtons = customButtons.filter((b) => b.kind === "flow" && b.id);
+  const linkCustomButtons = customButtons.filter((b) => b.kind === "link");
+
   return (
     <div
       className="rounded-2xl px-4 py-3 min-w-50 max-w-70 relative"
@@ -73,16 +81,39 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
           ))}
         </div>
       )}
-      <div className="flex justify-between mt-2.5 px-2">
+      <div className="flex flex-wrap gap-x-3 gap-y-1.5 justify-center mt-2.5 px-2">
         <div className="flex flex-col items-center gap-0.5">
           <Handle type="source" position={Position.Bottom} id="paid" style={{ position: "relative", background: "var(--accent)", width: 10, height: 10, border: "2px solid var(--bg-root)", transform: "none" }} />
           <span className="text-(--accent) text-[9px] font-bold">{isOffer ? "Aceitou/Pagou" : "Pagou"}</span>
         </div>
+        {flowCustomButtons.map((b) => (
+          <div key={String(b.id)} className="flex flex-col items-center gap-0.5">
+            <Handle type="source" position={Position.Bottom} id={String(b.id)} style={{ position: "relative", background: "var(--cyan)", width: 10, height: 10, border: "2px solid var(--bg-root)", transform: "none" }} />
+            <span className="text-(--cyan) text-[9px] font-bold max-w-16 truncate">{String(b.label ?? b.id)}</span>
+          </div>
+        ))}
         <div className="flex flex-col items-center gap-0.5">
           <Handle type="source" position={Position.Bottom} id="not_paid" style={{ position: "relative", background: "var(--red)", width: 10, height: 10, border: "2px solid var(--bg-root)", transform: "none" }} />
           <span className="text-(--red) text-[9px] font-bold">Nao Pagou</span>
         </div>
       </div>
+      {/* Botões de link — não conectam a nada, só abrem uma URL no clique. */}
+      {linkCustomButtons.length > 0 && (
+        <div className="flex flex-wrap gap-1 justify-center mt-2 px-1">
+          {linkCustomButtons.map((b, i) => (
+            <span
+              key={String(b.id ?? i)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium"
+              style={{ background: "color-mix(in srgb, var(--text-secondary) 10%, transparent)", color: "var(--text-secondary)" }}
+            >
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+              </svg>
+              {String(b.label ?? "link")}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { StringSession } from "telegram/sessions/index.js";
 import { CustomFile } from "telegram/client/uploads.js";
 import { randomBytes } from "crypto";
 import bigInt from "big-integer";
+import { extractWaitSeconds } from "./flood.js";
+import type { ParsedIdentifier } from "./link-parse.js";
 
 /**
  * random_id criptograficamente forte pro Telegram (#53). Math.random()
@@ -45,6 +47,9 @@ export type DialogKind =
   | "bot"
   | "self";
 
+/** Classificação de um peer resolvido pra troca de link no clonador. */
+export type PeerKind = "bot" | "group" | "channel" | "user" | "unknown";
+
 export interface MtprotoDialog {
   peerId: string;
   peerType: "user" | "chat" | "channel";
@@ -61,6 +66,11 @@ export class MtprotoClient {
   // Cache phone → user resolvido (#54): evita ImportContacts repetido na
   // mesma sessão, que incha a agenda da conta e aumenta risco de ban.
   private phoneUserCache = new Map<string, Api.TypeUser>();
+  // Cache identificador → classificação (troca de link do clonador): evita
+  // ResolveUsername/CheckChatInvite repetido pro mesmo peer na mesma sessão
+  // — cada RPC extra é uma chance a mais de flood numa clonagem com
+  // milhares de mensagens.
+  private linkClassifyCache = new Map<string, PeerKind>();
 
   constructor(
     private apiId: number,
@@ -1056,6 +1066,87 @@ export class MtprotoClient {
       }),
     );
   }
+
+  /**
+   * Classifica um identificador de peer (username ou hash de convite, já
+   * parseado por link-parse.ts) pra troca de link do clonador. Erro
+   * não-flood (username inexistente, convite expirado, etc.) vira
+   * "unknown" e é cacheado — erro de flood propaga e NUNCA é cacheado
+   * (mesmo idioma de topic-sync.ts: flood é transitório, não deve virar
+   * classificação permanente).
+   */
+  async classifyLink(parsed: ParsedIdentifier): Promise<PeerKind> {
+    const cacheKey = parsed.kind === "username" ? `u:${parsed.value.toLowerCase()}` : `i:${parsed.hash}`;
+    const cached = this.linkClassifyCache.get(cacheKey);
+    if (cached) return cached;
+
+    await this.connect();
+    let kind: PeerKind;
+    try {
+      if (parsed.kind === "username") {
+        const result = await this.client.invoke(
+          new Api.contacts.ResolveUsername({ username: parsed.value }),
+        );
+        kind = classifyResolvedPeer(result);
+      } else {
+        const result = await this.client.invoke(
+          new Api.messages.CheckChatInvite({ hash: parsed.hash }),
+        );
+        kind = classifyChatInvite(result);
+      }
+    } catch (err) {
+      if (extractWaitSeconds(err) !== null) throw err;
+      kind = "unknown";
+    }
+    this.linkClassifyCache.set(cacheKey, kind);
+    return kind;
+  }
+}
+
+/** Classifica um Api.TypeChat (Chat/ChatForbidden/Channel/ChannelForbidden). */
+function classifyChatLike(chat: Api.TypeChat | undefined): PeerKind {
+  if (!chat) return "unknown";
+  if (chat instanceof Api.Channel || chat instanceof Api.ChannelForbidden) {
+    return chat.broadcast ? "channel" : "group";
+  }
+  if (chat instanceof Api.Chat || chat instanceof Api.ChatForbidden) return "group";
+  return "unknown";
+}
+
+/** Classifica o resultado de contacts.ResolveUsername. */
+export function classifyResolvedPeer(result: Api.contacts.TypeResolvedPeer): PeerKind {
+  const peer = result.peer;
+  if (peer instanceof Api.PeerUser) {
+    const targetId = String(peer.userId);
+    const user = result.users.find(
+      (u): u is Api.User => u instanceof Api.User && String(u.id) === targetId,
+    );
+    if (!user) return "unknown";
+    return user.bot ? "bot" : "user";
+  }
+  if (peer instanceof Api.PeerChat) {
+    const targetId = String(peer.chatId);
+    const chat = result.chats.find((c) => "id" in c && String(c.id) === targetId);
+    return classifyChatLike(chat);
+  }
+  if (peer instanceof Api.PeerChannel) {
+    const targetId = String(peer.channelId);
+    const chat = result.chats.find((c) => "id" in c && String(c.id) === targetId);
+    return classifyChatLike(chat);
+  }
+  return "unknown";
+}
+
+/** Classifica o resultado de messages.CheckChatInvite. */
+export function classifyChatInvite(result: Api.TypeChatInvite): PeerKind {
+  if (result instanceof Api.ChatInviteAlready || result instanceof Api.ChatInvitePeek) {
+    return classifyChatLike(result.chat);
+  }
+  if (result instanceof Api.ChatInvite) {
+    if (result.broadcast) return "channel";
+    return "group"; // megagroup (supergrupo) ou grupo legado — os dois são "group" aqui
+  }
+  return "unknown";
 }
 
 /**

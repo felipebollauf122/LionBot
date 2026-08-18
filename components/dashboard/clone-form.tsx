@@ -11,6 +11,27 @@ const TOGGLES = [
   { key: "copyPolls", label: "Enquetes", hint: "Recria pergunta e opções. Os votos nascem zerados." },
 ] as const;
 
+const REPLACEMENTS = [
+  {
+    key: "linkReplaceBot",
+    label: "Trocar bots por",
+    placeholder: "usuário do bot, sem @",
+    hint: "Toda menção/link que a origem classifica como BOT sai apontando pra esse. Em branco = mantém os bots originais.",
+  },
+  {
+    key: "linkReplaceGroup",
+    label: "Trocar grupos por",
+    placeholder: "https://t.me/meugrupo",
+    hint: "Todo link de GRUPO da origem sai apontando pra esse. Em branco = mantém os links originais.",
+  },
+  {
+    key: "linkReplaceChannel",
+    label: "Trocar canais por",
+    placeholder: "https://t.me/meucanal",
+    hint: "Todo link de CANAL da origem sai apontando pra esse. Em branco = mantém os links originais.",
+  },
+] as const;
+
 export function CloneForm({
   dialogId,
   sourceTitle,
@@ -41,6 +62,11 @@ export function CloneForm({
     copyPins: false,
     copyButtons: false,
     copyPolls: false,
+  });
+  const [replacements, setReplacements] = useState({
+    linkReplaceBot: "",
+    linkReplaceGroup: "",
+    linkReplaceChannel: "",
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -139,6 +165,22 @@ export function CloneForm({
         ))}
       </div>
 
+      <div className="space-y-2">
+        <p className="input-label">Trocar links por categoria (opcional)</p>
+        {REPLACEMENTS.map((r) => (
+          <label key={r.key} className="block">
+            <span className="text-(--text-muted) text-xs">{r.label}</span>
+            <input
+              value={replacements[r.key]}
+              onChange={(e) => setReplacements({ ...replacements, [r.key]: e.target.value })}
+              placeholder={r.placeholder}
+              className="input"
+            />
+            <span className="block text-(--text-muted) text-xs mt-0.5">{r.hint}</span>
+          </label>
+        ))}
+      </div>
+
       {error && <p className="text-(--red) text-xs">{error}</p>}
 
       <button
@@ -153,6 +195,7 @@ export function CloneForm({
               throttleMs: Math.max(500, Number(throttle) || 3000),
               destAccountId,
               ...flags,
+              ...replacements,
             });
             if (!res.ok) {
               setError(res.error);

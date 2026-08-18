@@ -33,8 +33,13 @@ interface Bot {
   tenant_id: string;
   telegram_token: string;
   protect_content: boolean;
+  payment_gateway: string | null;
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
+  evpay_api_key: string | null;
+  evpay_project_id: string | null;
+  zuckpay_client_id: string | null;
+  zuckpay_client_secret: string | null;
 }
 
 interface RemarketingProgress {
@@ -73,7 +78,7 @@ async function processConfig(db: SupabaseClient, cfg: RemarketingConfig): Promis
   // Get bot
   const { data: bot } = await db
     .from("bots")
-    .select("id, tenant_id, telegram_token, protect_content, sigilopay_public_key, sigilopay_secret_key")
+    .select("id, tenant_id, telegram_token, protect_content, payment_gateway, sigilopay_public_key, sigilopay_secret_key, evpay_api_key, evpay_project_id, zuckpay_client_id, zuckpay_client_secret")
     .eq("id", cfg.bot_id)
     .eq("is_active", true)
     .single();

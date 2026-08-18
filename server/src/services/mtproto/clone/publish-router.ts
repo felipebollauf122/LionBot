@@ -4,6 +4,8 @@ import { planForMessage } from "./media-plan.js";
 import type { MediaPlan } from "./media-plan.js";
 import { SourceReader } from "./source-reader.js";
 import type { CompanionBot } from "./bot-client.js";
+import { rewriteMessageLinks } from "./link-replace.js";
+import type { LinkReplaceDeps, LinkReplaceValues } from "./link-replace.js";
 import type { CloneOutcome, CloneStrategy, SourceMessage } from "./types.js";
 
 /** Só foto e vídeo entram num álbum do Telegram. */
@@ -28,6 +30,13 @@ export function chooseStrategy(input: {
    * atual).
    */
   crossAccount?: boolean;
+  /**
+   * Troca de link (bot/grupo/canal) configurada. O ForwardMessages copia o
+   * conteúdo server-side — o app nunca vê raw.message/raw.entities/botões
+   * nessa rota, então trocar link ali dentro é impossível. Mesma razão de
+   * copyButtons acima.
+   */
+  linkReplaceConfigured?: boolean;
 }): CloneStrategy {
   // Contas diferentes na origem e no destino: forward entre sessões não existe.
   if (input.crossAccount) return "download";
@@ -37,6 +46,7 @@ export function chooseStrategy(input: {
   // quem liga "respostas encadeadas" (copyReplies) também precisa baixar,
   // senão o replyToDestId calculado pelo runner é descartado em silêncio.
   if (input.copyReplies) return "download";
+  if (input.linkReplaceConfigured) return "download";
   if (input.sourceHasNoForwards) return "download";
   return input.requested === "download" ? "download" : "batch";
 }
@@ -89,6 +99,8 @@ export interface PublisherContext {
   tmpDir: string;
   /** Mapa origem->destino de tópicos de fórum. null = job sem fórum (comportamento de sempre). */
   topicMap: Map<number, number> | null;
+  /** Troca de link por categoria. null = job sem a feature (comportamento de sempre). */
+  linkReplace: { classify: LinkReplaceDeps["classify"]; values: LinkReplaceValues } | null;
 }
 
 /**
@@ -181,12 +193,25 @@ export function createPublisher(
           }
           downloaded.push(dl.filePath);
           const plan = plans[i];
+          let caption = raws[i].message ?? "";
+          let entities = raws[i].entities;
+          // Álbum nunca tem botão (sendMediaGroup não suporta reply_markup) —
+          // inlineLinks sempre undefined aqui.
+          if (ctx.linkReplace) {
+            const rewritten = await rewriteMessageLinks(
+              { message: raws[i].message, entities: raws[i].entities, inlineLinks: undefined },
+              { classify: ctx.linkReplace.classify },
+              ctx.linkReplace.values,
+            );
+            caption = rewritten.text;
+            entities = rewritten.entities;
+          }
           ok.push({
             index: i,
             filePath: dl.filePath,
             kind: plan.kind === "media" && plan.mediaKind === "video" ? "video" : "photo",
-            caption: raws[i].message ?? "",
-            entities: raws[i].entities,
+            caption,
+            entities,
           });
         }
 
@@ -258,8 +283,30 @@ export function createPublisher(
           outcomes.push({ status: "skipped", reason: plan.reason });
           continue;
         }
+
+        // Troca de link: só compensa reescrever quando a mensagem de fato
+        // publica texto/entities (enquete não usa nenhum dos dois, e
+        // "skip" já saiu acima) — evita RPC de resolução à toa.
+        let text = raw.message ?? "";
+        let publishEntities = opts.entities;
+        let publishInlineLinks = opts.inlineLinks;
+        if (ctx.linkReplace && plan.kind !== "poll") {
+          const rewritten = await rewriteMessageLinks(
+            { message: raw.message, entities: raw.entities, inlineLinks: opts.inlineLinks },
+            { classify: ctx.linkReplace.classify },
+            ctx.linkReplace.values,
+          );
+          text = rewritten.text;
+          publishEntities = rewritten.entities;
+          publishInlineLinks = rewritten.inlineLinks;
+        }
+
         if (plan.kind === "text") {
-          const destMsgId = await ctx.bot.publishText(raw.message ?? "", opts);
+          const destMsgId = await ctx.bot.publishText(text, {
+            ...opts,
+            entities: publishEntities,
+            inlineLinks: publishInlineLinks,
+          });
           outcomes.push({ status: "copied", destMsgId });
           continue;
         }
@@ -289,12 +336,12 @@ export function createPublisher(
           continue;
         }
         downloaded.push(dl.filePath);
-        const destMsgId = await ctx.bot.publishMedia(
-          dl.filePath,
-          plan.mediaKind,
-          raw.message ?? "",
-          { ...opts, fileName: dl.fileName ?? undefined },
-        );
+        const destMsgId = await ctx.bot.publishMedia(dl.filePath, plan.mediaKind, text, {
+          ...opts,
+          entities: publishEntities,
+          inlineLinks: publishInlineLinks,
+          fileName: dl.fileName ?? undefined,
+        });
         outcomes.push({ status: "copied", destMsgId });
       }
       return outcomes;

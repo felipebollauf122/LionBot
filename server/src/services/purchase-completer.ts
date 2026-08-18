@@ -29,6 +29,8 @@ interface Bot {
   sigilopay_secret_key: string | null;
   evpay_api_key: string | null;
   evpay_project_id: string | null;
+  zuckpay_client_id: string | null;
+  zuckpay_client_secret: string | null;
 }
 
 interface Transaction {

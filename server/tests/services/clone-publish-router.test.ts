@@ -76,6 +76,23 @@ describe("chooseStrategy", () => {
       chooseStrategy({ requested: "auto", sourceHasNoForwards: false, copyButtons: false }),
     ).toBe("batch");
   });
+
+  it("linkReplaceConfigured força download — forward nunca vê texto/entities pra trocar", () => {
+    expect(
+      chooseStrategy({
+        requested: "auto",
+        sourceHasNoForwards: false,
+        copyButtons: false,
+        linkReplaceConfigured: true,
+      }),
+    ).toBe("download");
+  });
+
+  it("linkReplaceConfigured omitido continua batch (default false)", () => {
+    expect(
+      chooseStrategy({ requested: "auto", sourceHasNoForwards: false, copyButtons: false }),
+    ).toBe("batch");
+  });
 });
 
 describe("routeGroup", () => {
@@ -227,6 +244,7 @@ function makeCtx(
   reader: SourceReader,
   bot: FakeBot,
   topicMap: Map<number, number> | null = null,
+  linkReplace: PublisherContext["linkReplace"] = null,
 ): PublisherContext {
   return {
     reader,
@@ -238,6 +256,7 @@ function makeCtx(
     copyButtons: false,
     tmpDir: "/fake/tmp",
     topicMap,
+    linkReplace,
   };
 }
 
@@ -541,6 +560,125 @@ describe("createPublisher — tópicos de fórum", () => {
     expect(bot.publishText).toHaveBeenCalledWith(
       "oi",
       expect.objectContaining({ messageThreadId: undefined }),
+    );
+  });
+});
+
+// --- createPublisher: troca de link por categoria ---------------------
+
+function mentionRaw(id: number, text: string, mentionText: string): Api.Message {
+  const offset = text.indexOf(mentionText);
+  return {
+    id,
+    message: text,
+    media: null,
+    entities: [new Api.MessageEntityMention({ offset, length: mentionText.length })],
+    replyMarkup: undefined,
+  } as unknown as Api.Message;
+}
+
+function photoRawWithText(id: number, text: string, mentionText: string): Api.Message {
+  const offset = text.indexOf(mentionText);
+  return {
+    id,
+    message: text,
+    media: { className: "MessageMediaPhoto" },
+    entities: [new Api.MessageEntityMention({ offset, length: mentionText.length })],
+    replyMarkup: undefined,
+  } as unknown as Api.Message;
+}
+
+describe("createPublisher — troca de link por categoria", () => {
+  it("rota single (texto): mention classificada troca pelo valor configurado", async () => {
+    const bot = makeFakeBot();
+    bot.publishText.mockResolvedValue(5000);
+    const reader = makeFakeReader();
+    const classify = vi.fn(async () => "bot" as const);
+    const ctx = makeCtx(reader, bot, null, { classify, values: { botUsername: "novobot" } });
+    const publish = createPublisher(ctx);
+
+    const raw = mentionRaw(1, "fale com @velhobot agora", "@velhobot");
+    await publish([sourceMessage(raw)], null);
+
+    expect(bot.publishText).toHaveBeenCalledWith("fale com @novobot agora", expect.anything());
+    expect(classify).toHaveBeenCalledWith("@velhobot");
+  });
+
+  it("ctx.linkReplace null: comportamento idêntico ao de antes da feature (regressão)", async () => {
+    const bot = makeFakeBot();
+    bot.publishText.mockResolvedValue(5001);
+    const reader = makeFakeReader();
+    const ctx = makeCtx(reader, bot, null, null);
+    const publish = createPublisher(ctx);
+
+    const raw = mentionRaw(1, "fale com @velhobot agora", "@velhobot");
+    await publish([sourceMessage(raw)], null);
+
+    expect(bot.publishText).toHaveBeenCalledWith("fale com @velhobot agora", expect.anything());
+  });
+
+  it("rota enquete: classify nunca é chamado (enquete não usa texto/entities)", async () => {
+    const bot = makeFakeBot();
+    bot.publishPoll.mockResolvedValue(5002);
+    const reader = makeFakeReader();
+    const classify = vi.fn(async () => "bot" as const);
+    const ctx = {
+      ...makeCtx(reader, bot, null, { classify, values: { botUsername: "novobot" } }),
+      copyPolls: true,
+    };
+    const publish = createPublisher(ctx);
+
+    await publish([sourceMessage(pollRaw(1))], null);
+
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("rota álbum de verdade: reescreve a legenda de cada item", async () => {
+    const bot = makeFakeBot();
+    bot.publishAlbum.mockImplementation(async (items: unknown[]) => items.map((_, i) => 6000 + i));
+    const reader = makeFakeReader();
+    const classify = vi.fn(async () => "channel" as const);
+    const ctx = makeCtx(reader, bot, null, { classify, values: { channelLink: "t.me/canalnovo" } });
+    const publish = createPublisher(ctx);
+
+    const text = "veja @velhocanal";
+    const group = [
+      sourceMessage(photoRawWithText(1, text, "@velhocanal")),
+      sourceMessage(photoRawWithText(2, text, "@velhocanal")),
+    ];
+
+    await publish(group, null);
+
+    expect(bot.publishAlbum).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ caption: "veja t.me/canalnovo" }),
+        expect.objectContaining({ caption: "veja t.me/canalnovo" }),
+      ],
+      expect.anything(),
+    );
+  });
+
+  it("rota álbum degradada (item grande demais): fallback item-a-item também reescreve a legenda", async () => {
+    const bot = makeFakeBot();
+    bot.publishMedia.mockResolvedValue(6100);
+    const reader = makeFakeReader(new Set([2])); // msg 2 grande demais -> degrada
+    const classify = vi.fn(async () => "channel" as const);
+    const ctx = makeCtx(reader, bot, null, { classify, values: { channelLink: "t.me/canalnovo" } });
+    const publish = createPublisher(ctx);
+
+    const text = "veja @velhocanal";
+    const group = [
+      sourceMessage(photoRawWithText(1, text, "@velhocanal")),
+      sourceMessage(photoRawWithText(2, text, "@velhocanal")),
+    ];
+
+    await publish(group, null);
+
+    expect(bot.publishMedia).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "veja t.me/canalnovo",
+      expect.anything(),
     );
   });
 });

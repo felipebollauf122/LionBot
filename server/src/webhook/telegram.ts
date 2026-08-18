@@ -51,6 +51,8 @@ interface Bot {
   sigilopay_secret_key: string | null;
   evpay_api_key: string | null;
   evpay_project_id: string | null;
+  zuckpay_client_id: string | null;
+  zuckpay_client_secret: string | null;
   facebook_pixel_id: string | null;
   facebook_access_token: string | null;
   facebook_pixel_id_backup: string | null;

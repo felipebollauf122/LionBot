@@ -47,6 +47,31 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
     setButtons(next.length > 0 ? next : [{ id: "reject", label: "Recusar" }]);
   };
 
+  // ── Botões extras (qualquer tipo de venda) — cada um vira um botão do
+  // Telegram embaixo dos preços. "Link" abre uma URL direto (canal, grupo,
+  // qualquer link) sem passar pelo fluxo. "Fluxo" vira um handle próprio no
+  // cardzinho, do lado de Pagou/Não Pagou, pra você conectar a outro nó. ──
+  type CustomBtn = { id: string; label: string; kind: "link" | "flow"; url?: string };
+  const customButtons: CustomBtn[] = Array.isArray(data.custom_buttons)
+    ? (data.custom_buttons as CustomBtn[])
+    : [];
+  const setCustomButtons = (next: CustomBtn[]) => onChange({ ...data, custom_buttons: next });
+  const updateCustomButton = (i: number, patch: Partial<CustomBtn>) => {
+    setCustomButtons(customButtons.map((b, idx) => (idx === i ? { ...b, ...patch } : b)));
+  };
+  const addCustomButton = () => {
+    // prefixo próprio (custom_N) pra nunca colidir com os ids de
+    // accept_reject_buttons (reject/btn_N) — os dois podem coexistir no
+    // mesmo nó (ex: upsell com "Recusar" E um botão extra de suporte).
+    const used = new Set(customButtons.map((b) => b.id));
+    let n = 0;
+    while (used.has(`custom_${n}`)) n++;
+    setCustomButtons([...customButtons, { id: `custom_${n}`, label: "Novo botão", kind: "link", url: "" }]);
+  };
+  const removeCustomButton = (i: number) => {
+    setCustomButtons(customButtons.filter((_, idx) => idx !== i));
+  };
+
   return (
     <div className="space-y-3">
       {/* Tipo de venda — destacado: define como esta venda aparece nas Análises */}
@@ -174,6 +199,81 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
           </p>
         )}
       </div>
+
+      {/* Botões extras — aparecem embaixo dos preços, pra qualquer tipo de venda */}
+      <div
+        className="rounded-xl p-3 space-y-2.5"
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border-subtle)" }}
+      >
+        <div>
+          <label className="input-label mb-0!">Botões extras</label>
+          <p className="text-[10px] text-(--text-muted) mt-0.5 mb-2" style={{ opacity: 0.8 }}>
+            Aparecem embaixo dos preços. <strong>Link</strong> abre uma URL direto (canal, grupo, qualquer
+            link). <strong>Fluxo</strong> vira um handle no cardzinho, do lado de Pagou/Não Pagou — conecte a
+            outro nó pra continuar o fluxo por ali.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {customButtons.map((b, i) => (
+            <div key={b.id} className="rounded-lg p-2 space-y-1.5 bg-white/[0.02] border border-(--border-subtle)">
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={b.label}
+                  onChange={(e) => updateCustomButton(i, { label: e.target.value })}
+                  placeholder="Texto do botão"
+                  className="input text-xs py-1.5! flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeCustomButton(i)}
+                  aria-label="Remover botão"
+                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
+              </div>
+              <div className="inline-flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
+                <button
+                  type="button"
+                  onClick={() => updateCustomButton(i, { kind: "link" })}
+                  className={`toggle-btn ${b.kind === "link" ? "on" : "off"}`}
+                >
+                  Link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateCustomButton(i, { kind: "flow" })}
+                  className={`toggle-btn ${b.kind === "flow" ? "on" : "off"}`}
+                >
+                  Fluxo
+                </button>
+              </div>
+              {b.kind === "link" ? (
+                <input
+                  value={b.url ?? ""}
+                  onChange={(e) => updateCustomButton(i, { url: e.target.value })}
+                  placeholder="https://t.me/seucanal"
+                  className="input text-xs py-1.5!"
+                />
+              ) : (
+                <p className="text-(--purple) text-[10px]" style={{ opacity: 0.85 }}>
+                  Conecte esse botão a um nó no editor — o handle aparece no cardzinho deste nó.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={addCustomButton}
+          className="w-full text-xs py-2 rounded-lg border border-dashed border-(--border-default) text-(--text-secondary) hover:text-foreground hover:bg-white/[0.03] transition-colors flex items-center justify-center gap-1.5"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          Adicionar botão
+        </button>
+      </div>
+
       <div>
         <label className="input-label">Timeout &quot;Nao Pagou&quot; (minutos)</label>
         <input

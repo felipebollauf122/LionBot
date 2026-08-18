@@ -13,6 +13,7 @@ import type { Flow } from "./engine/flow-processor.js";
 import { processRemarketing } from "./workers/remarketing-worker.js";
 import { pollEvpayPendingTransactions } from "./workers/evpay-poller.js";
 import { pollPoseidonPendingTransactions } from "./workers/poseidonpay-poller.js";
+import { pollZuckpayPendingTransactions } from "./workers/zuckpay-poller.js";
 import { pollChannelMonitors } from "./workers/channel-monitor-poller.js";
 
 interface Bot {
@@ -25,6 +26,8 @@ interface Bot {
   sigilopay_secret_key: string | null;
   evpay_api_key: string | null;
   evpay_project_id: string | null;
+  zuckpay_client_id: string | null;
+  zuckpay_client_secret: string | null;
   facebook_pixel_id: string | null;
   facebook_access_token: string | null;
   facebook_pixel_id_backup: string | null;
@@ -520,6 +523,19 @@ export function startWorkers(): void {
       });
   }, 5_000);
 
+  // ZuckPay status poller — mesma estratégia do EvPay (webhook é o principal,
+  // isto é o fallback). Trava anti-sobreposição pra não empilhar fetches lentos.
+  let zuckpayPollerRunning = false;
+  setInterval(() => {
+    if (zuckpayPollerRunning) return;
+    zuckpayPollerRunning = true;
+    pollZuckpayPendingTransactions(supabase)
+      .catch((err) => console.error("[zuckpay-poller] Error:", err))
+      .finally(() => {
+        zuckpayPollerRunning = false;
+      });
+  }, 5_000);
+
   // Poseidon Pay status poller — DESLIGADO por enquanto.
   // A Poseidon não tem endpoint público de consulta de status (todos
   // os GETs que tentamos retornaram 403 pelo Cloudflare). Manter o
@@ -549,5 +565,28 @@ export function startWorkers(): void {
   setInterval(() => tickChannelMonitor(), 10 * 60 * 1000);
   setTimeout(() => tickChannelMonitor(), 60_000); // 1 min após boot
 
-  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + channel-monitor started");
+  // Bot-clone: watchdog do listener de remarketing (24h). Mesmo motivo do
+  // watchdog que o clone_jobs NÃO tem hoje (gap conhecido, mas pouco exposto
+  // lá: um passe único vs. até 288 ciclos de poll aqui) — se o worker cair
+  // entre "liberar lock" e "reenfileirar o próximo tick", o job travaria em
+  // listening_remarketing pra sempre sem isso. setInterval, não BullMQ
+  // repeat: este codebase não usa essa feature em lugar nenhum (mesmo padrão
+  // dos outros 7+ pollers acima).
+  let botCloneWatchdogRunning = false;
+  async function tickBotCloneWatchdogSafe(): Promise<void> {
+    if (botCloneWatchdogRunning) return;
+    botCloneWatchdogRunning = true;
+    try {
+      const { tickBotCloneRemarketingWatchdog } = await import("./workers/bot-clone-handler.js");
+      await tickBotCloneRemarketingWatchdog();
+    } catch (err) {
+      console.error("[botclone-watchdog] Error:", err);
+    } finally {
+      botCloneWatchdogRunning = false;
+    }
+  }
+  setInterval(() => tickBotCloneWatchdogSafe(), 10 * 60 * 1000);
+  setTimeout(() => tickBotCloneWatchdogSafe(), 90_000); // 90s após boot
+
+  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + channel-monitor + botclone-watchdog started");
 }

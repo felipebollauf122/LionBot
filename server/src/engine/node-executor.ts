@@ -9,6 +9,7 @@ import { handleInputNode } from "./nodes/input.js";
 import { handleActionNode } from "./nodes/action.js";
 import { handleVideoNode } from "./nodes/video.js";
 import { handlePaymentBundleNode } from "./nodes/payment-button.js";
+import { handleUnmappedNode } from "./nodes/unmapped.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PaymentGateway } from "../services/payment-gateway.js";
 
@@ -22,12 +23,13 @@ const handlers: Record<string, (ctx: NodeContext) => Promise<NodeResult>> = {
   input: handleInputNode,
   action: handleActionNode,
   video: handleVideoNode,
+  unmapped: handleUnmappedNode,
 };
 
 export interface ExecuteNodeDeps {
   db?: SupabaseClient;
   gateway?: PaymentGateway;
-  gatewayKind?: "sigilopay" | "evpay";
+  gatewayKind?: "sigilopay" | "evpay" | "zuckpay";
   baseWebhookUrl?: string;
 }
 

@@ -48,7 +48,7 @@ export class FlowProcessor {
     private delayQueue: DelayQueue,
     deps?: {
       gateway?: PaymentGateway;
-      gatewayKind?: "sigilopay" | "evpay";
+      gatewayKind?: "sigilopay" | "evpay" | "zuckpay";
       baseWebhookUrl?: string;
     },
   ) {

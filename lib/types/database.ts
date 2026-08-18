@@ -3,7 +3,7 @@ export type TransactionStatus = "pending" | "approved" | "refused" | "refunded";
 export type TriggerType = "command" | "first_contact" | "callback" | "payment_event";
 export type TrackingEventType = "page_view" | "bot_start" | "view_offer" | "checkout" | "purchase";
 export type TrackingMode = "redirect" | "prelander";
-export type NodeType = "trigger" | "text" | "image" | "video" | "button" | "payment_button" | "delay" | "condition" | "input" | "action";
+export type NodeType = "trigger" | "text" | "image" | "video" | "button" | "payment_button" | "delay" | "condition" | "input" | "action" | "unmapped";
 
 // === Flow Data (JSONB structure) ===
 export interface FlowNode {

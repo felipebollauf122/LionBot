@@ -87,6 +87,13 @@ export type CreateCloneResult =
   | { ok: true; cloneJobId: string }
   | { ok: false; error: string };
 
+/** Vazio vira null (categoria não é trocada); '@' na frente do bot é ignorado. */
+function normalizeLinkReplace(raw: string, stripAt = false): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return stripAt ? trimmed.replace(/^@/, "") : trimmed;
+}
+
 export async function createCloneJob(input: {
   dialogId: string;
   destTitle: string;
@@ -99,6 +106,12 @@ export async function createCloneJob(input: {
   copyPolls: boolean;
   /** Conta que cria o destino. Omitido/igual à origem = mesma conta. */
   destAccountId?: string;
+  /** Username sem @ pra trocar todo bot mencionado/linkado no conteúdo clonado. Vazio = não troca. */
+  linkReplaceBot: string;
+  /** Link pra trocar todo grupo mencionado/linkado. Vazio = não troca. */
+  linkReplaceGroup: string;
+  /** Link pra trocar todo canal mencionado/linkado. Vazio = não troca. */
+  linkReplaceChannel: string;
 }): Promise<CreateCloneResult> {
   try {
     await requireOwner();
@@ -167,6 +180,9 @@ export async function createCloneJob(input: {
         copy_pins: input.copyPins,
         copy_buttons: input.copyButtons,
         copy_polls: input.copyPolls,
+        link_replace_bot: normalizeLinkReplace(input.linkReplaceBot, true),
+        link_replace_group: normalizeLinkReplace(input.linkReplaceGroup),
+        link_replace_channel: normalizeLinkReplace(input.linkReplaceChannel),
         status: "draft",
       })
       .select("id")

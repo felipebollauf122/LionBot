@@ -48,7 +48,7 @@ RLS isola por `tenant_id` — todas as queries já vêm filtradas pelo tenant lo
 ### 🟡 Query nova / proxy (definir semântica primeiro)
 Taxa de Conversão (gauge = checkout/bot_start), Vendas por Hora (pagos via transactions; "gerados" = checkout), Receita Gerada vs Confirmada, Taxa Abandono (checkout sem purchase), Taxa Recuperação (cruzar remarketing_progress×transactions), Taxa Retenção, Contadores por tipo de usuário.
 
-**Definição a fixar:** **"PIX gerado" = `tracking_events.event_type='checkout'`**; **"PIX pago" = `transactions.status='approved'`**. (Decisão default — confirmar com usuário.)
+**Definição FIXADA (aprovada pelo usuário 2026-06-10):** **"PIX gerado" = `tracking_events.event_type='checkout'`**; **"PIX pago" = `transactions.status='approved'`**.
 
 ### 🔴 Sem dado → placeholder "em breve"
 Meta de faturamento, Premiações/badges, Top 5 Players, Top Códigos de Venda, Top Posicionamentos, Geolocalização (mapa BR + estados + Top Cidades), Dispositivos, Taxa Upsell/Downsell/OrderBump/Upgrade, Diário de Mudanças.
@@ -136,7 +136,7 @@ Trabalho em **git worktree isolado** (não bagunça a `main` que deploya na Verc
 
 ## 8. Riscos / decisões em aberto
 
-- **Semântica "PIX gerado"** (checkout vs transaction pending) — afeta vários 🟡. Default proposto: `checkout`.
+- ~~**Semântica "PIX gerado"**~~ — RESOLVIDO: `checkout`.
 - **Gráficos em SVG puro** vs lib — se algum ficar inviável (ex.: mapa do Brasil), o mapa já é placeholder mesmo, então sem risco.
 - **Volume de queries** na tela Análises (muitos widgets) — agrupar em poucas actions que retornam vários números de uma vez, e usar `Promise.all` (padrão já usado no projeto). Evitar N+1.
 - **Nomes exatos de colunas de `leads`** (utm_source/utm_campaign/username) — validar na implementação antes de usar.

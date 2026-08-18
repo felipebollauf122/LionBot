@@ -10,7 +10,10 @@ export type MtprotoJobData =
   | { kind: "auth.submit-password"; accountId: string; password: string }
   | { kind: "campaign.run"; campaignId: string }
   | { kind: "account.sync-dialogs"; accountId: string }
-  | { kind: "clone.run"; cloneJobId: string };
+  | { kind: "clone.run"; cloneJobId: string }
+  | { kind: "botclone.explore"; cloneJobId: string }
+  | { kind: "botclone.remarketing-poll"; cloneJobId: string }
+  | { kind: "botclone.build-flow"; cloneJobId: string };
 
 export const mtprotoQueue = new Queue<MtprotoJobData>("mtproto", { connection });
 

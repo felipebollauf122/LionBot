@@ -1,6 +1,7 @@
 import type { FlowNode, FlowEdge } from "../../../engine/types.js";
 import { entitiesToHtml } from "./entities-to-html.js";
 import type { PersistedMessage } from "./explorer.js";
+import { normalizeLabelForDedupKey } from "./price-parser.js";
 
 export interface FlowData {
   nodes: FlowNode[];
@@ -179,7 +180,7 @@ function buildTurnChain(
  * que ainda não foi atribuído, o que uma reconstrução de passe único não
  * garante quando a ordem de visita não é cronológica.
  */
-export function buildFlowGraph(nodes: CapturedNodeForFlow[]): FlowData {
+export function buildFlowGraph(nodes: CapturedNodeForFlow[], priceMap?: Map<string, string>): FlowData {
   const explored = nodes.filter((n) => n.status === "explored");
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
@@ -264,15 +265,31 @@ export function buildFlowGraph(nodes: CapturedNodeForFlow[]): FlowData {
         });
         allEdges.push({ id: `e_${flowNodeId}_${btn.id}`, source: flowNodeId, target: unmappedId, sourceHandle: btn.id });
       }
-      // Botões pulados pelo guard (não-url) também viram unmapped — motivo preservado.
+      // Botões pulados pelo guard (não-url): se o preço deu pra extrair e um
+      // produto já foi criado pro rótulo (priceMap, montado pelo chamador
+      // antes de qualquer buildFlowGraph), vira payment_button de verdade;
+      // senão cai no unmapped de sempre, motivo preservado.
       for (const btn of msg.buttons) {
         if (btn.kind === "url" || !btn.skip) continue;
+        const position = { x: (depthOf.get(n.id) ?? 0) * NODE_WIDTH_X + NODE_WIDTH_X, y: 0 };
+        const bundleId = priceMap?.get(normalizeLabelForDedupKey(btn.label));
+        if (bundleId) {
+          const paymentId = ids.next();
+          allNodes.push({
+            id: paymentId,
+            type: "payment_button",
+            data: { bundle_id: bundleId, sale_type: "main" },
+            position,
+          });
+          allEdges.push({ id: `e_${flowNodeId}_${btn.id}`, source: flowNodeId, target: paymentId, sourceHandle: btn.id });
+          continue;
+        }
         const unmappedId = ids.next();
         allNodes.push({
           id: unmappedId,
           type: "unmapped",
           data: { kind: "skipped_branch", original_label: btn.label, skip_reason: btn.skipReason },
-          position: { x: (depthOf.get(n.id) ?? 0) * NODE_WIDTH_X + NODE_WIDTH_X, y: 0 },
+          position,
         });
         allEdges.push({ id: `e_${flowNodeId}_${btn.id}`, source: flowNodeId, target: unmappedId, sourceHandle: btn.id });
       }

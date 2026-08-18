@@ -26,6 +26,8 @@ import { downloadAndRehostMedia } from "../services/mtproto/bot-clone/media-reho
 import { gramjsEntitiesToCaptured, type CapturedEntity } from "../services/mtproto/bot-clone/entities-to-html.js";
 import { mapRawButton, classifyButton } from "../services/mtproto/bot-clone/payment-guard.js";
 import { buildFlowGraph, type CapturedNodeForFlow } from "../services/mtproto/bot-clone/transcript-to-flow.js";
+import { collectPriceCandidates } from "../services/mtproto/bot-clone/price-candidates.js";
+import { createClonedProductsAndBundles } from "../services/mtproto/bot-clone/create-cloned-products.js";
 import { planForMessage } from "../services/mtproto/clone/media-plan.js";
 import { SourceReader } from "../services/mtproto/clone/source-reader.js";
 import { MAX_FILE_BYTES } from "../services/mtproto/clone/publish-router.js";
@@ -680,7 +682,36 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
       duplicateOfNodeId: row.duplicate_of_node_id,
       messages: ((row.messages as Record<string, unknown>[] | null) ?? []).map(mapStoredMessage),
     }));
-    const flowData = buildFlowGraph(capturedNodes);
+
+    // Buscado ANTES de montar qualquer flow_data: a coleta de preço (abaixo)
+    // precisa enxergar fluxo principal + todos os bursts de remarketing
+    // juntos, pra deduplicar rótulo repetido entre os dois.
+    const { data: rmRows } = await supabase
+      .from("bot_clone_remarketing_messages")
+      .select("*")
+      .eq("job_id", cloneJobId)
+      .order("seconds_after_explore_end", { ascending: true });
+
+    const syntheticRmNodes: CapturedNodeForFlow[] = (rmRows ?? []).map((r) => ({
+      id: `rm_${r.id}`,
+      parentNodeId: null,
+      triggeredByButtonId: null,
+      status: "explored",
+      duplicateOfNodeId: null,
+      messages: ((r.messages as Record<string, unknown>[] | null) ?? []).map(mapStoredMessage),
+    }));
+
+    // Botão de preço pulado pelo guard vira produto de verdade (decisão do
+    // usuário: "clonar tudo") — 1 produto+bundle por rótulo distinto,
+    // reusado em toda ocorrência (o mesmo plano se repete dezenas de vezes
+    // nos bursts de remarketing).
+    const priceCandidates = collectPriceCandidates([...capturedNodes, ...syntheticRmNodes]);
+    const priceMap =
+      priceCandidates.size > 0
+        ? await createClonedProductsAndBundles(supabase, { tenantId: job.tenant_id, botId: job.dest_bot_id }, priceCandidates)
+        : new Map<string, string>();
+
+    const flowData = buildFlowGraph(capturedNodes, priceMap);
 
     const { data: flowRow, error: flowErr } = await supabase
       .from("flows")
@@ -698,12 +729,6 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
       .single();
     if (flowErr || !flowRow) throw new Error(`insert flows falhou: ${flowErr?.message}`);
 
-    const { data: rmRows } = await supabase
-      .from("bot_clone_remarketing_messages")
-      .select("*")
-      .eq("job_id", cloneJobId)
-      .order("seconds_after_explore_end", { ascending: true });
-
     let remarketingConfigId: string | null = null;
     if (rmRows && rmRows.length > 0) {
       const { data: cfgRow, error: cfgErr } = await supabase
@@ -719,17 +744,8 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
       if (cfgErr || !cfgRow) throw new Error(`insert remarketing_configs falhou: ${cfgErr?.message}`);
       remarketingConfigId = cfgRow.id as string;
 
-      for (let i = 0; i < rmRows.length; i++) {
-        const r = rmRows[i];
-        const syntheticNode: CapturedNodeForFlow = {
-          id: `rm_${r.id}`,
-          parentNodeId: null,
-          triggeredByButtonId: null,
-          status: "explored",
-          duplicateOfNodeId: null,
-          messages: ((r.messages as Record<string, unknown>[] | null) ?? []).map(mapStoredMessage),
-        };
-        const rmFlowData = buildFlowGraph([syntheticNode]);
+      for (let i = 0; i < syntheticRmNodes.length; i++) {
+        const rmFlowData = buildFlowGraph([syntheticRmNodes[i]], priceMap);
         const { error: rmFlowErr } = await supabase.from("remarketing_flows").insert({
           config_id: remarketingConfigId,
           bot_id: job.dest_bot_id,

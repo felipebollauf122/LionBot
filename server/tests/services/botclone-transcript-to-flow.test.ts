@@ -96,6 +96,54 @@ describe("buildFlowGraph", () => {
     expect(btnNode.data.buttons).toEqual([{ text: "Comprar agora", action: "next", value: "b0_0" }]);
   });
 
+  it("botão pulado com preço presente no priceMap vira payment_button de verdade, não unmapped", () => {
+    const nodes: CapturedNodeForFlow[] = [
+      {
+        id: "root",
+        parentNodeId: null,
+        triggeredByButtonId: null,
+        status: "explored",
+        duplicateOfNodeId: null,
+        messages: [msg({ buttons: [btn({ id: "b0_0", label: "Vip Mensal por R$ 15.93", skip: true, skipReason: "payment_keyword_match", data: null })] })],
+      },
+    ];
+    const priceMap = new Map([["vip mensal por r$ 15.93", "bundle-abc"]]);
+    const flow = buildFlowGraph(nodes, priceMap);
+    const btnNode = flow.nodes.find((n) => n.type === "button")!;
+    const edge = flow.edges.find((e) => e.source === btnNode.id)!;
+    const target = flow.nodes.find((n) => n.id === edge.target)!;
+    expect(target.type).toBe("payment_button");
+    expect(target.data).toEqual({ bundle_id: "bundle-abc", sale_type: "main" });
+    expect(edge.sourceHandle).toBe("b0_0");
+    expect(flow.nodes.some((n) => n.type === "unmapped")).toBe(false);
+  });
+
+  it("botão pulado sem chave no priceMap (ou priceMap ausente) continua caindo em unmapped, sem quebrar", () => {
+    const nodes: CapturedNodeForFlow[] = [
+      {
+        id: "root",
+        parentNodeId: null,
+        triggeredByButtonId: null,
+        status: "explored",
+        duplicateOfNodeId: null,
+        messages: [msg({ buttons: [btn({ id: "b0_0", label: "Comprar agora", skip: true, skipReason: "payment_keyword_match", data: null })] })],
+      },
+    ];
+    const withEmptyMap = buildFlowGraph(nodes, new Map());
+    expect(withEmptyMap.nodes.find((n) => n.type === "unmapped")?.data).toEqual({
+      kind: "skipped_branch",
+      original_label: "Comprar agora",
+      skip_reason: "payment_keyword_match",
+    });
+
+    const withoutMap = buildFlowGraph(nodes);
+    expect(withoutMap.nodes.find((n) => n.type === "unmapped")?.data).toEqual({
+      kind: "skipped_branch",
+      original_label: "Comprar agora",
+      skip_reason: "payment_keyword_match",
+    });
+  });
+
   it("botão não explorado (sem filho, sem skip — teto atingido) vira unmapped 'not_explored', nunca aresta solta", () => {
     const nodes: CapturedNodeForFlow[] = [
       {

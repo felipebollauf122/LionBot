@@ -244,6 +244,7 @@ export async function handleProductPaymentCallback(
   baseWebhookUrl: string,
   productId: string,
   gatewayKind: "sigilopay" | "evpay" | "zuckpay" = "sigilopay",
+  paymentButtonId?: string,
 ): Promise<NodeResult> {
   // Fetch product
   const { data: product } = await db
@@ -510,6 +511,7 @@ export async function handleProductPaymentCallback(
         botId: ctx.lead.bot_id,
         tenantId: ctx.lead.tenant_id,
         chatId: ctx.chatId,
+        paymentButtonId,
       },
       timeoutMinutes * 60,
     ).catch((e) => console.error("[payment] Failed to schedule timeout:", e));
@@ -521,6 +523,10 @@ export async function handleProductPaymentCallback(
     stateUpdates: {
       pending_transaction_id: payment.transactionId,
       pending_payment_node_id: ctx.node.id,
+      // sempre explícito (nunca omitido) — limpa um id de botão de um
+      // pagamento anterior pra não vazar num pagamento de outra origem
+      // (nó de pagamento dedicado ou outro botão) pro mesmo lead.
+      pending_payment_button_id: paymentButtonId ?? null,
       pending_identifier: identifier,
       pending_pix_code: payment.pixCode,
       pending_pix_image: qrCodeUrl,

@@ -68,6 +68,11 @@ interface PaymentTimeoutData {
   botId: string;
   tenantId: string;
   chatId: number;
+  // presente só quando o pagamento veio de um botão de pagamento inline
+  // (dentro de um nó "button" comum) — namespacea o handle "not_paid"
+  // pra rotear esse botão especificamente, sem afetar o nó de pagamento
+  // dedicado (que continua usando o handle "not_paid" plano).
+  paymentButtonId?: string;
 }
 
 export const paymentTimeoutQueue = new Queue<PaymentTimeoutData>("payment-timeout", {
@@ -198,7 +203,7 @@ export function startWorkers(): void {
   new Worker<PaymentTimeoutData>(
     "payment-timeout",
     async (job: Job<PaymentTimeoutData>) => {
-      const { leadId, flowId, paymentNodeId, externalTransactionId, botId, chatId } = job.data;
+      const { leadId, flowId, paymentNodeId, externalTransactionId, botId, chatId, paymentButtonId } = job.data;
 
       // Check if payment was already approved
       const { data: tx } = await supabase
@@ -233,9 +238,11 @@ export function startWorkers(): void {
       const lead = await leadService.getById(leadId);
       if (!lead) return;
 
-      // Find the "not_paid" edge from the payment node
+      // Find the "not_paid" edge from the payment node — namespaced pelo
+      // botão de origem quando veio de um botão de pagamento inline.
+      const notPaidHandle = paymentButtonId ? `not_paid:${paymentButtonId}` : "not_paid";
       const notPaidEdge = flow.flow_data.edges.find(
-        (e) => e.source === paymentNodeId && e.sourceHandle === "not_paid",
+        (e) => e.source === paymentNodeId && e.sourceHandle === notPaidHandle,
       );
 
       if (!notPaidEdge) {

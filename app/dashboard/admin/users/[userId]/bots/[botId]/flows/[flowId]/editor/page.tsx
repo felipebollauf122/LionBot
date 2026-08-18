@@ -15,7 +15,7 @@ export default async function AdminBotFlowEditorPage({
   const { userId, botId, flowId } = await params;
   const supabase = await createClient();
 
-  const [{ data: flow }, { data: bundles }] = await Promise.all([
+  const [{ data: flow }, { data: bundles }, { data: products }] = await Promise.all([
     supabase
       .from("flows")
       .select("*")
@@ -25,6 +25,12 @@ export default async function AdminBotFlowEditorPage({
     supabase
       .from("product_bundles")
       .select("id, name, is_active")
+      .eq("bot_id", botId)
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("products")
+      .select("id, name, price, currency")
       .eq("bot_id", botId)
       .eq("is_active", true)
       .order("name"),
@@ -41,6 +47,7 @@ export default async function AdminBotFlowEditorPage({
       initialData={typedFlow.flow_data}
       botId={botId}
       bundles={(bundles ?? []) as { id: string; name: string }[]}
+      products={(products ?? []) as { id: string; name: string; price: number; currency: string }[]}
       backUrl={`/dashboard/admin/users/${userId}/bots/${botId}/flows`}
     />
   );

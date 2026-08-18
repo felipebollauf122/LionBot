@@ -12,7 +12,7 @@ import { ActionConfig } from "./config-forms/action-config";
 import { VideoConfig } from "./config-forms/video-config";
 import { PaymentButtonConfig } from "./config-forms/payment-button-config";
 import { UnmappedConfig } from "./config-forms/unmapped-config";
-import type { BundleOption } from "./flow-editor";
+import type { BundleOption, ProductOption } from "./flow-editor";
 
 interface NodeConfigPanelProps {
   node: Node | null;
@@ -20,6 +20,7 @@ interface NodeConfigPanelProps {
   onClose: () => void;
   onDelete: (nodeId: string) => void;
   bundles: BundleOption[];
+  products: ProductOption[];
 }
 
 const nodeInfo: Record<string, { label: string; icon: string; color: string }> = {
@@ -36,7 +37,7 @@ const nodeInfo: Record<string, { label: string; icon: string; color: string }> =
   unmapped: { label: "Nao mapeado", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01", color: "var(--amber)" },
 };
 
-export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, products }: NodeConfigPanelProps) {
   if (!node) return null;
 
   const handleChange = (data: Record<string, unknown>) => {
@@ -49,7 +50,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles }: 
     trigger: <TriggerConfig data={node.data} onChange={handleChange} />,
     text: <TextConfig data={node.data} onChange={handleChange} />,
     image: <ImageConfig data={node.data} onChange={handleChange} />,
-    button: <ButtonConfig data={node.data} onChange={handleChange} />,
+    button: <ButtonConfig data={node.data} onChange={handleChange} products={products} />,
     delay: <DelayConfig data={node.data} onChange={handleChange} />,
     condition: <ConditionConfig data={node.data} onChange={handleChange} />,
     input: <InputConfig data={node.data} onChange={handleChange} />,

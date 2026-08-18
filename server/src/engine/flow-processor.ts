@@ -157,6 +157,67 @@ export class FlowProcessor {
   }
 
   /**
+   * Gera o Pix e processa o resultado (deleção de mensagens em black flow +
+   * merge de stateUpdates). Compartilhado pelos dois pontos de entrada de
+   * pagamento em handleCallbackQuery (bundle "pay:" e botão de pagamento
+   * inline) — mantê-los em um lugar só evita que os dois divirjam quando um
+   * dos dois ganhar um fix (deps, mensagem de erro, etc) e o outro não.
+   */
+  private async runPaymentCallback(opts: {
+    ctx: NodeContext;
+    productId: string;
+    paymentButtonId?: string;
+    lead: Lead;
+    telegram: TelegramApi;
+    chatId: number;
+    isBlack: boolean;
+    resolveBotId: () => Promise<string | undefined>;
+    logTag: string;
+  }): Promise<void> {
+    const { ctx, productId, paymentButtonId, lead, telegram, chatId, isBlack, resolveBotId, logTag } = opts;
+
+    if (!this.executeDeps.db || !this.executeDeps.gateway || !this.executeDeps.baseWebhookUrl) {
+      console.error(`[${logTag}] Missing deps`);
+      return;
+    }
+
+    const { handleProductPaymentCallback } = await import("./nodes/payment-button.js");
+
+    try {
+      const result = await handleProductPaymentCallback(
+        ctx,
+        this.executeDeps.db,
+        this.executeDeps.gateway,
+        this.executeDeps.baseWebhookUrl,
+        productId,
+        this.executeDeps.gatewayKind ?? "sigilopay",
+        paymentButtonId,
+      );
+
+      // Queue black flow messages for deletion (apenas em flows visuais black)
+      if (isBlack && result.messageIds) {
+        const botId = await resolveBotId();
+        if (botId) {
+          for (const msgId of result.messageIds) {
+            await this.queueMessageDeletion(botId, telegram.botToken, chatId, msgId, BLACK_DELETE_DELAY_MINUTES);
+          }
+        }
+      }
+
+      if (result.stateUpdates) {
+        lead.state = { ...lead.state, ...result.stateUpdates };
+        await this.leadService.updateState(lead.id, lead.state);
+      }
+    } catch (error) {
+      console.error(`[${logTag}] Error processing payment:`, error);
+      await telegram.sendMessage({
+        chatId,
+        text: "Ocorreu um erro ao processar o pagamento. Tente novamente.",
+      });
+    }
+  }
+
+  /**
    * Execute a flow. If isBlack=true, messages are queued for deletion after 15min (black flow default).
    * If deleteAfterMinutes is provided, overrides isBlack and uses that delay instead.
    */
@@ -498,44 +559,20 @@ export class FlowProcessor {
         chatId,
       };
 
-      const { handleProductPaymentCallback } = await import("./nodes/payment-button.js");
-
-      if (!this.executeDeps.db || !this.executeDeps.gateway || !this.executeDeps.baseWebhookUrl) {
-        console.error("[pay callback] Missing deps");
-        return;
-      }
-
-      try {
-        const result = await handleProductPaymentCallback(
-          ctx,
-          this.executeDeps.db,
-          this.executeDeps.gateway,
-          this.executeDeps.baseWebhookUrl,
-          productId,
-          this.executeDeps.gatewayKind ?? "sigilopay",
-        );
-
-        // Queue black flow messages for deletion (apenas em flows visuais black)
-        if (isBlack && result.messageIds && lead.current_flow_id) {
+      await this.runPaymentCallback({
+        ctx,
+        productId,
+        lead,
+        telegram,
+        chatId,
+        isBlack,
+        resolveBotId: async () => {
+          if (!lead.current_flow_id) return undefined;
           const typedFlow = await this.getFlowById(lead.current_flow_id);
-          if (typedFlow) {
-            for (const msgId of result.messageIds) {
-              await this.queueMessageDeletion(typedFlow.bot_id, telegram.botToken, chatId, msgId, BLACK_DELETE_DELAY_MINUTES);
-            }
-          }
-        }
-
-        if (result.stateUpdates) {
-          lead.state = { ...lead.state, ...result.stateUpdates };
-          await this.leadService.updateState(lead.id, lead.state);
-        }
-      } catch (error) {
-        console.error("[pay callback] Error processing payment:", error);
-        await telegram.sendMessage({
-          chatId,
-          text: "Ocorreu um erro ao processar o pagamento. Tente novamente.",
-        });
-      }
+          return typedFlow?.bot_id;
+        },
+        logTag: "pay callback",
+      });
       return;
     }
 
@@ -558,6 +595,57 @@ export class FlowProcessor {
       return;
     }
 
+    // Botão de pagamento inline: dentro de um nó "button" comum, um botão
+    // individual pode estar marcado action:"payment" — o clique gera o Pix
+    // direto (mesmo handleProductPaymentCallback do nó de pagamento
+    // dedicado), sem precisar de um nó separado. Diferente do prefixo
+    // "pay:" acima (fluxo de bundle, reconstrói um nó sintético a partir do
+    // lead.state), aqui usamos o nó vivo do flow_data — pega sale_type/
+    // payment_timeout_minutes reais, sem o gap de reconstrução do outro fluxo.
+    const sourceNode = typedFlow.flow_data.nodes.find((n) => n.id === sourceNodeId);
+    if (sourceNode?.type === "button") {
+      const buttons = (sourceNode.data.buttons ?? []) as Array<{
+        id?: string;
+        action?: string;
+        product_id?: string;
+        sale_type?: string;
+      }>;
+      const btn = buttons.find((b, i) => (b.id ?? `btn_idx_${i}`) === targetValue && b.action === "payment");
+
+      if (btn) {
+        const productId = String(btn.product_id ?? "");
+        if (!productId) {
+          await telegram.sendMessage({ chatId, text: "Erro: nenhum produto configurado neste botão." });
+          return;
+        }
+
+        // sale_type é configurado por botão (button-config.tsx), não no nó —
+        // sobrepõe aqui (nova cópia, nunca muta sourceNode: ele é a mesma
+        // referência guardada em flowByIdCache) pra handleProductPaymentCallback
+        // gravar a transação com o tipo de venda certo (Análises).
+        const ctx: NodeContext = {
+          node: { ...sourceNode, data: { ...sourceNode.data, sale_type: btn.sale_type ?? "main" } },
+          lead,
+          edges: [],
+          telegram,
+          chatId,
+        };
+
+        await this.runPaymentCallback({
+          ctx,
+          productId,
+          paymentButtonId: targetValue,
+          lead,
+          telegram,
+          chatId,
+          isBlack,
+          resolveBotId: async () => typedFlow.bot_id,
+          logTag: "inline payment",
+        });
+        return;
+      }
+    }
+
     const edges = typedFlow.flow_data.edges.filter((e) => e.source === sourceNodeId);
 
     let edge = edges.find(
@@ -565,7 +653,17 @@ export class FlowProcessor {
     );
 
     if (!edge && edges.length > 0) {
-      edge = edges[0];
+      // Fallback "primeira edge do nó" — mas nunca escolhe uma edge de
+      // pagamento aqui: nem as plain "paid"/"not_paid" do nó de pagamento
+      // dedicado (payment-button-node.tsx), nem as "paid:<id>"/"not_paid:<id>"
+      // namespaced por botão do botão de pagamento inline. Sem isso, um
+      // clique sem match exato (ex: botão de recusa renomeado, "Valor" mal
+      // configurado) podia cair acidentalmente na ramificação de pagamento
+      // confirmado/não confirmado — sem nenhum Pix ter sido gerado.
+      const isPaymentHandle = (h?: string) =>
+        h === "paid" || h === "not_paid" || h?.startsWith("paid:") || h?.startsWith("not_paid:");
+      const nonPaymentEdges = edges.filter((e) => !isPaymentHandle(e.sourceHandle));
+      edge = nonPaymentEdges[0];
     }
 
     if (edge) {

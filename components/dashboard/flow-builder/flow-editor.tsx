@@ -39,12 +39,20 @@ export interface BundleOption {
   name: string;
 }
 
+export interface ProductOption {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+}
+
 interface FlowEditorProps {
   flowId: string;
   flowName: string;
   initialData: FlowData;
   botId: string;
   bundles: BundleOption[];
+  products: ProductOption[];
   saveAction?: (flowId: string, flowData: FlowData) => Promise<{ success: boolean }>;
   backUrl?: string;
 }
@@ -83,7 +91,7 @@ function generateNodeId(type: string) {
   return `${type}-${Date.now()}-${nodeIdCounter}`;
 }
 
-export function FlowEditor({ flowId, flowName, initialData, botId, bundles, saveAction, backUrl }: FlowEditorProps) {
+export function FlowEditor({ flowId, flowName, initialData, botId, bundles, products, saveAction, backUrl }: FlowEditorProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialData.edges);
@@ -326,6 +334,7 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, save
         onClose={() => setSelectedNode(null)}
         onDelete={handleDeleteNode}
         bundles={bundles}
+        products={products}
       />
 
       {/* Mobile: sheet de blocos (toque pra adicionar) */}

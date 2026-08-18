@@ -12,7 +12,7 @@ export default async function RemarketingFlowEditorPage({
   const { botId, flowId } = await params;
   const supabase = await createClient();
 
-  const [{ data: flow }, { data: bundles }] = await Promise.all([
+  const [{ data: flow }, { data: bundles }, { data: products }] = await Promise.all([
     supabase
       .from("remarketing_flows")
       .select("*")
@@ -22,6 +22,12 @@ export default async function RemarketingFlowEditorPage({
     supabase
       .from("product_bundles")
       .select("id, name, is_active")
+      .eq("bot_id", botId)
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("products")
+      .select("id, name, price, currency")
       .eq("bot_id", botId)
       .eq("is_active", true)
       .order("name"),
@@ -38,6 +44,7 @@ export default async function RemarketingFlowEditorPage({
       initialData={typedFlow.flow_data}
       botId={botId}
       bundles={(bundles ?? []) as { id: string; name: string }[]}
+      products={(products ?? []) as { id: string; name: string; price: number; currency: string }[]}
       saveAction={saveRemarketingFlowData}
       backUrl={`/dashboard/bots/${botId}/remarketing`}
     />

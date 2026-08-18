@@ -565,20 +565,21 @@ export function startWorkers(): void {
   setInterval(() => tickChannelMonitor(), 10 * 60 * 1000);
   setTimeout(() => tickChannelMonitor(), 60_000); // 1 min após boot
 
-  // Bot-clone: watchdog do listener de remarketing (24h). Mesmo motivo do
-  // watchdog que o clone_jobs NÃO tem hoje (gap conhecido, mas pouco exposto
-  // lá: um passe único vs. até 288 ciclos de poll aqui) — se o worker cair
-  // entre "liberar lock" e "reenfileirar o próximo tick", o job travaria em
-  // listening_remarketing pra sempre sem isso. setInterval, não BullMQ
-  // repeat: este codebase não usa essa feature em lugar nenhum (mesmo padrão
-  // dos outros 7+ pollers acima).
+  // Bot-clone: watchdog pra job travado em 'listening_remarketing' — status
+  // que hoje só dura o tempo de ler o histórico de remarketing existente (um
+  // passo rápido, não mais uma espera de 24h). Só fica travado ali se o
+  // worker morrer NO MEIO dessa leitura (crash/OOM/redeploy) — a trava CAS
+  // (processing_started_at) fica velha e ninguém reenfileira sozinho, porque
+  // handleBotCloneExplore só aceita status exploring/waiting_flood. setInterval,
+  // não BullMQ repeat: este codebase não usa essa feature em lugar nenhum
+  // (mesmo padrão dos outros 7+ pollers acima).
   let botCloneWatchdogRunning = false;
   async function tickBotCloneWatchdogSafe(): Promise<void> {
     if (botCloneWatchdogRunning) return;
     botCloneWatchdogRunning = true;
     try {
-      const { tickBotCloneRemarketingWatchdog } = await import("./workers/bot-clone-handler.js");
-      await tickBotCloneRemarketingWatchdog();
+      const { tickBotCloneStuckJobsWatchdog } = await import("./workers/bot-clone-handler.js");
+      await tickBotCloneStuckJobsWatchdog();
     } catch (err) {
       console.error("[botclone-watchdog] Error:", err);
     } finally {

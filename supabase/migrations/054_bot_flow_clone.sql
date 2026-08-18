@@ -32,9 +32,11 @@ create table if not exists public.bot_clone_jobs (
   explore_started_at timestamptz,
   explore_completed_at timestamptz,
 
-  remarketing_deadline timestamptz,
-  remarketing_cursor_msg_id bigint not null default 0,
-  remarketing_next_poll_at timestamptz,
+  -- Remarketing: lê de uma vez só o histórico que a conta exploradora já tem
+  -- com o bot-alvo (decisão do usuário — aproveita o que já existe em vez de
+  -- esperar mensagem nova chegar ao vivo por 24h). Passo rápido, sem cursor
+  -- incremental nem prazo — por isso nada de remarketing_deadline/
+  -- remarketing_cursor_msg_id/remarketing_next_poll_at aqui.
   remarketing_messages_captured int not null default 0,
 
   dest_flow_id uuid references public.flows(id) on delete set null,
@@ -119,8 +121,6 @@ create index if not exists idx_bot_clone_jobs_tenant_status
   on public.bot_clone_jobs(tenant_id, status);
 create index if not exists idx_bot_clone_jobs_processing
   on public.bot_clone_jobs(processing_started_at) where processing_started_at is not null;
-create index if not exists idx_bot_clone_jobs_remarketing_poll
-  on public.bot_clone_jobs(remarketing_next_poll_at) where status = 'listening_remarketing';
 create index if not exists idx_bot_clone_nodes_job
   on public.bot_clone_nodes(job_id);
 create index if not exists idx_bot_clone_remarketing_job

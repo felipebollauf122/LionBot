@@ -211,15 +211,6 @@ export async function resumeBotCloneJob(cloneJobId: string): Promise<void> {
   revalidatePath(`/dashboard/automations/botclones/${cloneJobId}`);
 }
 
-/** Pula o resto da janela de 24h de remarketing e vai direto pra montagem do fluxo. */
-export async function stopRemarketingEarly(cloneJobId: string): Promise<void> {
-  await requireOwner();
-  const tenantId = await currentTenantId();
-  const supabase = await createClient();
-  await casTransitionAndEnqueue(cloneJobId, tenantId, "listening_remarketing", "building_flow", "botclone.build-flow", supabase);
-  revalidatePath(`/dashboard/automations/botclones/${cloneJobId}`);
-}
-
 export async function deleteBotCloneJob(cloneJobId: string): Promise<void> {
   await requireOwner();
   const tenantId = await currentTenantId();

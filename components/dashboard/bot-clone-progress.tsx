@@ -6,7 +6,6 @@ import {
   pauseBotCloneJob,
   resumeBotCloneJob,
   deleteBotCloneJob,
-  stopRemarketingEarly,
   listBotCloneSkipReport,
 } from "@/app/dashboard/automations/botclones/actions";
 
@@ -17,7 +16,6 @@ type Job = {
   nodes_discovered: number;
   nodes_skipped: number;
   messages_captured: number;
-  remarketing_deadline: string | null;
   remarketing_messages_captured: number;
   suspected_payment_hit: boolean;
   last_error: string | null;
@@ -31,7 +29,7 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: "RASCUNHO", badge: "badge-inactive" },
   exploring: { label: "EXPLORANDO", badge: "badge-info" },
   waiting_flood: { label: "ESPERANDO", badge: "badge-info" },
-  listening_remarketing: { label: "OUVINDO REMARKETING", badge: "badge-purple" },
+  listening_remarketing: { label: "LENDO REMARKETING", badge: "badge-purple" },
   building_flow: { label: "MONTANDO FLUXO", badge: "badge-info" },
   completed: { label: "CONCLUÍDO", badge: "badge-active" },
   failed: { label: "FALHOU", badge: "badge-error" },
@@ -40,22 +38,12 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
 
 const LIVE = new Set(["exploring", "waiting_flood", "listening_remarketing", "building_flow"]);
 
-function formatCountdown(deadlineIso: string, nowMs: number): string {
-  const remaining = new Date(deadlineIso).getTime() - nowMs;
-  if (remaining <= 0) return "encerrando...";
-  const h = Math.floor(remaining / 3_600_000);
-  const m = Math.floor((remaining % 3_600_000) / 60_000);
-  const s = Math.floor((remaining % 60_000) / 1_000);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 export function BotCloneProgress({ initial }: { initial: Job }) {
   const [job, setJob] = useState(initial);
   const [report, setReport] = useState<Array<{ reason: string; count: number }>>([]);
-  const [now, setNow] = useState(() => Date.now());
   const [pending, start] = useTransition();
-  // Erro de pausar/retomar/apagar/pular: as Server Actions lançam (throw) em
-  // vez de devolver { ok, error }, então precisamos capturar e mostrar.
+  // Erro de pausar/retomar/apagar: as Server Actions lançam (throw) em vez de
+  // devolver { ok, error }, então precisamos capturar e mostrar.
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Polling de 3s, mesmo padrão do clone de canal.
@@ -67,13 +55,6 @@ export function BotCloneProgress({ initial }: { initial: Job }) {
     }, 3000);
     return () => clearInterval(t);
   }, [job.id, job.status]);
-
-  // Ticker de 1s só pro relógio da contagem regressiva do remarketing.
-  useEffect(() => {
-    if (job.status !== "listening_remarketing") return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [job.status]);
 
   useEffect(() => {
     listBotCloneSkipReport(job.id).then(setReport);
@@ -155,30 +136,18 @@ export function BotCloneProgress({ initial }: { initial: Job }) {
         </div>
       </div>
 
-      {/* Janela de remarketing */}
-      {job.status === "listening_remarketing" && (
-        <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) space-y-2">
+      {/* Leitura do histórico de remarketing — passo rápido (lê o que já existe
+          na conta exploradora, não espera mensagem nova chegar ao vivo). */}
+      {(job.status === "listening_remarketing" || job.remarketing_messages_captured > 0) && (
+        <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-(--text-secondary) text-xs">Escutando remarketing por 24h</span>
-            {job.remarketing_deadline && (
-              <span className="stat-value text-sm text-foreground">
-                {formatCountdown(job.remarketing_deadline, now)}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-(--text-muted) text-xs">mensagens capturadas</span>
+            <span className="text-(--text-secondary) text-xs">
+              {job.status === "listening_remarketing" ? "Lendo histórico de remarketing..." : "Remarketing capturado"}
+            </span>
             <span className="stat-value text-xs text-(--text-secondary)">
-              {job.remarketing_messages_captured}
+              {job.remarketing_messages_captured} mensagens
             </span>
           </div>
-          <button
-            onClick={() => runAction(() => stopRemarketingEarly(job.id), "building_flow")}
-            disabled={pending}
-            className="btn-ghost text-xs px-3 py-1.5 w-full"
-          >
-            Pular espera e gerar fluxo agora
-          </button>
         </div>
       )}
 

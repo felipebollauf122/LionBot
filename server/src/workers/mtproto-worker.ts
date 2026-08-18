@@ -10,11 +10,7 @@ import {
 } from "../services/mtproto/campaign-runner.js";
 import { enqueueMtproto, type MtprotoJobData } from "../queue-mtproto.js";
 import { handleCloneRun } from "./clone-handler.js";
-import {
-  handleBotCloneExplore,
-  handleBotCloneRemarketingPoll,
-  handleBotCloneBuildFlow,
-} from "./bot-clone-handler.js";
+import { handleBotCloneExplore, handleBotCloneBuildFlow } from "./bot-clone-handler.js";
 
 // Kinds elegíveis pra disparo global. Inclui grupos/canais onde só participa
 // — o owner aceita o risco de ban por spam em troca de alcance máximo.
@@ -764,8 +760,6 @@ export function startMtprotoWorker(): void {
           return handleCloneRun(d.cloneJobId);
         case "botclone.explore":
           return handleBotCloneExplore(d.cloneJobId);
-        case "botclone.remarketing-poll":
-          return handleBotCloneRemarketingPoll(d.cloneJobId);
         case "botclone.build-flow":
           return handleBotCloneBuildFlow(d.cloneJobId);
       }

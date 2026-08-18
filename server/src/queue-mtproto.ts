@@ -12,7 +12,6 @@ export type MtprotoJobData =
   | { kind: "account.sync-dialogs"; accountId: string }
   | { kind: "clone.run"; cloneJobId: string }
   | { kind: "botclone.explore"; cloneJobId: string }
-  | { kind: "botclone.remarketing-poll"; cloneJobId: string }
   | { kind: "botclone.build-flow"; cloneJobId: string };
 
 export const mtprotoQueue = new Queue<MtprotoJobData>("mtproto", { connection });

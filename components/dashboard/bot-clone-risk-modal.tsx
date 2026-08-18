@@ -94,8 +94,9 @@ export function BotCloneRiskModal({
               clonado — <b className="text-foreground">nada é ativado automaticamente</b>.
             </p>
             <p className="text-(--text-muted) text-xs">
-              O remarketing (mensagens que o bot manda sozinho depois) é escutado por{" "}
-              <b className="text-foreground">24 horas fixas</b>.
+              Pro remarketing, o EagleBot <b className="text-foreground">lê o histórico que a conta já tem</b>{" "}
+              com esse bot — não espera mensagem nova chegar. Se a conta já conversou com ele antes, essa
+              conversa antiga entra no fluxo de remarketing junto (fica visível pra revisão, igual o resto).
             </p>
           </div>
 

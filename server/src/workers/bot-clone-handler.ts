@@ -24,7 +24,7 @@ import {
 import { clickCallbackButton } from "../services/mtproto/bot-clone/click-button.js";
 import { downloadAndRehostMedia } from "../services/mtproto/bot-clone/media-rehost.js";
 import { gramjsEntitiesToCaptured, type CapturedEntity } from "../services/mtproto/bot-clone/entities-to-html.js";
-import { mapRawButton } from "../services/mtproto/bot-clone/payment-guard.js";
+import { mapRawButton, classifyButton } from "../services/mtproto/bot-clone/payment-guard.js";
 import { buildFlowGraph, type CapturedNodeForFlow } from "../services/mtproto/bot-clone/transcript-to-flow.js";
 import { planForMessage } from "../services/mtproto/clone/media-plan.js";
 import { SourceReader } from "../services/mtproto/clone/source-reader.js";
@@ -39,8 +39,20 @@ const PROCESSING_CLAIM_STALE_MS = 10 * 60 * 1000;
 const BURST_SILENCE_MS = 8_000;
 const BURST_CAP_MS = 20_000;
 
-/** Intervalo do poll de remarketing (§5 do plano). */
-const REMARKETING_POLL_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * Remarketing: decisão do usuário — em vez de esperar mensagens novas
+ * chegarem ao vivo por 24h, lê de uma vez só o histórico que a conta
+ * exploradora JÁ TEM com o bot-alvo (geralmente muito mais rico: meses/anos
+ * de remarketing real, não uma amostra de 24h). Mensagens inbound a menos de
+ * HISTORICAL_BURST_GAP_MS uma da outra viram a mesma "rajada" (mesmo
+ * conceito de burst da exploração ao vivo, só que reconstruído a partir de
+ * timestamps já gravados). HISTORICAL_REMARKETING_CAP protege contra uma
+ * conta com histórico gigante — pega as mensagens mais RECENTES (via
+ * iterMessages sem reverse, que devolve do mais novo pro mais antigo antes
+ * do corte), já que remarketing recente importa mais que um de anos atrás.
+ */
+const HISTORICAL_BURST_GAP_MS = 3 * 60 * 1000;
+const HISTORICAL_REMARKETING_CAP = 5000;
 
 // ---------------------------------------------------------------------------
 // Helpers de mapeamento DB <-> shapes puros de explorer.ts/transcript-to-flow.ts
@@ -379,23 +391,23 @@ export async function handleBotCloneExplore(cloneJobId: string): Promise<void> {
       });
       await explorer.run();
 
-      // Só transiciona pra listening_remarketing se o job ainda está
-      // 'exploring' de verdade (não foi pausado/apagado por fora durante a
-      // run — shouldStop() do explorer já teria parado o loop nesse caso).
+      // Só segue pra remarketing/build-flow se o job ainda está 'exploring'
+      // de verdade (não foi pausado/apagado por fora durante a run —
+      // shouldStop() do explorer já teria parado o loop nesse caso).
       const { data: after } = await supabase.from("bot_clone_jobs").select("status").eq("id", cloneJobId).maybeSingle();
       if (after?.status === "exploring") {
-        const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        const nextPoll = new Date(Date.now() + REMARKETING_POLL_INTERVAL_MS);
         await supabase
           .from("bot_clone_jobs")
-          .update({
-            status: "listening_remarketing",
-            explore_completed_at: new Date().toISOString(),
-            remarketing_deadline: deadline.toISOString(),
-            remarketing_next_poll_at: nextPoll.toISOString(),
-          })
+          .update({ status: "listening_remarketing", explore_completed_at: new Date().toISOString() })
           .eq("id", cloneJobId);
-        await enqueueMtproto({ kind: "botclone.remarketing-poll", cloneJobId }, { delayMs: REMARKETING_POLL_INTERVAL_MS });
+        // Mesmo try/catch de fora: um FLOOD_WAIT durante a leitura do
+        // histórico é pego pelo catch abaixo igual a um flood durante a
+        // exploração, e agenda retomada — o retry reroda explorer.run()
+        // (idempotente, vira no-op rápido) e tenta o histórico de novo; a
+        // unique(job_id, first_seq_msg_id) evita duplicar rajada já inserida.
+        await captureHistoricalRemarketing(client, botInputPeer, { id: cloneJobId, tenant_id: job.tenant_id }, tmpDir);
+        await supabase.from("bot_clone_jobs").update({ status: "building_flow" }).eq("id", cloneJobId);
+        await enqueueMtproto({ kind: "botclone.build-flow", cloneJobId });
       }
     } catch (err) {
       const wait = extractWaitSeconds(err);
@@ -420,182 +432,219 @@ export async function handleBotCloneExplore(cloneJobId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// handleBotCloneRemarketingPoll
+// captureHistoricalRemarketing — chamada inline por handleBotCloneExplore
+// logo após a exploração terminar (mesma execução, mesmo client MTProto já
+// conectado; sem fila/watchdog separados — não há mais espera de 24h pra
+// gerenciar). Recuperação de crash é a mesma trava CAS de handleBotCloneExplore.
 // ---------------------------------------------------------------------------
 
-export async function handleBotCloneRemarketingPoll(cloneJobId: string): Promise<void> {
-  const { data: job } = await supabase.from("bot_clone_jobs").select("*").eq("id", cloneJobId).single();
-  if (!job || job.status !== "listening_remarketing") return;
+/**
+ * Motivos de skip do payment-guard que significam "isso é uma tentativa de
+ * pagamento de verdade" — não qualquer skip (ex.: botão em cirílico, ou de
+ * teclado de resposta, não conta). Usado só pra achar o "bloco de pagamento"
+ * no histórico, nunca pra decidir se clica (isso é sempre responsabilidade
+ * do classifyButton chamado durante a exploração ao vivo).
+ */
+const PAYMENT_BLOCK_SKIP_REASONS = new Set(["buy_button_native_payment", "webview_miniapp_checkout", "payment_keyword_match"]);
 
-  const staleBefore = new Date(Date.now() - PROCESSING_CLAIM_STALE_MS).toISOString();
-  const { data: claimed } = await supabase
-    .from("bot_clone_jobs")
-    .update({ processing_started_at: new Date().toISOString() })
-    .eq("id", cloneJobId)
-    .eq("status", "listening_remarketing")
-    .or(`processing_started_at.is.null,processing_started_at.lt.${staleBefore}`)
-    .select("id")
-    .maybeSingle();
-  if (!claimed) return;
-
-  try {
-    if (job.remarketing_deadline && new Date(job.remarketing_deadline) <= new Date()) {
-      await supabase.from("bot_clone_jobs").update({ status: "building_flow" }).eq("id", cloneJobId);
-      await enqueueMtproto({ kind: "botclone.build-flow", cloneJobId });
-      return;
-    }
-
-    const { data: account } = await supabase
-      .from("mtproto_accounts")
-      .select("session_string, status")
-      .eq("id", job.account_id)
-      .single();
-    if (!account?.session_string || account.status !== "active") {
-      // Remarketing é best-effort: conta caída no meio da janela não falha
-      // o job, só perde essa rodada — tenta de novo no próximo tick.
-      console.warn(`[botclone.remarketing] job ${cloneJobId}: conta exploradora inativa, tenta de novo no próximo tick`);
-      await scheduleNextRemarketingPoll(cloneJobId);
-      return;
-    }
-
-    const client = new MtprotoClient(config.telegramApiId, config.telegramApiHash, account.session_string);
-    const tmpDir = path.join(os.tmpdir(), "eaglebot-botclone", cloneJobId, "remarketing");
-    try {
-      await client.connect();
-      const botInputPeer = new Api.InputPeerUser({
-        userId: bigInt(job.target_bot_peer_id),
-        accessHash: bigInt(job.target_bot_access_hash),
-      });
-
-      const newMessages: Api.Message[] = [];
-      for await (const raw of client.raw.iterMessages(botInputPeer, {
-        minId: job.remarketing_cursor_msg_id,
-        reverse: true,
-      }) as AsyncIterable<unknown>) {
-        if (!(raw instanceof Api.Message)) continue;
-        // achado #14: só inbound — uma mensagem nossa nessa DM (retry manual,
-        // teste) nunca deve virar "remarketing capturado".
-        if (raw.out) continue;
-        newMessages.push(raw);
-      }
-
-      if (newMessages.length > 0) {
-        const newCursor = Math.max(...newMessages.map((m) => m.id));
-        // Avança o cursor ANTES de inserir (achado #3/#7): falha nessa ordem
-        // perde um burst raro em vez de duplicar uma mensagem real pra um
-        // lead depois. A unique(job_id, first_seq_msg_id) é a 2ª camada.
-        await supabase.from("bot_clone_jobs").update({ remarketing_cursor_msg_id: newCursor }).eq("id", cloneJobId);
-
-        const secondsAfterExploreEnd = job.explore_completed_at
-          ? Math.max(0, Math.floor((Date.now() - new Date(job.explore_completed_at).getTime()) / 1000))
-          : 0;
-        const messages = [];
-        for (let i = 0; i < newMessages.length; i++) {
-          const m = newMessages[i];
-          const { mediaKind, media, fileName } = classifyRawMedia(m);
-          let mediaPublicUrl: string | null = null;
-          if (media && fileName) {
-            mediaPublicUrl = await downloadAndRehostMedia(
-              { raw: client.raw, supabase },
-              {
-                media,
-                tenantId: job.tenant_id,
-                jobId: cloneJobId,
-                nodeIdHint: `remarketing_${m.id}`,
-                fileName,
-                tmpDir,
-                maxBytes: MAX_FILE_BYTES,
-              },
-            ).catch((err) => {
-              console.warn(`[botclone.remarketing] rehost falhou pra msg ${m.id} (segue sem mídia):`, err);
-              return null;
-            });
-          }
-          messages.push(
-            serializeMessage({
-              seq: i,
-              rawMsgId: m.id,
-              text: m.message || null,
-              entities: gramjsEntitiesToCaptured(m.entities),
-              mediaKind,
-              mediaPublicUrl,
-              // Remarketing é captura passiva — nenhum botão é clicado aqui;
-              // preserva o rótulo original pra reconstrução (achado: sempre
-              // vira nó unmapped, nunca some silenciosamente).
-              buttons: extractRawButtons(m).map((raw, bi) => {
-                const info = mapRawButton(raw);
-                return {
-                  id: `rb${i}_${bi}`,
-                  kind: info.kind,
-                  label: info.label,
-                  url: info.url ?? null,
-                  data: null,
-                  skip: true,
-                  skipReason: "remarketing_passive_capture",
-                  paymentDomainMatch: false,
-                };
-              }),
-            }),
-          );
-        }
-
-        const { error: insertErr } = await supabase.from("bot_clone_remarketing_messages").insert({
-          job_id: cloneJobId,
-          first_seq_msg_id: newMessages[0].id,
-          seconds_after_explore_end: secondsAfterExploreEnd,
-          messages,
-        });
-        // unique(job_id, first_seq_msg_id) protege duplicata de verdade num
-        // retry — conflito aqui é esperado, não um erro real.
-        if (insertErr && !/duplicate key/i.test(insertErr.message)) {
-          console.error(`[botclone.remarketing] insert falhou pro job ${cloneJobId}:`, insertErr.message);
-        } else if (!insertErr) {
-          await supabase
-            .from("bot_clone_jobs")
-            .update({ remarketing_messages_captured: (job.remarketing_messages_captured ?? 0) + newMessages.length })
-            .eq("id", cloneJobId);
-        }
-      }
-    } finally {
-      await client.disconnect().catch(() => {});
-      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    }
-
-    await scheduleNextRemarketingPoll(cloneJobId);
-  } catch (err) {
-    console.error(`[botclone.remarketing] poll falhou pro job ${cloneJobId} (não fatal, tenta de novo no próximo tick):`, err);
-    await scheduleNextRemarketingPoll(cloneJobId);
-  } finally {
-    await supabase.from("bot_clone_jobs").update({ processing_started_at: null }).eq("id", cloneJobId);
+/** Uma mensagem histórica "é" o bloco de pagamento se tem algum botão que o payment-guard classificaria como tentativa de pagamento de verdade. */
+function hasPaymentBlockButton(m: Api.Message): boolean {
+  const buttons = extractRawButtons(m);
+  if (buttons.length === 0) return false;
+  const messageText = m.message ?? "";
+  for (const raw of buttons) {
+    const decision = classifyButton(mapRawButton(raw), messageText);
+    if (decision.action === "skip" && PAYMENT_BLOCK_SKIP_REASONS.has(decision.reason)) return true;
   }
+  return false;
 }
 
-async function scheduleNextRemarketingPoll(cloneJobId: string): Promise<void> {
-  const next = new Date(Date.now() + REMARKETING_POLL_INTERVAL_MS);
-  await supabase.from("bot_clone_jobs").update({ remarketing_next_poll_at: next.toISOString() }).eq("id", cloneJobId);
-  await enqueueMtproto({ kind: "botclone.remarketing-poll", cloneJobId }, { delayMs: REMARKETING_POLL_INTERVAL_MS });
+/** Agrupa mensagens (já em ordem cronológica) em "rajadas" por proximidade de horário. */
+function groupIntoHistoricalBursts(messages: Api.Message[]): Api.Message[][] {
+  const bursts: Api.Message[][] = [];
+  let current: Api.Message[] = [];
+  let lastMs = 0;
+  for (const m of messages) {
+    const ms = m.date * 1000;
+    if (current.length > 0 && ms - lastMs > HISTORICAL_BURST_GAP_MS) {
+      bursts.push(current);
+      current = [];
+    }
+    current.push(m);
+    lastMs = ms;
+  }
+  if (current.length > 0) bursts.push(current);
+  return bursts;
+}
+
+/**
+ * Lê o histórico que a conta exploradora JÁ TEM com o bot-alvo, de uma vez só
+ * — decisão do usuário: em vez de esperar mensagens novas chegarem ao vivo
+ * por 24h, aproveita o que já está salvo na conta (tipicamente muito mais
+ * rico que uma janela de 24h). Só inbound (out:false) — nunca inclui o
+ * /start que a própria exploração acabou de mandar, nem qualquer mensagem
+ * antiga que O USUÁRIO (dono da conta, não o bot) tenha mandado nessa
+ * conversa.
+ *
+ * Corte no primeiro bloco de pagamento (decisão do usuário sobre como o bot-
+ * alvo dele funciona, generalizável: "/start até o primeiro bloco de
+ * pagamento é sempre o fim do fluxo — o que vem depois é sempre remarketing"):
+ * tudo ATÉ o primeiro botão que o payment-guard classificaria como tentativa
+ * de pagamento de verdade é descartado da captura de remarketing, porque já
+ * está coberto pela árvore que a exploração ao vivo reconstruiu (que também
+ * sempre para exatamente nesse ponto — o guard nunca clica esse botão). Só o
+ * que vem estritamente DEPOIS conta como remarketing.
+ *
+ * Limitação aceita, não escondida: esse corte encontra a PRIMEIRA ocorrência
+ * dentro da janela retida (ver HISTORICAL_REMARKETING_CAP acima) — numa
+ * conta com histórico maior que o teto, o bloco de pagamento "de verdade"
+ * pode ter saído da janela, e o corte acaba caindo num bloco de remarketing
+ * recorrente mais recente por engano, descartando remarketing genuíno mais
+ * antigo. Sem bloco de pagamento nenhum no histórico retido, não arrisca
+ * adivinhar: não captura nada (loga e sai).
+ */
+async function captureHistoricalRemarketing(
+  client: MtprotoClient,
+  botInputPeer: Api.InputPeerUser,
+  job: { id: string; tenant_id: string },
+  tmpDir: string,
+): Promise<void> {
+  const collected: Api.Message[] = [];
+  for await (const raw of client.raw.iterMessages(botInputPeer, {
+    limit: HISTORICAL_REMARKETING_CAP,
+  }) as AsyncIterable<unknown>) {
+    if (!(raw instanceof Api.Message)) continue;
+    if (raw.out) continue; // só inbound
+    collected.push(raw);
+  }
+  if (collected.length >= HISTORICAL_REMARKETING_CAP) {
+    console.warn(
+      `[botclone.remarketing-history] job ${job.id}: histórico cortado em ${HISTORICAL_REMARKETING_CAP} mensagens (as mais recentes) — pode haver remarketing mais antigo não capturado`,
+    );
+  }
+  if (collected.length === 0) return;
+
+  // iterMessages sem reverse devolve do mais novo pro mais antigo — inverte
+  // pra ordem cronológica antes de agrupar em rajadas.
+  const chronological = collected.reverse();
+
+  const paymentBlockIdx = chronological.findIndex(hasPaymentBlockButton);
+  if (paymentBlockIdx === -1) {
+    console.log(
+      `[botclone.remarketing-history] job ${job.id}: nenhum bloco de pagamento encontrado no histórico retido — nada capturado como remarketing ainda`,
+    );
+    return;
+  }
+  const afterFlow = chronological.slice(paymentBlockIdx + 1);
+  if (afterFlow.length === 0) return;
+
+  const bursts = groupIntoHistoricalBursts(afterFlow);
+  const firstTimestampMs = bursts[0][0].date * 1000;
+
+  for (const burst of bursts) {
+    const secondsAfterExploreEnd = Math.max(0, Math.floor((burst[0].date * 1000 - firstTimestampMs) / 1000));
+    const messages = [];
+    for (let i = 0; i < burst.length; i++) {
+      const m = burst[i];
+      const { mediaKind, media, fileName } = classifyRawMedia(m);
+      let mediaPublicUrl: string | null = null;
+      if (media && fileName) {
+        mediaPublicUrl = await downloadAndRehostMedia(
+          { raw: client.raw, supabase },
+          { media, tenantId: job.tenant_id, jobId: job.id, nodeIdHint: `remarketing_${m.id}`, fileName, tmpDir, maxBytes: MAX_FILE_BYTES },
+        ).catch((err) => {
+          console.warn(`[botclone.remarketing-history] rehost falhou pra msg ${m.id} (segue sem mídia):`, err);
+          return null;
+        });
+      }
+      messages.push(
+        serializeMessage({
+          seq: i,
+          rawMsgId: m.id,
+          text: m.message || null,
+          entities: gramjsEntitiesToCaptured(m.entities),
+          mediaKind,
+          mediaPublicUrl,
+          // Remarketing é captura passiva — nenhum botão é clicado aqui;
+          // preserva o rótulo original pra reconstrução (sempre vira nó
+          // unmapped, nunca some silenciosamente).
+          buttons: extractRawButtons(m).map((raw, bi) => {
+            const info = mapRawButton(raw);
+            return {
+              id: `rb${i}_${bi}`,
+              kind: info.kind,
+              label: info.label,
+              url: info.url ?? null,
+              data: null,
+              skip: true,
+              skipReason: "remarketing_passive_capture",
+              paymentDomainMatch: false,
+            };
+          }),
+        }),
+      );
+    }
+
+    const { error: insertErr } = await supabase.from("bot_clone_remarketing_messages").insert({
+      job_id: job.id,
+      first_seq_msg_id: burst[0].id,
+      seconds_after_explore_end: secondsAfterExploreEnd,
+      messages,
+    });
+    // unique(job_id, first_seq_msg_id) protege duplicata de verdade num
+    // retry (ex.: resume pós FLOOD_WAIT que reroda a captura inteira) —
+    // conflito aqui é esperado, não um erro real.
+    if (insertErr && !/duplicate key/i.test(insertErr.message)) {
+      console.error(`[botclone.remarketing-history] insert falhou pro job ${job.id}:`, insertErr.message);
+    }
+  }
+
+  // Recontagem do zero (não um contador incremental): robusto contra retry
+  // parcial — se um resume pós-flood já tinha inserido metade das rajadas
+  // antes de falhar, um contador incremental subestimaria o total.
+  const { data: allRows } = await supabase.from("bot_clone_remarketing_messages").select("messages").eq("job_id", job.id);
+  const totalMessages = (allRows ?? []).reduce((n, r) => n + ((r.messages as unknown[] | null)?.length ?? 0), 0);
+  await supabase.from("bot_clone_jobs").update({ remarketing_messages_captured: totalMessages }).eq("id", job.id);
 }
 
 // ---------------------------------------------------------------------------
-// tickBotCloneRemarketingWatchdog — chamado por um setInterval em queue.ts
-// (nunca um BullMQ repeatable job — este codebase não usa essa feature em
-// lugar nenhum; ver server/src/queue.ts's startWorkers para os 7+ precedentes).
+// tickBotCloneStuckJobsWatchdog — chamado por um setInterval em queue.ts.
+// 'listening_remarketing' hoje é um status rápido (só dura o tempo da
+// leitura de histórico, não mais 24h) — só fica travado ali se o worker
+// morrer NO MEIO da leitura. handleBotCloneExplore só aceita retomar de
+// exploring/waiting_flood, então ninguém reenfileira um job travado em
+// listening_remarketing sozinho sem isso. Reseta pra 'exploring' (não
+// 'listening_remarketing' — reentrada teria que passar pelo mesmo guard) e
+// reenfileira botclone.explore: BotExplorer.run() já é idempotente (vira
+// no-op rápido se a árvore já foi toda explorada), então a retomada só
+// re-roda a leitura de histórico que falhou.
 // ---------------------------------------------------------------------------
 
-export async function tickBotCloneRemarketingWatchdog(): Promise<void> {
-  const staleThreshold = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+export async function tickBotCloneStuckJobsWatchdog(): Promise<void> {
+  const staleThreshold = new Date(Date.now() - PROCESSING_CLAIM_STALE_MS).toISOString();
   const { data: stuck } = await supabase
     .from("bot_clone_jobs")
     .select("id")
     .eq("status", "listening_remarketing")
-    .lt("remarketing_next_poll_at", staleThreshold)
+    .lt("processing_started_at", staleThreshold)
     .limit(50);
   if (!stuck || stuck.length === 0) return;
   for (const row of stuck) {
-    console.warn(`[botclone.watchdog] job ${row.id} travado em listening_remarketing, reenfileirando`);
-    await enqueueMtproto({ kind: "botclone.remarketing-poll", cloneJobId: row.id }).catch((err) =>
-      console.error(`[botclone.watchdog] reenqueue falhou pro job ${row.id}:`, err),
+    console.warn(
+      `[botclone.watchdog] job ${row.id} travado em listening_remarketing (worker provavelmente caiu durante a leitura do histórico) — reiniciando pra retomar`,
     );
+    const { data: reset } = await supabase
+      .from("bot_clone_jobs")
+      .update({ status: "exploring", processing_started_at: null })
+      .eq("id", row.id)
+      .eq("status", "listening_remarketing")
+      .select("id")
+      .maybeSingle();
+    if (reset) {
+      await enqueueMtproto({ kind: "botclone.explore", cloneJobId: row.id }).catch((err) =>
+        console.error(`[botclone.watchdog] reenqueue falhou pro job ${row.id}:`, err),
+      );
+    }
   }
 }
 

@@ -130,12 +130,18 @@ alter table public.bot_clone_jobs enable row level security;
 alter table public.bot_clone_nodes enable row level security;
 alter table public.bot_clone_remarketing_messages enable row level security;
 
+-- drop+create (não só create): ao contrário de tabela/índice, "create
+-- policy" no Postgres não tem "if not exists" — rodar o arquivo inteiro de
+-- novo (ex.: reaplicar depois de editar as tabelas acima) travava aqui.
+drop policy if exists "owner manages own bot_clone_jobs" on public.bot_clone_jobs;
 create policy "owner manages own bot_clone_jobs" on public.bot_clone_jobs
   for all using (tenant_id = auth.uid()) with check (tenant_id = auth.uid());
+drop policy if exists "owner manages own bot_clone_nodes" on public.bot_clone_nodes;
 create policy "owner manages own bot_clone_nodes" on public.bot_clone_nodes
   for all
   using (job_id in (select id from public.bot_clone_jobs where tenant_id = auth.uid()))
   with check (job_id in (select id from public.bot_clone_jobs where tenant_id = auth.uid()));
+drop policy if exists "owner manages own bot_clone_remarketing_messages" on public.bot_clone_remarketing_messages;
 create policy "owner manages own bot_clone_remarketing_messages" on public.bot_clone_remarketing_messages
   for all
   using (job_id in (select id from public.bot_clone_jobs where tenant_id = auth.uid()))

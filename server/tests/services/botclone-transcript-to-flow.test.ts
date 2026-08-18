@@ -90,8 +90,10 @@ describe("buildFlowGraph", () => {
     const target = flow.nodes.find((n) => n.id === edge.target)!;
     expect(target.type).toBe("unmapped");
     expect(target.data).toEqual({ kind: "skipped_branch", original_label: "Comprar agora", skip_reason: "payment_keyword_match" });
-    // o botão em si mantém o rótulo original na cadeia visual.
-    expect(btnNode.data.buttons).toEqual([{ text: "Comprar agora", action: "open_url", value: "b0_0" }]);
+    // o botão em si mantém o rótulo original na cadeia visual, e continua
+    // disparando callback ("next") — não tem URL real, então "open_url"
+    // quebraria o botão e nunca alcançaria o nó unmapped abaixo.
+    expect(btnNode.data.buttons).toEqual([{ text: "Comprar agora", action: "next", value: "b0_0" }]);
   });
 
   it("botão não explorado (sem filho, sem skip — teto atingido) vira unmapped 'not_explored', nunca aresta solta", () => {

@@ -43,10 +43,16 @@ function buildButtonNodeData(msg: PersistedMessage, textOverride?: string) {
   const text = textOverride ?? entitiesToHtml(msg.text ?? "", msg.entities);
   const buttons = msg.buttons.map((b) => ({
     text: b.label,
-    action: b.kind === "url" || b.skip ? "open_url" : "next",
-    // achado: botão pulado (guard ou url) fica com o rótulo original,
-    // apontando pra um destino que a passada 2 resolve (unmapped, ou a
-    // URL de verdade se o botão já era de link).
+    // Só botão de link de verdade vira "open_url" (tem URL real). Botão
+    // pulado pelo guard (ex.: payment_keyword_match) não tem URL — precisa
+    // continuar como botão de callback ("next") pra disparar de verdade e
+    // a aresta pro nó unmapped (passada 2) ser alcançável. Antes disso
+    // incluía `|| b.skip` aqui, então todo botão de preço pulado virava um
+    // link quebrado com a URL vazia, e nunca disparava callback nenhum.
+    action: b.kind === "url" ? "open_url" : "next",
+    // botão pulado (guard ou url) fica com o rótulo original, apontando
+    // pra um destino que a passada 2 resolve (unmapped, ou a URL de
+    // verdade se o botão já era de link).
     value: b.kind === "url" ? (b.url ?? "") : b.id,
   }));
   return { text, buttons };

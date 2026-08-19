@@ -459,7 +459,18 @@ export async function handleBotCloneExplore(cloneJobId: string): Promise<void> {
  */
 const PAYMENT_BLOCK_SKIP_REASONS = new Set(["buy_button_native_payment", "webview_miniapp_checkout", "payment_keyword_match"]);
 
-/** Uma mensagem histórica "é" o bloco de pagamento se tem algum botão que o payment-guard classificaria como tentativa de pagamento de verdade. */
+/**
+ * Uma mensagem histórica "é" o bloco de pagamento se tem algum botão que o
+ * payment-guard classificaria como tentativa de pagamento de verdade — seja
+ * um skip (PAYMENT_BLOCK_SKIP_REASONS) OU um botão de URL pra um domínio de
+ * checkout conhecido (Kirvano/Hotmart/Kiwify/etc — PAYMENT_DOMAIN_PATTERNS
+ * em payment-guard.ts). Bug real encontrado depurando com um usuário: botão
+ * de link direto pro checkout externo (padrão muito comum nesses funis) cai
+ * em `action: "open_url_only"`, NÃO em "skip" — ficava fora da checagem
+ * original, então o "bloco de pagamento" nunca era encontrado em histórico
+ * nenhum que usasse esse padrão, e a captura de remarketing sempre voltava
+ * vazia mesmo com histórico real amplo.
+ */
 function hasPaymentBlockButton(m: Api.Message): boolean {
   const buttons = extractRawButtons(m);
   if (buttons.length === 0) return false;
@@ -467,6 +478,7 @@ function hasPaymentBlockButton(m: Api.Message): boolean {
   for (const raw of buttons) {
     const decision = classifyButton(mapRawButton(raw), messageText);
     if (decision.action === "skip" && PAYMENT_BLOCK_SKIP_REASONS.has(decision.reason)) return true;
+    if (decision.action === "open_url_only" && decision.paymentDomainMatch) return true;
   }
   return false;
 }
@@ -749,18 +761,50 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
 
     let remarketingConfigId: string | null = null;
     if (rmRows && rmRows.length > 0) {
-      const { data: cfgRow, error: cfgErr } = await supabase
+      // remarketing_configs tem unique(bot_id) — o bot de destino provavelmente
+      // JÁ TEM uma config (criada automaticamente na primeira vez que alguém
+      // abre a aba Remarketing dele no dashboard, mesmo sem nenhum flow
+      // configurado ainda), então esse é o caso comum, não a exceção. Um
+      // insert incondicional aqui batia na constraint e derrubava o job
+      // inteiro (achado depurando com um usuário: erro "duplicate key value
+      // violates unique constraint remarketing_configs_bot_id_key"). Reusa a
+      // config existente em vez de tentar criar outra.
+      const { data: existingCfg, error: existingCfgErr } = await supabase
         .from("remarketing_configs")
-        .insert({
-          tenant_id: job.tenant_id,
-          bot_id: job.dest_bot_id,
-          is_active: false,
-          interval_minutes: computeRemarketingIntervalMinutes(rmRows),
-        })
         .select("id")
-        .single();
-      if (cfgErr || !cfgRow) throw new Error(`insert remarketing_configs falhou: ${cfgErr?.message}`);
-      remarketingConfigId = cfgRow.id as string;
+        .eq("bot_id", job.dest_bot_id)
+        .maybeSingle();
+      if (existingCfgErr) throw new Error(`select remarketing_configs falhou: ${existingCfgErr.message}`);
+
+      if (existingCfg) {
+        remarketingConfigId = existingCfg.id as string;
+      } else {
+        const { data: cfgRow, error: cfgErr } = await supabase
+          .from("remarketing_configs")
+          .insert({
+            tenant_id: job.tenant_id,
+            bot_id: job.dest_bot_id,
+            is_active: false,
+            interval_minutes: computeRemarketingIntervalMinutes(rmRows),
+          })
+          .select("id")
+          .single();
+        if (cfgErr || !cfgRow) throw new Error(`insert remarketing_configs falhou: ${cfgErr?.message}`);
+        remarketingConfigId = cfgRow.id as string;
+      }
+
+      // Continua a numeração a partir do maior sort_order já existente nessa
+      // config — evita entrelaçar os flows clonados com flows que o dono do
+      // bot já tenha criado manualmente (ou de um clone anterior) sob a
+      // mesma config reaproveitada acima.
+      const { data: lastFlow } = await supabase
+        .from("remarketing_flows")
+        .select("sort_order")
+        .eq("config_id", remarketingConfigId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const sortOrderBase = lastFlow ? (lastFlow.sort_order as number) + 1 : 0;
 
       for (let i = 0; i < syntheticRmNodes.length; i++) {
         const rmFlowData = buildFlowGraph([syntheticRmNodes[i]], priceMap);
@@ -769,7 +813,7 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
           config_id: remarketingConfigId,
           bot_id: job.dest_bot_id,
           name: `Remarketing clonado #${i + 1}`,
-          sort_order: i,
+          sort_order: sortOrderBase + i,
           audience: "all",
           flow_data: rmFlowData,
           is_active: false,

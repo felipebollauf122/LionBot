@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { MtprotoCampaignDetail } from "@/components/dashboard/mtproto-campaign-detail";
 import { notFound } from "next/navigation";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
@@ -10,7 +10,7 @@ export default async function CampaignDetailPage({
 }: {
   params: Promise<{ campaignId: string }>;
 }) {
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
   const { campaignId } = await params;
   const supabase = await createClient();
   const { data: campaign } = await supabase

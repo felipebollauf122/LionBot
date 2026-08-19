@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminUser, AdminBot } from "@/lib/actions/admin-actions";
-import { updateUserRole } from "@/lib/actions/admin-actions";
+import { updateUserRole, updateUserPremium } from "@/lib/actions/admin-actions";
 
 interface AdminUserProfileProps {
   user: AdminUser;
@@ -21,6 +21,7 @@ function formatDate(iso: string): string {
 export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfileProps) {
   const [user, setUser] = useState(initialUser);
   const [updatingRole, setUpdatingRole] = useState(false);
+  const [updatingPremium, setUpdatingPremium] = useState(false);
   const router = useRouter();
 
   const handleRoleChange = async (newRole: "user" | "admin") => {
@@ -32,6 +33,18 @@ export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfilePr
       alert(err instanceof Error ? err.message : "Erro ao atualizar role");
     } finally {
       setUpdatingRole(false);
+    }
+  };
+
+  const handlePremiumChange = async (newIsPremium: boolean) => {
+    setUpdatingPremium(true);
+    try {
+      await updateUserPremium(user.id, newIsPremium);
+      setUser((prev) => ({ ...prev, is_premium: newIsPremium }));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao atualizar premium");
+    } finally {
+      setUpdatingPremium(false);
     }
   };
 
@@ -77,17 +90,31 @@ export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfilePr
               </div>
             </div>
           </div>
-          <div>
-            <label className="input-label">Role</label>
-            <select
-              value={user.role}
-              onChange={(e) => handleRoleChange(e.target.value as "user" | "admin")}
-              disabled={updatingRole}
-              className="input py-2! px-3! text-sm! w-32!"
-            >
-              <option value="user">Usuario</option>
-              <option value="admin">Admin</option>
-            </select>
+          <div className="flex items-start gap-4">
+            <div>
+              <label className="input-label">Role</label>
+              <select
+                value={user.role}
+                onChange={(e) => handleRoleChange(e.target.value as "user" | "admin")}
+                disabled={updatingRole}
+                className="input py-2! px-3! text-sm! w-32!"
+              >
+                <option value="user">Usuario</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label className="input-label">Premium</label>
+              <div>
+                <button
+                  onClick={() => handlePremiumChange(!user.is_premium)}
+                  disabled={updatingPremium}
+                  className={`toggle-btn ${user.is_premium ? "on" : "off"}`}
+                >
+                  {user.is_premium ? "Sim" : "Nao"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

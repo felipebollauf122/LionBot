@@ -21,7 +21,7 @@ export default async function DashboardLayout({
 
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("role, is_owner, theme, custom_theme")
+    .select("role, is_owner, is_premium, theme, custom_theme")
     .eq("id", user.id)
     .single();
 
@@ -41,7 +41,7 @@ export default async function DashboardLayout({
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <GalaxyBackground className="absolute inset-0 h-full w-full" nebula={0.35} stars={0.7} parallax={false} />
       </div>
-      <DashboardShell isAdmin={tenant?.role === "admin"} isOwner={tenant?.is_owner === true}>
+      <DashboardShell isAdmin={tenant?.role === "admin"} isOwner={tenant?.is_owner === true} isPremium={tenant?.is_premium === true}>
         {children}
       </DashboardShell>
     </div>

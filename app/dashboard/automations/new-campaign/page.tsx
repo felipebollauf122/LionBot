@@ -1,11 +1,11 @@
 import { MtprotoCampaignForm } from "@/components/dashboard/mtproto-campaign-form";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { notFound } from "next/navigation";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function NewCampaignPage() {
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
       <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">

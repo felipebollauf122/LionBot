@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { MtprotoInbox } from "@/components/dashboard/mtproto-inbox";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
@@ -10,7 +10,7 @@ export default async function InboxPage({
 }: {
   params: Promise<{ accountId: string }>;
 }) {
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
   const { accountId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

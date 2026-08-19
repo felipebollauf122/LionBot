@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { parseTargets } from "@/lib/mtproto/target-parser";
 import { revalidatePath } from "next/cache";
-import { requireOwner } from "@/lib/actions/owner-actions";
+import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
 
 // Kinds elegíveis em campanha global — owner pediu alcance máximo, então
 // inclui grupos/canais onde só participa (risco de ban por spam aceito).
@@ -49,7 +49,7 @@ export async function startAddAccount(
   phoneNumber: string,
   displayName: string,
 ): Promise<{ accountId: string }> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -69,7 +69,7 @@ export async function startAddAccount(
 }
 
 export async function submitAuthCode(accountId: string, code: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const supabase = await createClient();
   const { data } = await supabase
     .from("mtproto_accounts")
@@ -90,13 +90,13 @@ export async function submitAuthPassword(
   accountId: string,
   password: string,
 ): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   await enqueueJob({ kind: "auth.submit-password", accountId, password });
   revalidatePath("/dashboard/automations");
 }
 
 export async function removeAccount(accountId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const supabase = await createClient();
   await supabase.from("mtproto_accounts").delete().eq("id", accountId);
   revalidatePath("/dashboard/automations");
@@ -117,7 +117,7 @@ export async function createCampaign(input: {
   global?: boolean;
 }): Promise<CreateCampaignResult> {
   try {
-    await requireOwner();
+    await requireAutomationsAccess();
     const tenantId = await currentTenantId();
     const supabase = await createClient();
 
@@ -269,7 +269,7 @@ export async function createCampaign(input: {
 }
 
 export async function syncAccountDialogs(accountId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data: account } = await supabase
@@ -348,7 +348,7 @@ export async function listActiveAccounts(): Promise<Array<{
 }
 
 export async function launchCampaign(campaignId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   await enqueueJob({ kind: "campaign.run", campaignId });
   const supabase = await createClient();
   await supabase
@@ -438,7 +438,7 @@ export async function listInboxMessages(
  * próximo ciclo enquanto status='paused').
  */
 export async function pauseCampaign(campaignId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   await supabase
@@ -456,7 +456,7 @@ export async function pauseCampaign(campaignId: string): Promise<void> {
  * vê o registro sumir no próximo getCampaignStatus e aborta.
  */
 export async function deleteCampaign(campaignId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase

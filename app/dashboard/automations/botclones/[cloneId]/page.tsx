@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { BotCloneProgress } from "@/components/dashboard/bot-clone-progress";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
@@ -10,7 +10,7 @@ export default async function BotClonePage({
 }: {
   params: Promise<{ cloneId: string }>;
 }) {
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
   const { cloneId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

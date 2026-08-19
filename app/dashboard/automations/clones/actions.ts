@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { requireOwner } from "@/lib/actions/owner-actions";
+import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
 import { deriveDestKind, isClonableKind } from "@/lib/mtproto/clone-kind";
 
 async function currentTenantId(): Promise<string> {
@@ -32,7 +32,7 @@ export type SaveBotResult = { ok: true; username: string } | { ok: false; error:
  * token errado e só descobrir quando o clone falha na mensagem 1.
  */
 export async function saveAutomationBot(token: string): Promise<SaveBotResult> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const clean = token.trim();
   if (!clean) return { ok: false, error: "Cole o token do BotFather." };
@@ -75,7 +75,7 @@ export async function saveAutomationBot(token: string): Promise<SaveBotResult> {
 }
 
 export async function removeAutomationBot(): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase.from("automation_bots").delete().eq("tenant_id", tenantId);
@@ -114,7 +114,7 @@ export async function createCloneJob(input: {
   linkReplaceChannel: string;
 }): Promise<CreateCloneResult> {
   try {
-    await requireOwner();
+    await requireAutomationsAccess();
     const tenantId = await currentTenantId();
     const supabase = await createClient();
 
@@ -199,7 +199,7 @@ export async function createCloneJob(input: {
 }
 
 export async function launchClone(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data: updated, error } = await supabase
@@ -220,7 +220,7 @@ export async function launchClone(cloneJobId: string): Promise<void> {
 
 /** Pausa: o runner checa o status entre cada grupo e aborta. O cursor fica salvo. */
 export async function pauseClone(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
@@ -233,7 +233,7 @@ export async function pauseClone(cloneJobId: string): Promise<void> {
 }
 
 export async function deleteClone(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
@@ -302,7 +302,7 @@ export async function listEligibleDestAccounts(): Promise<
  * resolver a restrição no @SpamBot. Owner-only, escopado por tenant.
  */
 export async function clearAccountRestriction(accountId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase

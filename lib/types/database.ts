@@ -34,6 +34,8 @@ export interface Tenant {
   email: string;
   name: string;
   role: UserRole;
+  is_owner: boolean;
+  is_premium: boolean;
   plan: string | null;
   created_at: string;
 }

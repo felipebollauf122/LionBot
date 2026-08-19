@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { requireOwner } from "@/lib/actions/owner-actions";
+import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
 
 interface MediaItem {
   url: string;
@@ -30,7 +30,7 @@ async function tenantId(): Promise<string> {
 }
 
 export async function listChannelTemplates() {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -43,7 +43,7 @@ export async function listChannelTemplates() {
 }
 
 export async function saveChannelTemplate(input: TemplateInput): Promise<{ id: string }> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
 
@@ -79,7 +79,7 @@ export async function saveChannelTemplate(input: TemplateInput): Promise<{ id: s
 }
 
 export async function deleteChannelTemplate(id: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   const { error } = await supabase
@@ -92,7 +92,7 @@ export async function deleteChannelTemplate(id: string): Promise<void> {
 }
 
 export async function listChannelMonitors() {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -109,7 +109,7 @@ export async function listChannelMonitors() {
 }
 
 export async function listMonitorableDialogs(accountId: string) {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   // Só canais (kind in channel_owner | channel_subscriber). Channel_owner
@@ -140,7 +140,7 @@ export async function addChannelMonitor(input: {
   channelTitle: string | null;
   channelUsername: string | null;
 }): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   const { error } = await supabase.from("channel_monitors").insert({
@@ -158,7 +158,7 @@ export async function addChannelMonitor(input: {
 }
 
 export async function pauseChannelMonitor(id: string, paused: boolean): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   await supabase
@@ -170,7 +170,7 @@ export async function pauseChannelMonitor(id: string, paused: boolean): Promise<
 }
 
 export async function deleteChannelMonitor(id: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const supabase = await createClient();
   await supabase.from("channel_monitors").delete().eq("id", id).eq("tenant_id", tid);
@@ -186,7 +186,7 @@ export async function deleteChannelMonitor(id: string): Promise<void> {
  * essa action faz o upload server-side com service role.
  */
 export async function uploadTemplateMedia(formData: FormData): Promise<{ url: string; kind: "photo" | "video"; mime_type: string; file_name: string }> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tid = await tenantId();
   const file = formData.get("file") as File | null;
   if (!file) throw new Error("file ausente");

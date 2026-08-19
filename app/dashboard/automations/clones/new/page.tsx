@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { CloneForm } from "@/components/dashboard/clone-form";
 import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
@@ -11,7 +11,7 @@ export default async function NewClonePage({
 }: {
   searchParams: Promise<{ dialogId?: string }>;
 }) {
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
   const { dialogId } = await searchParams;
   if (!dialogId) notFound();
 

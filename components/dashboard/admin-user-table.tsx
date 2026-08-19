@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminUser } from "@/lib/actions/admin-actions";
-import { updateUserRole } from "@/lib/actions/admin-actions";
+import { updateUserRole, updateUserPremium } from "@/lib/actions/admin-actions";
 
 interface AdminUserTableProps {
   users: AdminUser[];
@@ -21,13 +21,16 @@ export function AdminUserTable({ users: initialUsers }: AdminUserTableProps) {
   const [users, setUsers] = useState(initialUsers);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [premiumFilter, setPremiumFilter] = useState<"all" | "premium" | "not_premium">("all");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updatingPremiumId, setUpdatingPremiumId] = useState<string | null>(null);
   const router = useRouter();
 
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
     const matchRole = roleFilter === "all" || u.role === roleFilter;
-    return matchSearch && matchRole;
+    const matchPremium = premiumFilter === "all" || (premiumFilter === "premium" ? u.is_premium : !u.is_premium);
+    return matchSearch && matchRole && matchPremium;
   });
 
   const handleRoleChange = async (userId: string, newRole: "user" | "admin") => {
@@ -39,6 +42,18 @@ export function AdminUserTable({ users: initialUsers }: AdminUserTableProps) {
       alert(err instanceof Error ? err.message : "Erro ao atualizar role");
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const handlePremiumChange = async (userId: string, newIsPremium: boolean) => {
+    setUpdatingPremiumId(userId);
+    try {
+      await updateUserPremium(userId, newIsPremium);
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_premium: newIsPremium } : u));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao atualizar premium");
+    } finally {
+      setUpdatingPremiumId(null);
     }
   };
 
@@ -66,6 +81,17 @@ export function AdminUserTable({ users: initialUsers }: AdminUserTableProps) {
             </button>
           ))}
         </div>
+        <div className="flex gap-1">
+          {(["all", "premium", "not_premium"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setPremiumFilter(f)}
+              className={`toggle-btn ${premiumFilter === f ? "on" : "off"}`}
+            >
+              {f === "all" ? "Todos" : f === "premium" ? "Premium" : "Nao Premium"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -76,6 +102,7 @@ export function AdminUserTable({ users: initialUsers }: AdminUserTableProps) {
               <tr>
                 <th className="table-header">Usuario</th>
                 <th className="table-header">Role</th>
+                <th className="table-header">Premium</th>
                 <th className="table-header">Plano</th>
                 <th className="table-header">Bots</th>
                 <th className="table-header">Leads</th>
@@ -108,6 +135,15 @@ export function AdminUserTable({ users: initialUsers }: AdminUserTableProps) {
                       <option value="admin">Admin</option>
                     </select>
                   </td>
+                  <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handlePremiumChange(user.id, !user.is_premium)}
+                      disabled={updatingPremiumId === user.id}
+                      className={`toggle-btn ${user.is_premium ? "on" : "off"}`}
+                    >
+                      {user.is_premium ? "Sim" : "Nao"}
+                    </button>
+                  </td>
                   <td className="table-cell">
                     <span className="badge badge-info">{user.plan ?? "Free"}</span>
                   </td>
@@ -131,7 +167,7 @@ export function AdminUserTable({ users: initialUsers }: AdminUserTableProps) {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="table-cell text-center text-(--text-muted) py-12!">
+                  <td colSpan={9} className="table-cell text-center text-(--text-muted) py-12!">
                     Nenhum usuario encontrado.
                   </td>
                 </tr>

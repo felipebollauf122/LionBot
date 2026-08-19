@@ -37,6 +37,7 @@ export interface AdminUser {
   email: string;
   name: string;
   role: string;
+  is_premium: boolean;
   plan: string | null;
   created_at: string;
   last_sign_in_at: string | null;
@@ -82,6 +83,7 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
       email: t.email,
       name: t.name,
       role: t.role,
+      is_premium: t.is_premium,
       plan: t.plan,
       created_at: t.created_at,
       last_sign_in_at: null,
@@ -131,6 +133,7 @@ export async function getAdminUserProfile(userId: string): Promise<AdminUser | n
     email: t.email,
     name: t.name,
     role: t.role,
+    is_premium: t.is_premium,
     plan: t.plan,
     created_at: t.created_at,
     last_sign_in_at: null,
@@ -201,6 +204,19 @@ export async function updateUserRole(userId: string, role: "user" | "admin"): Pr
   const { error } = await supabase
     .from("tenants")
     .update({ role })
+    .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function updateUserPremium(userId: string, isPremium: boolean): Promise<{ success: boolean }> {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("tenants")
+    .update({ is_premium: isPremium })
     .eq("id", userId);
 
   if (error) throw new Error(error.message);

@@ -7,14 +7,14 @@ import { BotCloneList } from "@/components/dashboard/bot-clone-list";
 import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { notFound } from "next/navigation";
 
 export default async function AutomationsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
 
   const { data: accounts } = await supabase
     .from("mtproto_accounts")

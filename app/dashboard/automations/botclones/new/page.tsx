@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { BotCloneForm } from "@/components/dashboard/bot-clone-form";
 import { listDestBots, listEligibleBotCloneAccounts } from "@/app/dashboard/automations/botclones/actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function NewBotClonePage() {
-  if (!(await isOwner())) notFound();
+  if (!(await canAccessAutomations())) notFound();
 
   const [destBots, accounts] = await Promise.all([
     listDestBots(),

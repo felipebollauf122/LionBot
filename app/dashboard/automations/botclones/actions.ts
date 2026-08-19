@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { requireOwner } from "@/lib/actions/owner-actions";
+import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
 
 async function currentTenantId(): Promise<string> {
   const supabase = await createClient();
@@ -101,7 +101,7 @@ export async function createBotCloneJob(input: {
   clickThrottleMs: number;
 }): Promise<CreateBotCloneResult> {
   try {
-    await requireOwner();
+    await requireAutomationsAccess();
     const tenantId = await currentTenantId();
     const supabase = await createClient();
 
@@ -166,7 +166,7 @@ export async function createBotCloneJob(input: {
 }
 
 export async function launchBotCloneJob(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   await casTransitionAndEnqueue(cloneJobId, tenantId, "draft", "exploring", "botclone.explore", supabase);
@@ -184,7 +184,7 @@ export async function launchBotCloneJob(cloneJobId: string): Promise<void> {
  * volta pra exploring, duplicando o flow gerado.
  */
 export async function pauseBotCloneJob(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
@@ -204,7 +204,7 @@ export async function pauseBotCloneJob(cloneJobId: string): Promise<void> {
  * sem filho ainda), então retomar um 'failed' não reprocessa nada já feito.
  */
 export async function resumeBotCloneJob(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   await casTransitionAndEnqueue(cloneJobId, tenantId, ["paused", "failed"], "exploring", "botclone.explore", supabase);
@@ -212,7 +212,7 @@ export async function resumeBotCloneJob(cloneJobId: string): Promise<void> {
 }
 
 export async function deleteBotCloneJob(cloneJobId: string): Promise<void> {
-  await requireOwner();
+  await requireAutomationsAccess();
   const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase

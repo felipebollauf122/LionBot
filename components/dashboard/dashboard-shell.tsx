@@ -7,6 +7,7 @@ import { LionMark } from "@/components/brand/lion-mark";
 interface DashboardShellProps {
   isAdmin?: boolean;
   isOwner?: boolean;
+  isPremium?: boolean;
   children: ReactNode;
 }
 
@@ -16,7 +17,7 @@ interface DashboardShellProps {
  * Desktop (md+): sidebar is static in-flow. Mobile: sidebar is an off-canvas
  * drawer toggled by the hamburger top bar.
  */
-export function DashboardShell({ isAdmin, isOwner, children }: DashboardShellProps) {
+export function DashboardShell({ isAdmin, isOwner, isPremium, children }: DashboardShellProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -49,7 +50,7 @@ export function DashboardShell({ isAdmin, isOwner, children }: DashboardShellPro
         />
       )}
 
-      <Sidebar isAdmin={isAdmin} isOwner={isOwner} open={open} onClose={() => setOpen(false)} />
+      <Sidebar isAdmin={isAdmin} isOwner={isOwner} isPremium={isPremium} open={open} onClose={() => setOpen(false)} />
 
       <main className="flex-1 min-w-0 relative z-10">{children}</main>
     </div>

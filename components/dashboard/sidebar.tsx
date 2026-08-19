@@ -8,12 +8,13 @@ import { LionMark } from "@/components/brand/lion-mark";
 interface SidebarProps {
   isAdmin?: boolean;
   isOwner?: boolean;
+  isPremium?: boolean;
   /** mobile drawer open state (ignored on desktop where sidebar is static) */
   open?: boolean;
   onClose?: () => void;
 }
 
-export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProps) {
+export function Sidebar({ isAdmin, isOwner, isPremium, open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -107,7 +108,7 @@ export function Sidebar({ isAdmin, isOwner, open = false, onClose }: SidebarProp
           </div>
           Análises
         </a>
-        {isOwner && (
+        {(isOwner || isPremium) && (
           <a
             href="/dashboard/automations"
             className={`nav-item ${isAutomationsActive ? "active" : ""}`}

@@ -141,6 +141,11 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   }
 
   const fbclid = String(search.fbclid ?? "");
+  // TikTok Ads acrescenta ?ttclid=... no link do anúncio (equivalente ao
+  // fbclid do Meta). O cookie _ttp (TikTok Pixel) é setado pelo browser
+  // quando o pixel do TikTok já rodou nesse domínio antes — raramente
+  // presente numa página de redirect pura, mas capturamos se existir.
+  const ttclid = String(search.ttclid ?? "");
   const utmSource = String(search.utm_source ?? "");
   const utmMedium = String(search.utm_medium ?? "");
   const utmCampaign = String(search.utm_campaign ?? "");
@@ -150,6 +155,7 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   const cookieStore = await cookies();
   const existingFbp = cookieStore.get("_fbp")?.value;
   const fbp = existingFbp || generateFbp();
+  const ttp = cookieStore.get("_ttp")?.value ?? "";
 
   const hdrs = await headers();
   const clientIp = extractClientIp(hdrs);
@@ -193,6 +199,8 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
     event_data: {
       fbp,
       fbc: fbcCookie || null,
+      ttclid: ttclid || null,
+      ttp: ttp || null,
       click_time: clickTime,
       client_ip: clientIp,
       user_agent: userAgent,

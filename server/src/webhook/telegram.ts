@@ -5,6 +5,7 @@ import { FlowProcessor } from "../engine/flow-processor.js";
 import { LeadService } from "../services/lead-service.js";
 import { TrackingService } from "../services/tracking-service.js";
 import { FacebookCapi } from "../services/facebook-capi.js";
+import { TiktokEvents } from "../services/tiktok-events.js";
 import { UtmifyService } from "../services/utmify.js";
 import { addDelayedJob } from "../queue.js";
 import { ensureBotPaymentKeys } from "../services/bot-loader.js";
@@ -58,6 +59,8 @@ interface Bot {
   facebook_pixel_id_backup: string | null;
   facebook_access_token_backup: string | null;
   facebook_backup_enabled: boolean | null;
+  tiktok_pixel_id: string | null;
+  tiktok_access_token: string | null;
   utmify_api_key: string | null;
 }
 
@@ -370,8 +373,9 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
             enabled: typedBot.facebook_backup_enabled,
           },
         );
+        const tiktokEvents = new TiktokEvents(typedBot.tiktok_pixel_id ?? "", typedBot.tiktok_access_token ?? "");
         const utmify = new UtmifyService(typedBot.utmify_api_key ?? "");
-        const trackingService = new TrackingService(supabase, facebookCapi, utmify);
+        const trackingService = new TrackingService(supabase, facebookCapi, utmify, tiktokEvents);
 
         trackingService.trackLead({
           tenantId: typedBot.tenant_id,

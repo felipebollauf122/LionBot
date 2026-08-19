@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FacebookCapi } from "./facebook-capi.js";
+import type { TiktokEvents } from "./tiktok-events.js";
 import type { UtmifyService } from "./utmify.js";
 import { geoLookup } from "./geoip.js";
 
@@ -33,6 +34,10 @@ interface TrackPurchaseParams {
   productId?: string;
   productName?: string;
   paidAtIso?: string; // transaction.paid_at — usado como event_time (#5)
+  /** Já enviado ao Facebook antes (dedup no caller) — não reenvia Purchase. */
+  skipFacebook?: boolean;
+  /** Já enviado ao TikTok antes (dedup no caller) — não reenvia CompletePayment. */
+  skipTiktok?: boolean;
 }
 
 interface TrackCheckoutParams {
@@ -89,12 +94,16 @@ interface ClickContext {
   acceptLanguage?: string;
   referer?: string;
   country?: string;
+  /** tt_clid capturado na tracking page (query param), se existir (#TikTok) */
+  ttclid?: string;
+  /** cookie _ttp capturado na tracking page, se existir (#TikTok) */
+  ttp?: string;
 }
 
 /**
- * Look up the _fbp, _fbc real, click timestamp, IP, UA, accept-language e referer
- * salvos no page_view. Tudo isso vai pro user_data do CAPI Purchase pra
- * maximizar Event Match Quality (EMQ).
+ * Look up the _fbp, _fbc real, click timestamp, IP, UA, accept-language,
+ * referer, ttclid e ttp salvos no page_view. Tudo isso vai pro user_data do
+ * CAPI (Facebook e TikTok) pra maximizar o match quality.
  */
 async function loadClickContext(
   db: SupabaseClient,
@@ -120,13 +129,15 @@ async function loadClickContext(
     acceptLanguage: typeof ed.accept_language === "string" ? ed.accept_language : undefined,
     referer: typeof ed.referer === "string" ? ed.referer : undefined,
     country: typeof ed.country === "string" ? ed.country : undefined,
+    ttclid: typeof ed.ttclid === "string" ? ed.ttclid : undefined,
+    ttp: typeof ed.ttp === "string" ? ed.ttp : undefined,
   };
 }
 
 /**
  * external_ids — array com múltiplos formatos do mesmo usuário.
- * Cada string é hasheada SHA-256 pelo CAPI. Mais IDs = mais chance
- * do índice do Meta encontrar match → EMQ sobe.
+ * Cada string é hasheada SHA-256 pelo CAPI (Facebook e TikTok, cada um com
+ * seu próprio hash()). Mais IDs = mais chance do índice encontrar match.
  */
 function buildExternalIds(lead: LeadInfo): string[] {
   const ids = new Set<string>();
@@ -138,7 +149,7 @@ function buildExternalIds(lead: LeadInfo): string[] {
     ids.add(String(lead.telegramUserId));
   }
   if (lead.id) ids.add(lead.id);
-  // CPF como external_id extra (mais vetores de match no Meta) (#10)
+  // CPF como external_id extra (mais vetores de match) (#10)
   if (lead.document) {
     const cpf = lead.document.replace(/\D/g, "");
     if (cpf.length === 11) ids.add(`cpf_${cpf}`);
@@ -171,6 +182,19 @@ function buildFbUserData(lead: LeadInfo, ctx: ClickContext) {
   };
 }
 
+/** Build user data for TikTok from lead info + click context */
+function buildTiktokUserData(lead: LeadInfo, ctx: ClickContext) {
+  return {
+    externalIds: buildExternalIds(lead),
+    email: lead.email || undefined,
+    phone: lead.phone || undefined,
+    ttclid: ctx.ttclid || undefined,
+    ttp: ctx.ttp || undefined,
+    clientIp: ctx.clientIp,
+    clientUserAgent: ctx.userAgent,
+  };
+}
+
 /** Build UTM params record for DB */
 function buildUtmRecord(lead: LeadInfo): Record<string, string> {
   return {
@@ -187,17 +211,27 @@ export class TrackingService {
     private db: SupabaseClient,
     private facebookCapi: FacebookCapi,
     private utmify: UtmifyService,
+    private tiktokEvents: TiktokEvents,
   ) {}
 
   /**
    * Purchase — fires when SigiloPay confirms payment (status OK).
-   * Sends: DB event + Facebook Purchase + Utmify paid order.
+   * Sends: DB event + Facebook Purchase + TikTok CompletePayment + Utmify
+   * paid order.
    *
    * This is the ONLY Facebook CAPI event fired by the platform — all user
-   * data (email, phone, CPF, fbc with real click timestamp, fbp) is attached
-   * here to maximize Event Match Quality.
+   * data (email, phone, CPF, fbc com timestamp real de clique, fbp) é
+   * anexado aqui pra maximizar Event Match Quality. TikTok (sem o mesmo
+   * histórico de regressão de entrega) dispara CompletePayment aqui e nos
+   * outros 3 eventos do funil (ver trackLead/trackViewOffer/trackCheckout).
+   *
+   * Facebook e TikTok são independentes: params.skipFacebook/skipTiktok
+   * deixam o caller pular UMA rede que já confirmou entrega antes (guard de
+   * dedup por transactionId) sem impedir o reenvio da OUTRA rede que ainda
+   * não confirmou. O retorno { fbSent, tiktokSent } deixa o caller persistir
+   * cada flag de dedup separadamente.
    */
-  async trackPurchase(params: TrackPurchaseParams): Promise<{ fbSent: boolean }> {
+  async trackPurchase(params: TrackPurchaseParams): Promise<{ fbSent: boolean; tiktokSent: boolean }> {
     const eventId = `purchase_${params.transactionId}`;
     // event_time = hora real do pagamento confirmado (paid_at), não a hora
     // de processamento. Fallback pra agora se paid_at não vier (#5).
@@ -224,10 +258,11 @@ export class TrackingService {
       },
     });
 
-    // Load fbp + real click timestamp + IP/UA/sourceUrl from the original page_view
+    // Load fbp + real click timestamp + IP/UA/sourceUrl/ttclid/ttp from the
+    // original page_view
     const clickCtx = await loadClickContext(this.db, lead.tid);
 
-    // Build structured contents array — Meta prefers this over flat content_ids
+    // Build structured contents array — Meta e TikTok preferem isso a content_ids plano
     const contents = params.productId
       ? [{ id: params.productId, quantity: 1, item_price: amountInCurrency }]
       : undefined;
@@ -241,19 +276,45 @@ export class TrackingService {
       ...buildFbUserData(leadWithDoc, clickCtx),
       subscriptionId: params.transactionId,
     };
-    const fbSent = await this.facebookCapi.sendPurchaseEvent({
-      eventTime,
-      eventId,
-      userData,
-      value: amountInCurrency,
-      currency: params.currency,
-      contentIds: params.productId ? [params.productId] : undefined,
-      contentName: params.productName,
-      contents,
-      numItems: 1,
-      sourceUrl: clickCtx.sourceUrl,
-      orderId: params.transactionId,
-    });
+    // skipFacebook/skipTiktok: o caller já viu (via flag persistida na
+    // transação) que essa rede específica já recebeu o Purchase pra essa
+    // transactionId — não reenvia (evita duplicata que derruba EMQ). As
+    // duas redes são independentes: uma pode já ter sido enviada com
+    // sucesso enquanto a outra falhou/nunca foi configurada, então cada
+    // uma tem seu próprio skip em vez de um guard único pras duas (#tiktok-dedup).
+    const fbSent = params.skipFacebook
+      ? false
+      : await this.facebookCapi.sendPurchaseEvent({
+          eventTime,
+          eventId,
+          userData,
+          value: amountInCurrency,
+          currency: params.currency,
+          contentIds: params.productId ? [params.productId] : undefined,
+          contentName: params.productName,
+          contents,
+          numItems: 1,
+          sourceUrl: clickCtx.sourceUrl,
+          orderId: params.transactionId,
+        });
+
+    // TikTok CAPI — CompletePayment. Sempre dispara quando não já enviado
+    // (só isConfigured() internamente) — não é o Facebook, não tem o mesmo
+    // histórico de regressão de entrega com eventos de funil.
+    const tiktokSent = params.skipTiktok
+      ? false
+      : await this.tiktokEvents.sendCompletePaymentEvent({
+          eventTime,
+          eventId,
+          userData: buildTiktokUserData(leadWithDoc, clickCtx),
+          value: amountInCurrency,
+          currency: params.currency,
+          contentIds: params.productId ? [params.productId] : undefined,
+          contentName: params.productName,
+          contents,
+          sourceUrl: clickCtx.sourceUrl,
+          orderId: params.transactionId,
+        });
 
     // Utmify — paid order
     const now = new Date().toISOString();
@@ -297,15 +358,17 @@ export class TrackingService {
     if (dbEventId) {
       await this.db
         .from("tracking_events")
-        .update({ sent_to_facebook: fbSent, sent_to_utmify: utmifySent })
+        .update({ sent_to_facebook: fbSent, sent_to_utmify: utmifySent, sent_to_tiktok: tiktokSent })
         .eq("id", dbEventId);
     }
-    return { fbSent };
+    return { fbSent, tiktokSent };
   }
 
   /**
    * Contexto "forte" = veio do anúncio (passou pela tracking page) com os
-   * identificadores de maior peso pro Meta: fbp + fbc + IP + UA.
+   * identificadores de maior peso pro Meta: fbp + fbc + IP + UA. Esse gate
+   * é usado SÓ pro Facebook — o TikTok não tem essa restrição (ver
+   * FUNNEL_CAPI_ENABLED abaixo).
    */
   private hasStrongContext(ctx: ClickContext): boolean {
     return Boolean(ctx.fbp && ctx.fbc && ctx.clientIp && ctx.userAgent);
@@ -350,16 +413,23 @@ export class TrackingService {
    * Voltamos pra estratégia Purchase-ONLY no CAPI, que era o estado que
    * vendia. Os eventos continuam gravando no DB (contadores do dashboard).
    * Pra religar e testar de novo no futuro, mude pra true.
+   *
+   * IMPORTANTE: esse gate é uma decisão de negócio ESPECÍFICA do Facebook
+   * (a regressão observada foi na entrega/otimização de anúncios do
+   * Facebook). NÃO se aplica ao TikTok — os métodos abaixo disparam os 4
+   * eventos do funil pro TikTok incondicionalmente (só isConfigured()
+   * internamente).
    */
   private static FUNNEL_CAPI_ENABLED = false;
 
   /**
    * InitiateCheckout — fires when Pix code is generated.
-   * Sempre grava no DB. Dispara CAPI só com contexto forte (#2).
+   * Sempre grava no DB. CAPI do Facebook só com contexto forte (#2) e com
+   * FUNNEL_CAPI_ENABLED; TikTok InitiateCheckout dispara sempre.
    */
   async trackCheckout(params: TrackCheckoutParams): Promise<void> {
     const { lead } = params;
-    await this.saveEvent({
+    const dbEventId = await this.saveEvent({
       tenantId: params.tenantId,
       leadId: params.leadId,
       botId: params.botId,
@@ -374,10 +444,11 @@ export class TrackingService {
       },
     });
 
-    if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);
-    if (this.hasStrongContext(ctx)) {
-      await this.facebookCapi
+
+    let fbSent = false;
+    if (TrackingService.FUNNEL_CAPI_ENABLED && this.hasStrongContext(ctx)) {
+      fbSent = await this.facebookCapi
         .sendInitiateCheckoutEvent({
           eventTime: Math.floor(Date.now() / 1000),
           eventId: `checkout_${params.leadId}_${params.productId ?? "x"}`,
@@ -387,18 +458,40 @@ export class TrackingService {
           contentIds: params.productId ? [params.productId] : undefined,
           contentName: params.productName,
         })
-        .catch((e) => console.error("[tracking] InitiateCheckout CAPI falhou:", e));
+        .catch((e) => {
+          console.error("[tracking] InitiateCheckout CAPI falhou:", e);
+          return false;
+        });
+    }
+
+    const tiktokSent = await this.tiktokEvents.sendInitiateCheckoutEvent({
+      eventTime: Math.floor(Date.now() / 1000),
+      eventId: `checkout_${params.leadId}_${params.productId ?? "x"}`,
+      userData: buildTiktokUserData(lead, ctx),
+      value: params.amount / 100,
+      currency: params.currency,
+      contentIds: params.productId ? [params.productId] : undefined,
+      contentName: params.productName,
+      sourceUrl: ctx.sourceUrl,
+    });
+
+    if (dbEventId) {
+      await this.db
+        .from("tracking_events")
+        .update({ sent_to_facebook: fbSent, sent_to_tiktok: tiktokSent })
+        .eq("id", dbEventId);
     }
   }
 
   /**
    * Lead — fires when a new lead enters the bot via tracking link.
-   * Sempre grava no DB (o /start no bot nunca muda). Dispara CAPI só com
-   * contexto forte (#2) — Lead "pelado" sem dado de contato rebaixa EMQ.
+   * Sempre grava no DB (o /start no bot nunca muda). CAPI do Facebook só
+   * com contexto forte (#2) e FUNNEL_CAPI_ENABLED; TikTok Contact dispara
+   * sempre.
    */
   async trackLead(params: TrackLeadParams): Promise<void> {
     const { lead } = params;
-    await this.saveEvent({
+    const dbEventId = await this.saveEvent({
       tenantId: params.tenantId,
       leadId: params.leadId,
       botId: params.botId,
@@ -414,26 +507,45 @@ export class TrackingService {
     // bloqueia nem quebra o /start.
     void this.enrichGeo(lead.tid);
 
-    if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);
-    if (this.hasStrongContext(ctx)) {
-      await this.facebookCapi
+
+    let fbSent = false;
+    if (TrackingService.FUNNEL_CAPI_ENABLED && this.hasStrongContext(ctx)) {
+      fbSent = await this.facebookCapi
         .sendLeadEvent({
           eventTime: Math.floor(Date.now() / 1000),
           eventId: `lead_${params.leadId}`,
           userData: buildFbUserData(lead, ctx),
         })
-        .catch((e) => console.error("[tracking] Lead CAPI falhou:", e));
+        .catch((e) => {
+          console.error("[tracking] Lead CAPI falhou:", e);
+          return false;
+        });
+    }
+
+    const tiktokSent = await this.tiktokEvents.sendContactEvent({
+      eventTime: Math.floor(Date.now() / 1000),
+      eventId: `lead_${params.leadId}`,
+      userData: buildTiktokUserData(lead, ctx),
+      sourceUrl: ctx.sourceUrl,
+    });
+
+    if (dbEventId) {
+      await this.db
+        .from("tracking_events")
+        .update({ sent_to_facebook: fbSent, sent_to_tiktok: tiktokSent })
+        .eq("id", dbEventId);
     }
   }
 
   /**
    * ViewContent — fires when a lead sees the offer (view_offer event).
-   * Sempre grava no DB. Dispara CAPI só com contexto forte (#2).
+   * Sempre grava no DB. CAPI do Facebook só com contexto forte (#2) e
+   * FUNNEL_CAPI_ENABLED; TikTok ViewContent dispara sempre.
    */
   async trackViewOffer(params: TrackViewOfferParams): Promise<void> {
     const { lead } = params;
-    await this.saveEvent({
+    const dbEventId = await this.saveEvent({
       tenantId: params.tenantId,
       leadId: params.leadId,
       botId: params.botId,
@@ -443,17 +555,36 @@ export class TrackingService {
       utmParams: buildUtmRecord(lead),
     });
 
-    if (!TrackingService.FUNNEL_CAPI_ENABLED) return;
     const ctx = await loadClickContext(this.db, lead.tid);
-    if (this.hasStrongContext(ctx)) {
-      await this.facebookCapi
+
+    let fbSent = false;
+    if (TrackingService.FUNNEL_CAPI_ENABLED && this.hasStrongContext(ctx)) {
+      fbSent = await this.facebookCapi
         .sendViewContentEvent({
           eventTime: Math.floor(Date.now() / 1000),
           eventId: `viewcontent_${params.leadId}`,
           userData: buildFbUserData(lead, ctx),
           contentName: params.contentName,
         })
-        .catch((e) => console.error("[tracking] ViewContent CAPI falhou:", e));
+        .catch((e) => {
+          console.error("[tracking] ViewContent CAPI falhou:", e);
+          return false;
+        });
+    }
+
+    const tiktokSent = await this.tiktokEvents.sendViewContentEvent({
+      eventTime: Math.floor(Date.now() / 1000),
+      eventId: `viewcontent_${params.leadId}`,
+      userData: buildTiktokUserData(lead, ctx),
+      contentName: params.contentName,
+      sourceUrl: ctx.sourceUrl,
+    });
+
+    if (dbEventId) {
+      await this.db
+        .from("tracking_events")
+        .update({ sent_to_facebook: fbSent, sent_to_tiktok: tiktokSent })
+        .eq("id", dbEventId);
     }
   }
 
@@ -475,6 +606,7 @@ export class TrackingService {
         event_data: params.eventData ?? {},
         sent_to_facebook: false,
         sent_to_utmify: false,
+        sent_to_tiktok: false,
       })
       .select("id")
       .single();

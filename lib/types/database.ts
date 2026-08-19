@@ -52,6 +52,8 @@ export interface Bot {
   facebook_pixel_id_backup: string | null;
   facebook_access_token_backup: string | null;
   facebook_backup_enabled: boolean | null;
+  tiktok_pixel_id: string | null;
+  tiktok_access_token: string | null;
   utmify_api_key: string | null;
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;

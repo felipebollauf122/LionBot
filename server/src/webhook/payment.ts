@@ -21,6 +21,8 @@ interface Bot {
   facebook_pixel_id_backup: string | null;
   facebook_access_token_backup: string | null;
   facebook_backup_enabled: boolean | null;
+  tiktok_pixel_id: string | null;
+  tiktok_access_token: string | null;
   utmify_api_key: string | null;
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
@@ -568,8 +570,10 @@ export async function handleZuckPayWebhook(
 /**
  * Reentrega manual de uma transação (botão "Reenviar acesso" no painel).
  * Reexecuta o fluxo de pós-pagamento (edge "paid") pra reentregar produto/
- * mensagens ao cliente. O tracking (Facebook/Utmify) NÃO duplica — o
- * completePurchase respeita o flag sent_to_facebook.
+ * mensagens ao cliente. O tracking (Facebook/TikTok/Utmify) NÃO duplica — o
+ * completePurchase respeita os flags sent_to_facebook/sent_to_tiktok,
+ * independentes um do outro (uma rede pode reenviar mesmo com a outra já
+ * confirmada).
  *
  * force=true ignora o guard delivered_tx pra realmente reentregar.
  * Respeita blacklist (silêncio total). Retorna o resultado pra o painel.

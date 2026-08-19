@@ -16,6 +16,18 @@ const mockUtmify = {
   sendOrder: vi.fn().mockResolvedValue(true),
 };
 
+/**
+ * Ao contrário do Facebook (Purchase-only, funil gated por
+ * FUNNEL_CAPI_ENABLED), o TikTok dispara os 4 eventos do funil
+ * incondicionalmente — só respeita isConfigured() internamente.
+ */
+const mockTiktokEvents = {
+  sendCompletePaymentEvent: vi.fn().mockResolvedValue(true),
+  sendContactEvent: vi.fn().mockResolvedValue(true),
+  sendViewContentEvent: vi.fn().mockResolvedValue(true),
+  sendInitiateCheckoutEvent: vi.fn().mockResolvedValue(true),
+};
+
 /** event_data com contexto FORTE (fbp + fbc + IP + UA) — necessário pro CAPI
  *  de funil (Lead/ViewContent/Checkout) disparar via loadClickContext. */
 const STRONG_CLICK_CONTEXT = {
@@ -92,10 +104,11 @@ describe("TrackingService", () => {
       mockSupabase as any,
       mockFacebookCapi as any,
       mockUtmify as any,
+      mockTiktokEvents as any,
     );
   });
 
-  it("should track a purchase event and dispatch to Facebook + Utmify", async () => {
+  it("should track a purchase event and dispatch to Facebook + TikTok + Utmify", async () => {
     mockChain({ savedEventId: "evt-1" });
 
     await service.trackPurchase({
@@ -112,12 +125,62 @@ describe("TrackingService", () => {
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
     expect(mockFacebookCapi.sendPurchaseEvent).toHaveBeenCalled();
+    expect(mockTiktokEvents.sendCompletePaymentEvent).toHaveBeenCalled();
     expect(mockUtmify.sendOrder).toHaveBeenCalled();
   });
 
-  // Purchase-only no CAPI (revertido 2026-06-03): eventos de funil gravam
-  // no DB mas NÃO disparam pro Facebook (FUNNEL_CAPI_ENABLED=false).
-  it("should track a lead event (bot_start) saving to DB but NOT firing CAPI", async () => {
+  // Regressão: Facebook e TikTok são redes independentes no dedup guard do
+  // purchase-completer (transactions.sent_to_facebook / sent_to_tiktok).
+  // skipFacebook/skipTiktok deixam o caller pular só a rede que já
+  // confirmou, sem impedir o reenvio da outra que ainda não confirmou.
+  it("should skip Facebook but still fire TikTok when skipFacebook=true", async () => {
+    mockChain({ savedEventId: "evt-6" });
+
+    const res = await service.trackPurchase({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      transactionId: "tx-2",
+      amount: 9700,
+      currency: "BRL",
+      lead: makeLead(),
+      productId: "prod-1",
+      productName: "Oferta",
+      skipFacebook: true,
+    });
+
+    expect(mockFacebookCapi.sendPurchaseEvent).not.toHaveBeenCalled();
+    expect(mockTiktokEvents.sendCompletePaymentEvent).toHaveBeenCalled();
+    expect(res.fbSent).toBe(false);
+    expect(res.tiktokSent).toBe(true);
+  });
+
+  it("should skip TikTok but still fire Facebook when skipTiktok=true", async () => {
+    mockChain({ savedEventId: "evt-7" });
+
+    const res = await service.trackPurchase({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      transactionId: "tx-3",
+      amount: 9700,
+      currency: "BRL",
+      lead: makeLead(),
+      productId: "prod-1",
+      productName: "Oferta",
+      skipTiktok: true,
+    });
+
+    expect(mockFacebookCapi.sendPurchaseEvent).toHaveBeenCalled();
+    expect(mockTiktokEvents.sendCompletePaymentEvent).not.toHaveBeenCalled();
+    expect(res.fbSent).toBe(true);
+    expect(res.tiktokSent).toBe(false);
+  });
+
+  // Purchase-only no CAPI do Facebook (revertido 2026-06-03): eventos de
+  // funil gravam no DB mas NÃO disparam pro Facebook (FUNNEL_CAPI_ENABLED=
+  // false). O TikTok NÃO tem esse gate — dispara sempre.
+  it("should track a lead event (bot_start): saves to DB, fires TikTok Contact, but NOT Facebook CAPI", async () => {
     mockChain({ savedEventId: "evt-2" });
 
     await service.trackLead({
@@ -129,9 +192,10 @@ describe("TrackingService", () => {
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
     expect(mockFacebookCapi.sendLeadEvent).not.toHaveBeenCalled();
+    expect(mockTiktokEvents.sendContactEvent).toHaveBeenCalled();
   });
 
-  it("should track a view_offer event saving to DB but NOT firing CAPI", async () => {
+  it("should track a view_offer event: saves to DB, fires TikTok ViewContent, but NOT Facebook CAPI", async () => {
     mockChain({ savedEventId: "evt-3" });
 
     await service.trackViewOffer({
@@ -144,9 +208,10 @@ describe("TrackingService", () => {
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
     expect(mockFacebookCapi.sendViewContentEvent).not.toHaveBeenCalled();
+    expect(mockTiktokEvents.sendViewContentEvent).toHaveBeenCalled();
   });
 
-  it("should track a checkout event saving to DB but NOT firing CAPI", async () => {
+  it("should track a checkout event: saves to DB, fires TikTok InitiateCheckout, but NOT Facebook CAPI", async () => {
     mockChain({ savedEventId: "evt-4" });
 
     await service.trackCheckout({
@@ -162,9 +227,10 @@ describe("TrackingService", () => {
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
     expect(mockFacebookCapi.sendInitiateCheckoutEvent).not.toHaveBeenCalled();
+    expect(mockTiktokEvents.sendInitiateCheckoutEvent).toHaveBeenCalled();
   });
 
-  it("should NOT fire Lead CAPI without strong click context (still saves to DB)", async () => {
+  it("should NOT fire Lead CAPI without strong click context (still saves to DB, still fires TikTok)", async () => {
     // Sem page_view salvo → loadClickContext devolve {} → contexto fraco.
     mockChain({ savedEventId: "evt-5", clickContext: null });
 
@@ -177,5 +243,7 @@ describe("TrackingService", () => {
 
     expect(mockSupabase.from).toHaveBeenCalledWith("tracking_events");
     expect(mockFacebookCapi.sendLeadEvent).not.toHaveBeenCalled();
+    // TikTok não tem gate de "contexto forte" — dispara mesmo sem fbp/fbc/IP/UA.
+    expect(mockTiktokEvents.sendContactEvent).toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@ import { FlowProcessor } from "../engine/flow-processor.js";
 import { LeadService } from "./lead-service.js";
 import { buildGateway } from "./gateway-factory.js";
 import { FacebookCapi } from "./facebook-capi.js";
+import { TiktokEvents } from "./tiktok-events.js";
 import { UtmifyService } from "./utmify.js";
 import { TrackingService } from "./tracking-service.js";
 import { productLabelForExternal } from "./external-product-label.js";
@@ -24,6 +25,8 @@ interface Bot {
   facebook_pixel_id_backup: string | null;
   facebook_access_token_backup: string | null;
   facebook_backup_enabled: boolean | null;
+  tiktok_pixel_id: string | null;
+  tiktok_access_token: string | null;
   utmify_api_key: string | null;
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
@@ -44,6 +47,7 @@ interface Transaction {
   currency: string;
   paid_at?: string | null;
   sent_to_facebook?: boolean | null;
+  sent_to_tiktok?: boolean | null;
 }
 
 /**
@@ -132,27 +136,37 @@ export async function completePurchase(
 
   // Tracking (fire-and-forget, nunca bloqueia entrega)
   try {
-    // Dedup (#6): se essa transação já foi enviada ao Facebook, não dispara
-    // de novo (evita Purchase duplicado que derruba EMQ). Lê o flag fresco
-    // do DB pra cobrir reentradas (webhook duplicado, retry de worker).
+    // Dedup (#6): se essa transação já foi enviada ao Facebook e/ou ao
+    // TikTok, não dispara de novo pra rede que já confirmou (evita Purchase/
+    // CompletePayment duplicado que derruba EMQ). Lê os flags frescos do DB
+    // pra cobrir reentradas (webhook duplicado, retry de worker, "Reenviar
+    // acesso" do painel). As duas redes são independentes — uma pode ter
+    // confirmado enquanto a outra falhou (ou nunca esteve configurada), daí
+    // cada uma ter seu próprio flag em vez de travar as duas juntas no
+    // sucesso de uma só.
     const { data: txFlag } = await db
       .from("transactions")
-      .select("sent_to_facebook, paid_at")
+      .select("sent_to_facebook, sent_to_tiktok, paid_at")
       .eq("id", transaction.id)
       .maybeSingle();
-    const alreadySent = (txFlag as { sent_to_facebook?: boolean } | null)?.sent_to_facebook === true;
-    const paidAtIso = (txFlag as { paid_at?: string | null } | null)?.paid_at ?? transaction.paid_at ?? undefined;
+    const flagRow = txFlag as
+      | { sent_to_facebook?: boolean; sent_to_tiktok?: boolean; paid_at?: string | null }
+      | null;
+    const facebookAlreadySent = flagRow?.sent_to_facebook === true;
+    const tiktokAlreadySent = flagRow?.sent_to_tiktok === true;
+    const paidAtIso = flagRow?.paid_at ?? transaction.paid_at ?? undefined;
 
-    if (alreadySent) {
-      console.log(`[purchase-completer] tx ${transaction.id} já enviada ao Facebook — pulando CAPI (entrega segue normal)`);
+    if (facebookAlreadySent && tiktokAlreadySent) {
+      console.log(`[purchase-completer] tx ${transaction.id} já enviada ao Facebook e ao TikTok — pulando CAPI (entrega segue normal)`);
     } else {
       const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "", {
         pixelId: bot.facebook_pixel_id_backup,
         accessToken: bot.facebook_access_token_backup,
         enabled: bot.facebook_backup_enabled,
       });
+      const tiktokEvents = new TiktokEvents(bot.tiktok_pixel_id ?? "", bot.tiktok_access_token ?? "");
       const utmify = new UtmifyService(bot.utmify_api_key ?? "");
-      const trackingService = new TrackingService(db, facebookCapi, utmify);
+      const trackingService = new TrackingService(db, facebookCapi, utmify, tiktokEvents);
       const { data: product } = await db
         .from("products")
         .select("id, name, ghost_name")
@@ -160,6 +174,8 @@ export async function completePurchase(
         .single();
       trackingService
         .trackPurchase({
+          skipFacebook: facebookAlreadySent,
+          skipTiktok: tiktokAlreadySent,
           tenantId: transaction.tenant_id,
           leadId: transaction.lead_id,
           botId: transaction.bot_id,
@@ -193,11 +209,17 @@ export async function completePurchase(
           }),
         })
         .then(async (res) => {
-          // Marca flag só se o Facebook confirmou recebimento (#6)
-          if (res?.fbSent) {
+          // Marca cada flag independentemente, só quando essa rede
+          // confirmou recebimento nessa chamada (#6, #tiktok-dedup). Uma
+          // rede já pulada (skipFacebook/skipTiktok) reporta sent=false e
+          // não regrava — o flag já estava true no DB.
+          const updates: Record<string, boolean> = {};
+          if (!facebookAlreadySent && res?.fbSent) updates.sent_to_facebook = true;
+          if (!tiktokAlreadySent && res?.tiktokSent) updates.sent_to_tiktok = true;
+          if (Object.keys(updates).length > 0) {
             await db
               .from("transactions")
-              .update({ sent_to_facebook: true })
+              .update(updates)
               .eq("id", transaction.id);
           }
         })

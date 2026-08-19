@@ -19,7 +19,7 @@ interface BotSettingsFormProps {
   children?: ReactNode;
 }
 
-type SectionKey = "info" | "facebook" | "utmify" | "gateway" | "tracking" | "advanced" | "danger";
+type SectionKey = "info" | "facebook" | "tiktok" | "utmify" | "gateway" | "tracking" | "advanced" | "danger";
 
 /**
  * Faz fetch ao servidor do bot e devolve JSON de forma SEGURA. Se a resposta não
@@ -50,6 +50,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ ok: boolean
 const sections = [
   { key: "info", label: "Informacoes do Bot", desc: "Status e configuracao geral", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", color: "var(--accent)" },
   { key: "facebook", label: "Facebook Ads", desc: "Pixel e Conversions API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--cyan)" },
+  { key: "tiktok", label: "TikTok Ads", desc: "Pixel e Events API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--amber)" },
   { key: "utmify", label: "Utmify", desc: "Integracao de tracking", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--purple)" },
   { key: "gateway", label: "Gateway de pagamento", desc: "Poseidon Pay ou EvPay", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--accent)" },
   { key: "tracking", label: "Pagina de Tracking", desc: "Configuracao da pagina de redirecionamento", icon: "M21 12a9 9 0 11-6.219-8.56", color: "var(--amber)" },
@@ -87,6 +88,8 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [backupEnabled, setBackupEnabled] = useState(bot.facebook_backup_enabled ?? false);
   const [pixelIdBackup, setPixelIdBackup] = useState(bot.facebook_pixel_id_backup ?? "");
   const [accessTokenBackup, setAccessTokenBackup] = useState(bot.facebook_access_token_backup ?? "");
+  const [tiktokPixelId, setTiktokPixelId] = useState(bot.tiktok_pixel_id ?? "");
+  const [tiktokAccessToken, setTiktokAccessToken] = useState(bot.tiktok_access_token ?? "");
   const [utmifyKey, setUtmifyKey] = useState(bot.utmify_api_key ?? "");
   const [paymentGateway, setPaymentGateway] = useState<"sigilopay" | "evpay">(
     (bot.payment_gateway === "evpay" ? "evpay" : "sigilopay"),
@@ -115,6 +118,8 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
         facebook_pixel_id_backup: pixelIdBackup,
         facebook_access_token_backup: accessTokenBackup,
         facebook_backup_enabled: backupEnabled,
+        tiktok_pixel_id: tiktokPixelId,
+        tiktok_access_token: tiktokAccessToken,
         utmify_api_key: utmifyKey,
         payment_gateway: paymentGateway,
         sigilopay_public_key: sigiloPublicKey,
@@ -241,7 +246,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   }
 
   // Which sections expose fields saved by the shared "Salvar Configuracoes" button.
-  const savableSections: SectionKey[] = ["facebook", "utmify", "gateway", "tracking"];
+  const savableSections: SectionKey[] = ["facebook", "tiktok", "utmify", "gateway", "tracking"];
   const showSaveBar = savableSections.includes(activeSection);
 
   return (
@@ -488,6 +493,24 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TikTok ────────────────────────────────────────── */}
+          {activeSection === "tiktok" && (
+            <div className="card p-4 sm:p-6 relative animate-in">
+              <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--amber)/15 to-transparent" />
+              <SectionHeader sKey="tiktok" />
+              <div className="space-y-4">
+                <div>
+                  <label className="input-label">Pixel ID</label>
+                  <input type="text" value={tiktokPixelId} onChange={(e) => setTiktokPixelId(e.target.value)} placeholder="CXXXXXXXXXXXXXXXXXXX" className="input" />
+                </div>
+                <div>
+                  <label className="input-label">Events API Access Token</label>
+                  <input type="text" value={tiktokAccessToken} onChange={(e) => setTiktokAccessToken(e.target.value)} placeholder="token do Events Manager" className="input" />
                 </div>
               </div>
             </div>

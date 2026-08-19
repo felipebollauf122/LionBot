@@ -3,18 +3,21 @@ import type { NodeContext, NodeResult } from "../types.js";
 import type { PaymentGateway } from "../../services/payment-gateway.js";
 import { UtmifyService } from "../../services/utmify.js";
 import { FacebookCapi } from "../../services/facebook-capi.js";
+import { TiktokEvents } from "../../services/tiktok-events.js";
 import { TrackingService } from "../../services/tracking-service.js";
 import { addPaymentTimeoutJob } from "../../queue.js";
 import { logEvent } from "../../services/lead-messages.js";
 import { botCache } from "../../cache.js";
 
-/** Colunas do bot usadas só pra tracking (FB CAPI / Utmify). */
+/** Colunas do bot usadas só pra tracking (FB CAPI / TikTok / Utmify). */
 interface BotTrackingConfig {
   facebook_pixel_id: string | null;
   facebook_access_token: string | null;
   facebook_pixel_id_backup: string | null;
   facebook_access_token_backup: string | null;
   facebook_backup_enabled: boolean | null;
+  tiktok_pixel_id: string | null;
+  tiktok_access_token: string | null;
   utmify_api_key: string | null;
 }
 
@@ -200,7 +203,7 @@ export async function handlePaymentBundleNode(
   // Fire view_offer → Facebook ViewContent
   const { data: botForTracking } = await db
     .from("bots")
-    .select("facebook_pixel_id, facebook_access_token, facebook_pixel_id_backup, facebook_access_token_backup, facebook_backup_enabled, utmify_api_key")
+    .select("facebook_pixel_id, facebook_access_token, facebook_pixel_id_backup, facebook_access_token_backup, facebook_backup_enabled, tiktok_pixel_id, tiktok_access_token, utmify_api_key")
     .eq("id", ctx.lead.bot_id)
     .single();
 
@@ -210,8 +213,9 @@ export async function handlePaymentBundleNode(
       accessToken: botForTracking.facebook_access_token_backup,
       enabled: botForTracking.facebook_backup_enabled,
     });
+    const tiktokEvents = new TiktokEvents(botForTracking.tiktok_pixel_id ?? "", botForTracking.tiktok_access_token ?? "");
     const utmSvc = new UtmifyService(botForTracking.utmify_api_key ?? "");
-    const trackingSvc = new TrackingService(db, fbCapi, utmSvc);
+    const trackingSvc = new TrackingService(db, fbCapi, utmSvc, tiktokEvents);
     trackingSvc.trackViewOffer({
       tenantId: ctx.lead.tenant_id,
       leadId: ctx.lead.id,
@@ -502,7 +506,7 @@ export async function handleProductPaymentCallback(
   const botConfig = (botCache.get(ctx.lead.bot_id) as BotTrackingConfig | undefined)
     ?? (await db
       .from("bots")
-      .select("facebook_pixel_id, facebook_access_token, facebook_pixel_id_backup, facebook_access_token_backup, facebook_backup_enabled, utmify_api_key")
+      .select("facebook_pixel_id, facebook_access_token, facebook_pixel_id_backup, facebook_access_token_backup, facebook_backup_enabled, tiktok_pixel_id, tiktok_access_token, utmify_api_key")
       .eq("id", ctx.lead.bot_id)
       .single()).data as BotTrackingConfig | null;
 
@@ -512,8 +516,9 @@ export async function handleProductPaymentCallback(
       accessToken: botConfig.facebook_access_token_backup,
       enabled: botConfig.facebook_backup_enabled,
     });
+    const tiktokEvents = new TiktokEvents(botConfig.tiktok_pixel_id ?? "", botConfig.tiktok_access_token ?? "");
     const utmSvc = new UtmifyService(botConfig.utmify_api_key ?? "");
-    const trackingSvc = new TrackingService(db, fbCapi, utmSvc);
+    const trackingSvc = new TrackingService(db, fbCapi, utmSvc, tiktokEvents);
 
     const leadInfo = {
       id: ctx.lead.id,

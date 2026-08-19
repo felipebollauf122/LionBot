@@ -9,6 +9,7 @@ interface ButtonData {
   value: string;
   product_id?: string;
   sale_type?: string;
+  style?: string;
 }
 
 interface ButtonConfigProps {
@@ -22,6 +23,16 @@ const SALE_TYPES: { value: string; label: string }[] = [
   { value: "orderbump", label: "Order Bump" },
   { value: "upsell", label: "Upsell" },
   { value: "downsell", label: "Downsell" },
+];
+
+// Cor do botão no Telegram (Bot API 8.x+) — não é CSS livre, é um campo
+// nativo do inline keyboard limitado pelo próprio Telegram a esses 3
+// valores (clientes antigos ignoram e mostram a cor padrão do tema).
+const BUTTON_STYLES: { value: string; label: string }[] = [
+  { value: "", label: "Padrão (tema do cliente)" },
+  { value: "danger", label: "🔴 Vermelho" },
+  { value: "success", label: "🟢 Verde" },
+  { value: "primary", label: "🔵 Azul" },
 ];
 
 // gera um id estável (btn_N) que nunca colide com os já existentes —
@@ -116,6 +127,17 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
                 </svg>
               </button>
             </div>
+            <select
+              value={btn.style ?? ""}
+              onChange={(e) => updateButton(i, "style", e.target.value)}
+              className="input py-2! text-xs!"
+            >
+              {BUTTON_STYLES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
 
             {btn.action === "payment" ? (
               <div className="space-y-2">

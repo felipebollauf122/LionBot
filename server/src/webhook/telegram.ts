@@ -361,9 +361,20 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         );
       }
 
-      // Register bot_start tracking event + Facebook CAPI Lead event
+      // Register bot_start tracking event + Facebook CAPI Lead event.
+      // trackLead() SEMPRE grava o bot_start no banco e decide sozinha,
+      // internamente (hasStrongContext/loadClickContext), se dispara CAPI do
+      // Facebook — não depende de tid bater com o tid já salvo no lead. O
+      // gate antigo aqui (`tid && lead.tid === tid`) bloqueava a chamada
+      // INTEIRA (inclusive a gravação em tracking_events e o TikTok Contact,
+      // que por design "dispara sempre") pra qualquer /start orgânico (sem
+      // tid) ou de lead recorrente (tid da mensagem ≠ tid já salvo) — na
+      // prática a maior parte do tráfego real, fazendo "Total Starts" ficar
+      // parado. Facebook/TikTok já dedupam por eventId determinístico
+      // (`lead_${leadId}`) do lado deles, então chamar de novo em /start
+      // repetido não duplica nada nas plataformas de anúncio.
       // Fire-and-forget: don't block the flow execution on tracking
-      if (tid && lead.tid === tid) {
+      if (isStartCommand) {
         const facebookCapi = new FacebookCapi(
           typedBot.facebook_pixel_id ?? "",
           typedBot.facebook_access_token ?? "",

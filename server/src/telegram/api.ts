@@ -120,7 +120,44 @@ export class TelegramApi {
     if (this.protectContent) {
       body.protect_content = true;
     }
-    const result = await this.request("sendVideo", body);
+    try {
+      const result = await this.request("sendVideo", body);
+      return result as TelegramMessage | null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // O fetcher da Telegram às vezes não reconhece o Content-Type do CDN de
+      // origem (proxy, redirect, headers atípicos) e cai no fluxo de preview
+      // de "web page", que rejeita o conteúdo por não parecer vídeo direto.
+      // Baixamos o arquivo no nosso servidor e reenviamos como upload
+      // multipart, contornando o fetch da Telegram por completo.
+      if (/wrong type of the web page content|failed to get http url content/i.test(msg)) {
+        console.warn(`[telegram] sendVideo por URL falhou (${msg}), tentando upload direto`);
+        return await this.sendVideoAsUpload(params, body);
+      }
+      throw error;
+    }
+  }
+
+  private async sendVideoAsUpload(
+    params: SendVideoParams,
+    body: Record<string, unknown>,
+  ): Promise<TelegramMessage | null> {
+    const fileResponse = await fetch(params.video, { signal: AbortSignal.timeout(30_000) });
+    if (!fileResponse.ok) {
+      throw new Error(
+        `Telegram API error (sendVideo): falha ao baixar vídeo da origem (HTTP ${fileResponse.status})`,
+      );
+    }
+    const blob = await fileResponse.blob();
+
+    const form = new FormData();
+    for (const [key, value] of Object.entries(body)) {
+      if (key === "video") continue;
+      form.append(key, typeof value === "string" ? value : JSON.stringify(value));
+    }
+    form.append("video", blob, "video.mp4");
+
+    const result = await this.requestMultipart("sendVideo", form);
     return result as TelegramMessage | null;
   }
 
@@ -255,5 +292,18 @@ export class TelegramApi {
     }
 
     throw new Error(`Telegram API ${method}: all ${MAX_RETRIES} attempts failed`);
+  }
+
+  private async requestMultipart(method: string, form: FormData): Promise<unknown> {
+    const response = await fetch(`${this.baseUrl}/${method}`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(60_000),
+    });
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(`Telegram API error (${method}): ${data.description ?? "Unknown error"}`);
+    }
+    return data.result;
   }
 }

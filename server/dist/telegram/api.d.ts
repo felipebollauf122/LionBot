@@ -52,6 +52,7 @@ export declare class TelegramApi {
     sendMessage(params: SendMessageParams): Promise<TelegramMessage | null>;
     sendPhoto(params: SendPhotoParams): Promise<TelegramMessage | null>;
     sendVideo(params: SendVideoParams): Promise<TelegramMessage | null>;
+    private sendVideoAsUpload;
     deleteMessage(chatId: number, messageId: number): Promise<boolean>;
     setWebhook(url: string): Promise<void>;
     editMessageText(params: {
@@ -73,4 +74,5 @@ export declare class TelegramApi {
     answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>;
     deleteWebhook(): Promise<void>;
     private request;
+    private requestMultipart;
 }

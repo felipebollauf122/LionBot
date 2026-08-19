@@ -18,6 +18,17 @@ export type MtprotoJobData = {
 } | {
     kind: "account.sync-dialogs";
     accountId: string;
+} | {
+    kind: "clone.run";
+    cloneJobId: string;
+} | {
+    kind: "botclone.explore";
+    cloneJobId: string;
+} | {
+    kind: "botclone.build-flow";
+    cloneJobId: string;
 };
 export declare const mtprotoQueue: Queue<MtprotoJobData, any, string, MtprotoJobData, any, string>;
-export declare function enqueueMtproto(data: MtprotoJobData): Promise<void>;
+export declare function enqueueMtproto(data: MtprotoJobData, opts?: {
+    delayMs?: number;
+}): Promise<void>;

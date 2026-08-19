@@ -178,9 +178,14 @@ export async function completePurchase(db, bot, lead, transaction, opts) {
             return;
         }
     }
-    const paidEdge = flow.flow_data.edges.find((e) => e.source === paymentNodeId && e.sourceHandle === "paid");
+    // Namespaced pelo botão de origem quando o pagamento veio de um botão de
+    // pagamento inline (nó "button" comum) — o nó de pagamento dedicado
+    // continua usando o handle "paid" plano (paymentButtonId nunca setado).
+    const paymentButtonId = String(lead.state.pending_payment_button_id ?? "");
+    const paidHandle = paymentButtonId ? `paid:${paymentButtonId}` : "paid";
+    const paidEdge = flow.flow_data.edges.find((e) => e.source === paymentNodeId && e.sourceHandle === paidHandle);
     if (!paidEdge) {
-        await sendDeliveryFallback(bot, lead, `edge "paid" não conectada no nó ${paymentNodeId}`);
+        await sendDeliveryFallback(bot, lead, `edge "${paidHandle}" não conectada no nó ${paymentNodeId}`);
         return;
     }
     console.log(`[purchase-completer] Resuming flow on "paid" edge → node ${paidEdge.target}`);

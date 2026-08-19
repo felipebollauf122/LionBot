@@ -11,6 +11,7 @@ import { botCache, flowByIdCache } from "./cache.js";
 import { processRemarketing } from "./workers/remarketing-worker.js";
 import { pollEvpayPendingTransactions } from "./workers/evpay-poller.js";
 import { pollPoseidonPendingTransactions } from "./workers/poseidonpay-poller.js";
+import { pollZuckpayPendingTransactions } from "./workers/zuckpay-poller.js";
 import { pollChannelMonitors } from "./workers/channel-monitor-poller.js";
 const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
 export const delayedQueue = new Queue("delayed-messages", {
@@ -122,7 +123,7 @@ export function startWorkers() {
     });
     // Payment timeout worker — fires "not_paid" edge if payment wasn't confirmed
     new Worker("payment-timeout", async (job) => {
-        const { leadId, flowId, paymentNodeId, externalTransactionId, botId, chatId } = job.data;
+        const { leadId, flowId, paymentNodeId, externalTransactionId, botId, chatId, paymentButtonId } = job.data;
         // Check if payment was already approved
         const { data: tx } = await supabase
             .from("transactions")
@@ -153,8 +154,10 @@ export function startWorkers() {
         const lead = await leadService.getById(leadId);
         if (!lead)
             return;
-        // Find the "not_paid" edge from the payment node
-        const notPaidEdge = flow.flow_data.edges.find((e) => e.source === paymentNodeId && e.sourceHandle === "not_paid");
+        // Find the "not_paid" edge from the payment node — namespaced pelo
+        // botão de origem quando veio de um botão de pagamento inline.
+        const notPaidHandle = paymentButtonId ? `not_paid:${paymentButtonId}` : "not_paid";
+        const notPaidEdge = flow.flow_data.edges.find((e) => e.source === paymentNodeId && e.sourceHandle === notPaidHandle);
         if (!notPaidEdge) {
             console.log(`[payment-timeout] No not_paid edge found for node ${paymentNodeId}`);
             return;
@@ -427,6 +430,19 @@ export function startWorkers() {
             evpayPollerRunning = false;
         });
     }, 5_000);
+    // ZuckPay status poller — mesma estratégia do EvPay (webhook é o principal,
+    // isto é o fallback). Trava anti-sobreposição pra não empilhar fetches lentos.
+    let zuckpayPollerRunning = false;
+    setInterval(() => {
+        if (zuckpayPollerRunning)
+            return;
+        zuckpayPollerRunning = true;
+        pollZuckpayPendingTransactions(supabase)
+            .catch((err) => console.error("[zuckpay-poller] Error:", err))
+            .finally(() => {
+            zuckpayPollerRunning = false;
+        });
+    }, 5_000);
     // Poseidon Pay status poller — DESLIGADO por enquanto.
     // A Poseidon não tem endpoint público de consulta de status (todos
     // os GETs que tentamos retornaram 403 pelo Cloudflare). Manter o
@@ -457,5 +473,31 @@ export function startWorkers() {
     }
     setInterval(() => tickChannelMonitor(), 10 * 60 * 1000);
     setTimeout(() => tickChannelMonitor(), 60_000); // 1 min após boot
-    console.log("BullMQ workers + black deletion + remarketing + evpay-poller + channel-monitor started");
+    // Bot-clone: watchdog pra job travado em 'listening_remarketing' — status
+    // que hoje só dura o tempo de ler o histórico de remarketing existente (um
+    // passo rápido, não mais uma espera de 24h). Só fica travado ali se o
+    // worker morrer NO MEIO dessa leitura (crash/OOM/redeploy) — a trava CAS
+    // (processing_started_at) fica velha e ninguém reenfileira sozinho, porque
+    // handleBotCloneExplore só aceita status exploring/waiting_flood. setInterval,
+    // não BullMQ repeat: este codebase não usa essa feature em lugar nenhum
+    // (mesmo padrão dos outros 7+ pollers acima).
+    let botCloneWatchdogRunning = false;
+    async function tickBotCloneWatchdogSafe() {
+        if (botCloneWatchdogRunning)
+            return;
+        botCloneWatchdogRunning = true;
+        try {
+            const { tickBotCloneStuckJobsWatchdog } = await import("./workers/bot-clone-handler.js");
+            await tickBotCloneStuckJobsWatchdog();
+        }
+        catch (err) {
+            console.error("[botclone-watchdog] Error:", err);
+        }
+        finally {
+            botCloneWatchdogRunning = false;
+        }
+    }
+    setInterval(() => tickBotCloneWatchdogSafe(), 10 * 60 * 1000);
+    setTimeout(() => tickBotCloneWatchdogSafe(), 90_000); // 90s após boot
+    console.log("BullMQ workers + black deletion + remarketing + evpay-poller + channel-monitor + botclone-watchdog started");
 }

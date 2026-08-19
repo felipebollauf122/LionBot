@@ -4,6 +4,7 @@ import { StringSession } from "telegram/sessions/index.js";
 import { CustomFile } from "telegram/client/uploads.js";
 import { randomBytes } from "crypto";
 import bigInt from "big-integer";
+import { extractWaitSeconds } from "./flood.js";
 /**
  * random_id criptograficamente forte pro Telegram (#53). Math.random()
  * pode colidir ao longo de milhões de mensagens → Telegram detecta como
@@ -22,6 +23,11 @@ export class MtprotoClient {
     // Cache phone → user resolvido (#54): evita ImportContacts repetido na
     // mesma sessão, que incha a agenda da conta e aumenta risco de ban.
     phoneUserCache = new Map();
+    // Cache identificador → classificação (troca de link do clonador): evita
+    // ResolveUsername/CheckChatInvite repetido pro mesmo peer na mesma sessão
+    // — cada RPC extra é uma chance a mais de flood numa clonagem com
+    // milhares de mensagens.
+    linkClassifyCache = new Map();
     constructor(apiId, apiHash, sessionString = "") {
         this.apiId = apiId;
         this.apiHash = apiHash;
@@ -79,6 +85,17 @@ export class MtprotoClient {
         });
         const sessionString = this.client.session.save();
         return { ok: true, needsPassword: false, sessionString };
+    }
+    /**
+     * Autentica como BOT usando o token do BotFather. Verificado em
+     * client/auth.js:361-366 — o gramjs decide por duck-typing: sem
+     * `phoneNumber` no objeto, cai em signInBot(), que invoca
+     * Api.auth.ImportBotAuthorization. A session string resultante tem o mesmo
+     * formato da de conta de usuário (sessions/StringSession.js:91-114).
+     */
+    async signInAsBot(botAuthToken) {
+        await this.client.start({ botAuthToken });
+        return this.client.session.save();
     }
     async sendMessage(target, targetType, text) {
         await this.connect();
@@ -524,17 +541,24 @@ export class MtprotoClient {
         }
     }
     /**
-     * Cria um canal novo (broadcast) com título + about. Retorna identidade
-     * do canal pra postar e exportar link de convite. Pode estourar FLOOD_WAIT
-     * se a conta criou muitos canais recentemente.
+     * Cria um canal novo. `megagroup: true` cria supergrupo em vez de canal
+     * broadcast — usado pela clonagem quando a origem é grupo. `forum: true`
+     * já cria o supergrupo com Topics ligado (CreateChannel aceita os dois
+     * flags numa chamada só, sem precisar de channels.ToggleForum depois) —
+     * só tem efeito com megagroup, nunca com canal broadcast (fórum não
+     * existe fora de supergrupo). Pode estourar FLOOD_WAIT se a conta criou
+     * muitos canais recentemente.
      */
-    async createChannel(title, about) {
+    async createChannel(title, about, opts = {}) {
         await this.connect();
+        const megagroup = opts.megagroup === true;
+        const forum = megagroup && opts.forum === true;
         const result = await this.client.invoke(new Api.channels.CreateChannel({
             title,
             about,
-            broadcast: true,
-            megagroup: false,
+            broadcast: !megagroup,
+            megagroup,
+            forum,
         }));
         if (!(result instanceof Api.Updates) &&
             !(result instanceof Api.UpdatesCombined)) {
@@ -550,12 +574,29 @@ export class MtprotoClient {
         };
     }
     /**
+     * Sobe um arquivo que já está em disco. Acima de 20MB o gramjs abre o 3º
+     * argumento do CustomFile como CAMINHO (uploads.js:64) — passar o nome ali,
+     * como sendMediaToChannel fazia, quebra em arquivo grande.
+     */
+    async uploadFromPath(filePath, fileName, sizeBytes) {
+        await this.connect();
+        return this.client.uploadFile({
+            file: new CustomFile(fileName, sizeBytes, filePath),
+            workers: 4,
+        });
+    }
+    /**
      * Faz upload de um Buffer e envia como foto ou vídeo pro canal.
      * O caller é responsável por baixar a mídia da URL antes (multi-step
      * porque pode ser URL externa, Supabase Storage signed URL, etc.).
      */
     async sendMediaToChannel(channelId, accessHash, media, caption, kind) {
         await this.connect();
+        const BUFFER_UPLOAD_LIMIT = 20 * 1024 * 1024;
+        if (media.buffer.length >= BUFFER_UPLOAD_LIMIT) {
+            throw new Error(`MEDIA_TOO_LARGE_FOR_BUFFER_UPLOAD: ${media.fileName} tem ${media.buffer.length} bytes; ` +
+                `use uploadFromPath com o arquivo em disco`);
+        }
         const peer = new Api.InputPeerChannel({
             channelId: bigInt(channelId),
             accessHash: bigInt(accessHash),
@@ -677,4 +718,259 @@ export class MtprotoClient {
             enabled,
         }));
     }
+    /** Acesso ao client cru para os adaptadores de clonagem. */
+    get raw() {
+        return this.client;
+    }
+    /**
+     * Encaminha um lote de mensagens (máx. 100 ids) apagando a autoria, o que
+     * remove a marca "encaminhado de" e faz o post sair nativo no destino.
+     * `topMsgId` ancora o lote inteiro num tópico de fórum específico do
+     * destino — omitido, cai no General (comportamento de sempre).
+     */
+    async forwardBatch(from, to, messageIds, topMsgId) {
+        await this.connect();
+        return this.client.invoke(new Api.messages.ForwardMessages({
+            fromPeer: from,
+            toPeer: to,
+            id: messageIds,
+            randomId: messageIds.map(() => randomMessageId()),
+            dropAuthor: true,
+            silent: true,
+            topMsgId,
+        }));
+    }
+    /**
+     * Lista os tópicos de fórum de um canal, paginando channels.GetForumTopics
+     * (mesmo padrão de listDialogs: pagina internamente, devolve array já
+     * montado). Descarta ForumTopicDeleted. O cursor de paginação usa
+     * topic.topMessage (id da última mensagem do tópico, muda com o tempo) —
+     * NÃO topic.id (identificador permanente do tópico, usado em todo o
+     * resto como "id do tópico"/topMsgId). Confundir os dois campos paginaria
+     * errado.
+     */
+    async listForumTopics(channelId, accessHash) {
+        await this.connect();
+        const channel = new Api.InputChannel({
+            channelId: bigInt(channelId),
+            accessHash: bigInt(accessHash),
+        });
+        const out = [];
+        let offsetDate = 0;
+        let offsetId = 0;
+        let offsetTopic = 0;
+        const limit = 100;
+        const maxIterations = 50; // limite de segurança: até 5000 tópicos
+        for (let iter = 0; iter < maxIterations; iter++) {
+            const result = await this.client.invoke(new Api.channels.GetForumTopics({ channel, offsetDate, offsetId, offsetTopic, limit }));
+            if (!(result instanceof Api.messages.ForumTopics))
+                break;
+            const real = result.topics.filter((t) => t instanceof Api.ForumTopic);
+            out.push(...real);
+            if (result.topics.length < limit)
+                break;
+            const last = result.topics[result.topics.length - 1];
+            if (!(last instanceof Api.ForumTopic))
+                break;
+            offsetDate = last.date;
+            offsetId = last.topMessage;
+            offsetTopic = last.id;
+        }
+        return out;
+    }
+    /**
+     * Cria um tópico de fórum. iconColor/iconEmojiId replicam o ícone da
+     * origem quando presentes — iconEmojiId é opcional no request, então um
+     * emoji indisponível (ex.: exige Premium) não deveria impedir a criação
+     * do tópico em si.
+     */
+    async createForumTopic(channelId, accessHash, input) {
+        await this.connect();
+        const result = await this.client.invoke(new Api.channels.CreateForumTopic({
+            channel: new Api.InputChannel({
+                channelId: bigInt(channelId),
+                accessHash: bigInt(accessHash),
+            }),
+            title: input.title,
+            iconColor: input.iconColor,
+            iconEmojiId: input.iconEmojiId ? bigInt(input.iconEmojiId) : undefined,
+            randomId: randomMessageId(),
+        }));
+        const topicId = extractNewTopicId(result);
+        if (topicId === null)
+            throw new Error("createForumTopic: no topic id in response");
+        return topicId;
+    }
+    /** Fecha ou reabre um tópico de fórum. */
+    async setForumTopicClosed(channelId, accessHash, topicId, closed) {
+        await this.connect();
+        await this.client.invoke(new Api.channels.EditForumTopic({
+            channel: new Api.InputChannel({
+                channelId: bigInt(channelId),
+                accessHash: bigInt(accessHash),
+            }),
+            topicId,
+            closed,
+        }));
+    }
+    /** Fixa ou desfixa um tópico de fórum. */
+    async setForumTopicPinned(channelId, accessHash, topicId, pinned) {
+        await this.connect();
+        await this.client.invoke(new Api.channels.UpdatePinnedForumTopic({
+            channel: new Api.InputChannel({
+                channelId: bigInt(channelId),
+                accessHash: bigInt(accessHash),
+            }),
+            topicId,
+            pinned,
+        }));
+    }
+    /** Promove um bot (por @username) a admin de um canal/supergrupo. */
+    async promoteBotToAdmin(channelId, accessHash, botUsername) {
+        await this.connect();
+        const channel = new Api.InputChannel({
+            channelId: bigInt(channelId),
+            accessHash: bigInt(accessHash),
+        });
+        const bot = await this.client.getInputEntity(botUsername);
+        // O convite e a promoção são passos SEPARADOS, e o InviteToChannel pode
+        // falhar de formas que NÃO impedem a promoção — engolimos essas e deixamos
+        // o EditAdmin abaixo SEMPRE rodar (é ele quem de fato torna o bot admin):
+        //   - USER_ALREADY_PARTICIPANT/USER_ALREADY_INVITED: o bot já é membro
+        //     (retomada de um job cuja 1ª tentativa entrou no canal mas falhou no
+        //     EditAdmin). Sem isso o bot ficava membro e nunca admin.
+        //   - USER_BOT: em canal broadcast, bot NÃO pode ser membro comum — só
+        //     admin. O InviteToChannel (que adiciona como membro) volta USER_BOT,
+        //     mas o EditAdmin adiciona+promove o bot direto. Sem tolerar aqui, o
+        //     clone quebrava com "400: USER_BOT" em todo canal broadcast.
+        try {
+            await this.client.invoke(new Api.channels.InviteToChannel({ channel, users: [bot] }));
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!/USER_ALREADY_PARTICIPANT|USER_ALREADY_INVITED|USER_BOT/i.test(msg))
+                throw err;
+        }
+        await this.client.invoke(new Api.channels.EditAdmin({
+            channel,
+            userId: bot,
+            adminRights: new Api.ChatAdminRights({
+                postMessages: true,
+                editMessages: true,
+                deleteMessages: true,
+                pinMessages: true,
+                inviteUsers: true,
+            }),
+            rank: "clone",
+        }));
+    }
+    /** Define a descrição (about) de um canal/supergrupo. */
+    async setChannelAbout(channelId, accessHash, about) {
+        await this.connect();
+        await this.client.invoke(new Api.messages.EditChatAbout({
+            peer: new Api.InputPeerChannel({
+                channelId: bigInt(channelId),
+                accessHash: bigInt(accessHash),
+            }),
+            about,
+        }));
+    }
+    /**
+     * Classifica um identificador de peer (username ou hash de convite, já
+     * parseado por link-parse.ts) pra troca de link do clonador. Erro
+     * não-flood (username inexistente, convite expirado, etc.) vira
+     * "unknown" e é cacheado — erro de flood propaga e NUNCA é cacheado
+     * (mesmo idioma de topic-sync.ts: flood é transitório, não deve virar
+     * classificação permanente).
+     */
+    async classifyLink(parsed) {
+        const cacheKey = parsed.kind === "username" ? `u:${parsed.value.toLowerCase()}` : `i:${parsed.hash}`;
+        const cached = this.linkClassifyCache.get(cacheKey);
+        if (cached)
+            return cached;
+        await this.connect();
+        let kind;
+        try {
+            if (parsed.kind === "username") {
+                const result = await this.client.invoke(new Api.contacts.ResolveUsername({ username: parsed.value }));
+                kind = classifyResolvedPeer(result);
+            }
+            else {
+                const result = await this.client.invoke(new Api.messages.CheckChatInvite({ hash: parsed.hash }));
+                kind = classifyChatInvite(result);
+            }
+        }
+        catch (err) {
+            if (extractWaitSeconds(err) !== null)
+                throw err;
+            kind = "unknown";
+        }
+        this.linkClassifyCache.set(cacheKey, kind);
+        return kind;
+    }
+}
+/** Classifica um Api.TypeChat (Chat/ChatForbidden/Channel/ChannelForbidden). */
+function classifyChatLike(chat) {
+    if (!chat)
+        return "unknown";
+    if (chat instanceof Api.Channel || chat instanceof Api.ChannelForbidden) {
+        return chat.broadcast ? "channel" : "group";
+    }
+    if (chat instanceof Api.Chat || chat instanceof Api.ChatForbidden)
+        return "group";
+    return "unknown";
+}
+/** Classifica o resultado de contacts.ResolveUsername. */
+export function classifyResolvedPeer(result) {
+    const peer = result.peer;
+    if (peer instanceof Api.PeerUser) {
+        const targetId = String(peer.userId);
+        const user = result.users.find((u) => u instanceof Api.User && String(u.id) === targetId);
+        if (!user)
+            return "unknown";
+        return user.bot ? "bot" : "user";
+    }
+    if (peer instanceof Api.PeerChat) {
+        const targetId = String(peer.chatId);
+        const chat = result.chats.find((c) => "id" in c && String(c.id) === targetId);
+        return classifyChatLike(chat);
+    }
+    if (peer instanceof Api.PeerChannel) {
+        const targetId = String(peer.channelId);
+        const chat = result.chats.find((c) => "id" in c && String(c.id) === targetId);
+        return classifyChatLike(chat);
+    }
+    return "unknown";
+}
+/** Classifica o resultado de messages.CheckChatInvite. */
+export function classifyChatInvite(result) {
+    if (result instanceof Api.ChatInviteAlready || result instanceof Api.ChatInvitePeek) {
+        return classifyChatLike(result.chat);
+    }
+    if (result instanceof Api.ChatInvite) {
+        if (result.broadcast)
+            return "channel";
+        return "group"; // megagroup (supergrupo) ou grupo legado — os dois são "group" aqui
+    }
+    return "unknown";
+}
+/**
+ * Extrai o id do tópico recém-criado do Updates de channels.CreateForumTopic.
+ * A criação produz uma MessageService (não uma Api.Message) — por isso não
+ * reaproveita extractNewMessageIds (publish-router.ts), que é Api.Message-only
+ * de propósito: generalizar aquela função pra aceitar serviço arriscaria uma
+ * update de serviço qualquer ser contada como mensagem copiada na rota de
+ * forward, que não tem nada a ver com tópicos.
+ */
+export function extractNewTopicId(updates) {
+    const list = updates instanceof Api.Updates || updates instanceof Api.UpdatesCombined
+        ? updates.updates
+        : [];
+    for (const u of list) {
+        if (u instanceof Api.UpdateNewChannelMessage || u instanceof Api.UpdateNewMessage) {
+            if (u.message instanceof Api.MessageService)
+                return u.message.id;
+        }
+    }
+    return null;
 }

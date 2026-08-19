@@ -373,6 +373,92 @@ export async function handleEvPayWebhook(req, res) {
     }
 }
 /**
+ * Express handler for /webhook/zuckpay (ZuckPay gateway).
+ * Valida assinatura HMAC-SHA256 (header X-ZuckPay-Signature) usando o
+ * zuckpay_webhook_secret salvo no bot que originou a transação. Mesma mecânica
+ * do EvPay; funil final é o processPaymentCallback compartilhado.
+ *
+ * Payload ZuckPay: { event: "payment_approved", transaction: { id, status, ... } }
+ */
+export async function handleZuckPayWebhook(req, res) {
+    res.status(200).json({ ok: true });
+    try {
+        const body = (req.body ?? {});
+        // Buffer ORIGINAL pro HMAC (JSON.stringify reordenaria bytes e a assinatura
+        // nunca bateria). Fallback pra stringify só pra logs não quebrarem.
+        const rawBody = req.rawBody ? req.rawBody.toString("utf8") : JSON.stringify(body);
+        const signature = String(req.header("X-ZuckPay-Signature") ?? "");
+        console.log(`[zuckpay-webhook] Received (sig=${signature ? "present" : "MISSING"}):`, rawBody);
+        // Extrai id e status. ZuckPay manda em transaction.{id,status}; mantemos
+        // fallbacks flat pra robustez.
+        const transaction = (body.transaction ?? {});
+        const transactionId = String(transaction.id ??
+            transaction.transactionId ??
+            body.transactionId ??
+            body.transaction_id ??
+            body.id ??
+            "");
+        if (!transactionId) {
+            console.error(`[zuckpay-webhook] Missing transactionId in payload`);
+            return;
+        }
+        // Status: transaction.status, ou infere do event (payment_approved etc.).
+        const event = String(body.event ?? "").toLowerCase();
+        let status = String(transaction.status ?? body.status ?? "");
+        if (!status) {
+            if (event.includes("approved") || event.includes("paid"))
+                status = "PAID";
+            else if (event.includes("refus") || event.includes("refused") || event.includes("fail"))
+                status = "REFUSED";
+            else if (event.includes("refund"))
+                status = "REFUNDED";
+            else if (event.includes("pending"))
+                status = "PENDING";
+        }
+        // Localiza a transação pra achar o bot (e o secret é por-bot).
+        const { data: tx } = await supabase
+            .from("transactions")
+            .select("bot_id")
+            .eq("external_id", transactionId)
+            .maybeSingle();
+        if (!tx) {
+            console.error(`[zuckpay-webhook] Transaction not found for external_id=${transactionId}`);
+            return;
+        }
+        const { data: botRow } = await supabase
+            .from("bots")
+            .select("zuckpay_webhook_secret")
+            .eq("id", tx.bot_id)
+            .single();
+        const secret = String(botRow?.zuckpay_webhook_secret ?? "");
+        const { ZuckPay } = await import("../services/zuckpay.js");
+        let signatureValid = false;
+        if (secret && signature) {
+            signatureValid = ZuckPay.verifySignature(rawBody, signature, secret);
+        }
+        if (!signatureValid) {
+            const reason = !secret
+                ? "no secret saved for bot"
+                : !signature
+                    ? "header X-ZuckPay-Signature missing"
+                    : "HMAC mismatch";
+            if (config.zuckpayRequireSignature) {
+                console.error(`[zuckpay-webhook] Signature INVALID (${reason}) — REJECTING tx ${transactionId}`);
+                return;
+            }
+            console.warn(`[zuckpay-webhook] Signature INVALID (${reason}) — processing anyway (ZUCKPAY_REQUIRE_SIGNATURE=false)`);
+        }
+        else {
+            console.log(`[zuckpay-webhook] Signature OK for tx ${transactionId}`);
+        }
+        console.log(`[zuckpay-webhook] event=${event} txn=${transactionId} status=${status}`);
+        await processPaymentCallback(tx.bot_id, { transactionId, status });
+    }
+    catch (error) {
+        console.error(`[zuckpay-webhook] Error:`, error);
+    }
+}
+/**
  * Reentrega manual de uma transação (botão "Reenviar acesso" no painel).
  * Reexecuta o fluxo de pós-pagamento (edge "paid") pra reentregar produto/
  * mensagens ao cliente. O tracking (Facebook/Utmify) NÃO duplica — o

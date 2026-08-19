@@ -17,6 +17,7 @@ interface PaymentTimeoutData {
     botId: string;
     tenantId: string;
     chatId: number;
+    paymentButtonId?: string;
 }
 export declare const paymentTimeoutQueue: Queue<PaymentTimeoutData, any, string, PaymentTimeoutData, any, string>;
 export declare function addPaymentTimeoutJob(data: PaymentTimeoutData, delaySeconds: number): Promise<void>;

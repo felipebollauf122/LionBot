@@ -123,7 +123,11 @@ async function findTrackingEvent(tid: string, maxRetries = 3): Promise<Record<st
  * - _black_flow: when black_enabled + /start + TID validated in tracking_events
  * - _visual_flow: everything else
  *
- * IMPORTANT: Always reads black_enabled fresh from DB to avoid stale cache.
+ * black_enabled sai do bot já carregado (botCache) — toggleBlackEnabled
+ * invalida o cache, então o valor é confiável. Antes isso era um SELECT
+ * extra em `bots` a cada /start (o 3º da mesma request, junto do lookup
+ * inicial e do ensureBotPaymentKeys) só pra reler uma coluna que já estava
+ * em memória.
  * Uses retry logic to handle race conditions with tracking event insertion.
  */
 async function resolveFlowName(
@@ -134,15 +138,8 @@ async function resolveFlowName(
   // Extract TID from payload (if any)
   const tid = messageText.startsWith("/start") ? extractTidFromPayload(messageText) : undefined;
 
-  // Always read black_enabled fresh from DB — never trust cache for this decision
-  const { data: freshBot } = await supabase
-    .from("bots")
-    .select("black_enabled")
-    .eq("id", bot.id)
-    .single();
-
-  const blackEnabled = freshBot?.black_enabled ?? false;
-  console.log(`[black] resolveFlowName: bot=${bot.id}, black_enabled=${blackEnabled} (fresh), tid=${tid ?? "none"}, msg="${messageText.substring(0, 50)}"`);
+  const blackEnabled = bot.black_enabled ?? false;
+  console.log(`[black] resolveFlowName: bot=${bot.id}, black_enabled=${blackEnabled} (cache), tid=${tid ?? "none"}, msg="${messageText.substring(0, 50)}"`);
 
   if (!blackEnabled) {
     let trackingData: Record<string, string | undefined> = {};
@@ -310,21 +307,27 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
       // Isso herda tid/fbclid/UTMs de outros bots do MESMO vendedor
       // (caso o user já tenha entrado em outro bot do tenant antes)
       // e atualiza com last-touch quando vem campanha nova.
-      const identity = await resolveTenantIdentity(
-        supabase,
-        typedBot.tenant_id,
-        telegramUserId,
-        typedBot.id,
-        {
-          tid,
-          fbclid: trackingData.fbclid,
-          utm_source: trackingData.utmSource,
-          utm_medium: trackingData.utmMedium,
-          utm_campaign: trackingData.utmCampaign,
-          utm_content: trackingData.utmContent,
-          utm_term: trackingData.utmTerm,
-        },
-      );
+      // PERF: as duas leituras são independentes — localizar o lead não
+      // depende da identidade do tenant (ela só decide a ATRIBUIÇÃO, aplicada
+      // logo abaixo). Rodam juntas: 1 round-trip em vez de 2 em toda mensagem.
+      const [identity, existingLead] = await Promise.all([
+        resolveTenantIdentity(
+          supabase,
+          typedBot.tenant_id,
+          telegramUserId,
+          typedBot.id,
+          {
+            tid,
+            fbclid: trackingData.fbclid,
+            utm_source: trackingData.utmSource,
+            utm_medium: trackingData.utmMedium,
+            utm_campaign: trackingData.utmCampaign,
+            utm_content: trackingData.utmContent,
+            utm_term: trackingData.utmTerm,
+          },
+        ),
+        leadService.findLead(typedBot.id, telegramUserId),
+      ]);
 
       // Find or create lead — passa os valores resolvidos da identidade
       // pra que o registro do lead nesse bot herde a atribuição da
@@ -343,7 +346,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         utmCampaign: identity.utm_campaign ?? undefined,
         utmContent: identity.utm_content ?? undefined,
         utmTerm: identity.utm_term ?? undefined,
-      });
+      }, { existing: existingLead });
 
       // Timeline do chat (aba Clientes): registra o texto que o lead mandou.
       // Ignora /start (ruído de comando, não conversa). Fire-and-forget.
@@ -452,14 +455,18 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
       }
 
       // Herda atribuição da identity do tenant (sem update — sem campanha nova
-      // num clique de botão).
-      const identity = await resolveTenantIdentity(
-        supabase,
-        typedBot.tenant_id,
-        telegramUserId,
-        typedBot.id,
-        {},
-      );
+      // num clique de botão). Paralelo com a busca do lead: independentes,
+      // e este é o caminho do clique em "pagar" (geração do PIX).
+      const [identity, existingLead] = await Promise.all([
+        resolveTenantIdentity(
+          supabase,
+          typedBot.tenant_id,
+          telegramUserId,
+          typedBot.id,
+          {},
+        ),
+        leadService.findLead(typedBot.id, telegramUserId),
+      ]);
 
       const lead = await leadService.findOrCreateLead({
         botId: typedBot.id,
@@ -475,7 +482,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         utmCampaign: identity.utm_campaign ?? undefined,
         utmContent: identity.utm_content ?? undefined,
         utmTerm: identity.utm_term ?? undefined,
-      });
+      }, { existing: existingLead });
 
       console.log(`[webhook] Lead ${lead.id}, flow=${lead.current_flow_id}, node=${lead.current_node_id}, active_flow_name=${lead.active_flow_name}`);
 

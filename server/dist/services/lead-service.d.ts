@@ -40,11 +40,25 @@ export declare class LeadService {
     private db;
     constructor(db: SupabaseClient);
     /**
+     * Só a busca do lead — sem nenhuma escrita. Existe separada pra que o
+     * webhook possa disparar esta query EM PARALELO com resolveTenantIdentity
+     * (as duas são independentes: a identidade do tenant só é necessária pra
+     * decidir a atribuição, não pra localizar o lead). Antes as duas rodavam
+     * em série, custando 2 round-trips no caminho de toda mensagem.
+     */
+    findLead(botId: string, telegramUserId: number): Promise<Lead | null>;
+    /**
      * Find existing lead (1 query for returning users — the common case)
      * or create a new one (2 queries only for first-time users).
      * First attribution is preserved: TID/UTMs are never overwritten once set.
+     *
+     * `prefetched` permite reaproveitar um findLead já resolvido (ver acima).
+     * Passar `{ existing: null }` significa "já procurei e não achou" — não
+     * confundir com omitir o argumento, que faz a busca aqui dentro.
      */
-    findOrCreateLead(params: FindOrCreateParams): Promise<Lead>;
+    findOrCreateLead(params: FindOrCreateParams, prefetched?: {
+        existing: Lead | null;
+    }): Promise<Lead>;
     updatePosition(leadId: string, flowId: string | null, nodeId: string | null, activeFlowName?: string): Promise<void>;
     updateState(leadId: string, state: Record<string, unknown>): Promise<void>;
     /**

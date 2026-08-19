@@ -1,3 +1,5 @@
+import { TelegramClient, Api } from "telegram";
+import type { ParsedIdentifier } from "./link-parse.js";
 export interface IncomingMessage {
     tgMessageId: number;
     fromPeerId: string;
@@ -14,6 +16,8 @@ export interface SignInResult {
     sessionString?: string;
 }
 export type DialogKind = "contact" | "dm" | "group_member" | "group_admin" | "channel_subscriber" | "channel_owner" | "bot" | "self";
+/** Classificação de um peer resolvido pra troca de link no clonador. */
+export type PeerKind = "bot" | "group" | "channel" | "user" | "unknown";
 export interface MtprotoDialog {
     peerId: string;
     peerType: "user" | "chat" | "channel";
@@ -29,6 +33,7 @@ export declare class MtprotoClient {
     private client;
     private inboxHandler;
     private phoneUserCache;
+    private linkClassifyCache;
     constructor(apiId: number, apiHash: string, sessionString?: string);
     connect(): Promise<void>;
     /**
@@ -42,6 +47,14 @@ export declare class MtprotoClient {
     sendCode(phoneNumber: string): Promise<SendCodeResult>;
     signIn(phoneNumber: string, phoneCodeHash: string, code: string): Promise<SignInResult>;
     signInWithPassword(password: string): Promise<SignInResult>;
+    /**
+     * Autentica como BOT usando o token do BotFather. Verificado em
+     * client/auth.js:361-366 — o gramjs decide por duck-typing: sem
+     * `phoneNumber` no objeto, cai em signInBot(), que invoca
+     * Api.auth.ImportBotAuthorization. A session string resultante tem o mesmo
+     * formato da de conta de usuário (sessions/StringSession.js:91-114).
+     */
+    signInAsBot(botAuthToken: string): Promise<string>;
     sendMessage(target: string, targetType: "username" | "phone", text: string): Promise<void>;
     /**
      * Manda mensagem pra um peer estruturado salvo no banco (vindo de
@@ -89,14 +102,27 @@ export declare class MtprotoClient {
         detail: string;
     }>;
     /**
-     * Cria um canal novo (broadcast) com título + about. Retorna identidade
-     * do canal pra postar e exportar link de convite. Pode estourar FLOOD_WAIT
-     * se a conta criou muitos canais recentemente.
+     * Cria um canal novo. `megagroup: true` cria supergrupo em vez de canal
+     * broadcast — usado pela clonagem quando a origem é grupo. `forum: true`
+     * já cria o supergrupo com Topics ligado (CreateChannel aceita os dois
+     * flags numa chamada só, sem precisar de channels.ToggleForum depois) —
+     * só tem efeito com megagroup, nunca com canal broadcast (fórum não
+     * existe fora de supergrupo). Pode estourar FLOOD_WAIT se a conta criou
+     * muitos canais recentemente.
      */
-    createChannel(title: string, about: string): Promise<{
+    createChannel(title: string, about: string, opts?: {
+        megagroup?: boolean;
+        forum?: boolean;
+    }): Promise<{
         channelId: string;
         accessHash: string;
     }>;
+    /**
+     * Sobe um arquivo que já está em disco. Acima de 20MB o gramjs abre o 3º
+     * argumento do CustomFile como CAMINHO (uploads.js:64) — passar o nome ali,
+     * como sendMediaToChannel fazia, quebra em arquivo grande.
+     */
+    uploadFromPath(filePath: string, fileName: string, sizeBytes: number): Promise<Api.TypeInputFile>;
     /**
      * Faz upload de um Buffer e envia como foto ou vídeo pro canal.
      * O caller é responsável por baixar a mídia da URL antes (multi-step
@@ -131,4 +157,64 @@ export declare class MtprotoClient {
      * encaminhar/salvar mídias do canal.
      */
     setChannelProtectContent(channelId: string, accessHash: string, enabled: boolean): Promise<void>;
+    /** Acesso ao client cru para os adaptadores de clonagem. */
+    get raw(): TelegramClient;
+    /**
+     * Encaminha um lote de mensagens (máx. 100 ids) apagando a autoria, o que
+     * remove a marca "encaminhado de" e faz o post sair nativo no destino.
+     * `topMsgId` ancora o lote inteiro num tópico de fórum específico do
+     * destino — omitido, cai no General (comportamento de sempre).
+     */
+    forwardBatch(from: Api.TypeInputPeer, to: Api.TypeInputPeer, messageIds: number[], topMsgId?: number): Promise<Api.TypeUpdates>;
+    /**
+     * Lista os tópicos de fórum de um canal, paginando channels.GetForumTopics
+     * (mesmo padrão de listDialogs: pagina internamente, devolve array já
+     * montado). Descarta ForumTopicDeleted. O cursor de paginação usa
+     * topic.topMessage (id da última mensagem do tópico, muda com o tempo) —
+     * NÃO topic.id (identificador permanente do tópico, usado em todo o
+     * resto como "id do tópico"/topMsgId). Confundir os dois campos paginaria
+     * errado.
+     */
+    listForumTopics(channelId: string, accessHash: string): Promise<Api.ForumTopic[]>;
+    /**
+     * Cria um tópico de fórum. iconColor/iconEmojiId replicam o ícone da
+     * origem quando presentes — iconEmojiId é opcional no request, então um
+     * emoji indisponível (ex.: exige Premium) não deveria impedir a criação
+     * do tópico em si.
+     */
+    createForumTopic(channelId: string, accessHash: string, input: {
+        title: string;
+        iconColor: number;
+        iconEmojiId: string | null;
+    }): Promise<number>;
+    /** Fecha ou reabre um tópico de fórum. */
+    setForumTopicClosed(channelId: string, accessHash: string, topicId: number, closed: boolean): Promise<void>;
+    /** Fixa ou desfixa um tópico de fórum. */
+    setForumTopicPinned(channelId: string, accessHash: string, topicId: number, pinned: boolean): Promise<void>;
+    /** Promove um bot (por @username) a admin de um canal/supergrupo. */
+    promoteBotToAdmin(channelId: string, accessHash: string, botUsername: string): Promise<void>;
+    /** Define a descrição (about) de um canal/supergrupo. */
+    setChannelAbout(channelId: string, accessHash: string, about: string): Promise<void>;
+    /**
+     * Classifica um identificador de peer (username ou hash de convite, já
+     * parseado por link-parse.ts) pra troca de link do clonador. Erro
+     * não-flood (username inexistente, convite expirado, etc.) vira
+     * "unknown" e é cacheado — erro de flood propaga e NUNCA é cacheado
+     * (mesmo idioma de topic-sync.ts: flood é transitório, não deve virar
+     * classificação permanente).
+     */
+    classifyLink(parsed: ParsedIdentifier): Promise<PeerKind>;
 }
+/** Classifica o resultado de contacts.ResolveUsername. */
+export declare function classifyResolvedPeer(result: Api.contacts.TypeResolvedPeer): PeerKind;
+/** Classifica o resultado de messages.CheckChatInvite. */
+export declare function classifyChatInvite(result: Api.TypeChatInvite): PeerKind;
+/**
+ * Extrai o id do tópico recém-criado do Updates de channels.CreateForumTopic.
+ * A criação produz uma MessageService (não uma Api.Message) — por isso não
+ * reaproveita extractNewMessageIds (publish-router.ts), que é Api.Message-only
+ * de propósito: generalizar aquela função pra aceitar serviço arriscaria uma
+ * update de serviço qualquer ser contada como mensagem copiada na rota de
+ * forward, que não tem nada a ver com tópicos.
+ */
+export declare function extractNewTopicId(updates: Api.TypeUpdates): number | null;

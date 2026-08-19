@@ -53,6 +53,10 @@ export class SigiloPay implements PaymentGateway {
         "x-secret-key": this.secretKey,
       },
       body: JSON.stringify(payload),
+      // Timeout pra não pendurar a geração do PIX (e o cliente no Telegram)
+      // caso a Poseidon esteja lenta/rate-limitada. Sem isso o fetch fica
+      // preso ~300s no pool do undici. Mesmo valor de EvPay/ZuckPay.
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
@@ -114,6 +118,9 @@ export class SigiloPay implements PaymentGateway {
             "x-public-key": this.publicKey,
             "x-secret-key": this.secretKey,
           },
+          // Idem: 3 candidatos em série sem timeout podiam segurar o poller
+          // por minutos. 10s por tentativa.
+          signal: AbortSignal.timeout(10_000),
         });
         // 404 = endpoint não existe nesse caminho, tenta próximo.
         // 403 = Cloudflare/WAF (endpoint não foi liberado pra consulta),

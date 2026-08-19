@@ -1,7 +1,7 @@
 import express from "express";
 import { config } from "./config.js";
 import { handleTelegramWebhook } from "./webhook/telegram.js";
-import { handlePaymentWebhookGlobal, handlePaymentWebhook, handleEvPayWebhook } from "./webhook/payment.js";
+import { handlePaymentWebhookGlobal, handlePaymentWebhook, handleEvPayWebhook, handleZuckPayWebhook } from "./webhook/payment.js";
 import { startWorkers } from "./queue.js";
 import { startMtprotoWorker } from "./workers/mtproto-worker.js";
 import { enqueueMtproto } from "./queue-mtproto.js";
@@ -60,6 +60,9 @@ app.post("/webhook/payment", handlePaymentWebhookGlobal);
 app.post("/webhook/payment/:botId", handlePaymentWebhook);
 // EvPay payment webhook — global, valida HMAC com secret salvo por bot
 app.post("/webhook/evpay", handleEvPayWebhook);
+// ZuckPay payment webhook — global, valida HMAC (X-ZuckPay-Signature) por bot.
+// DEVE vir antes do catch-all /webhook/:botId (senão o Telegram handler engole).
+app.post("/webhook/zuckpay", handleZuckPayWebhook);
 // Telegram webhook endpoint
 app.post("/webhook/:botId", handleTelegramWebhook);
 // Register webhook for a bot (called from dashboard when bot is activated)

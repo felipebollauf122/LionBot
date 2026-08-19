@@ -1,12 +1,4 @@
-function extractFloodWait(err) {
-    if (err && typeof err === "object") {
-        const e = err;
-        const msg = e.message ?? String(err);
-        if (/FLOOD/i.test(msg) && typeof e.seconds === "number")
-            return e.seconds;
-    }
-    return null;
-}
+import { extractWaitSeconds } from "./flood.js";
 function isFatalAccountError(err) {
     const msg = err instanceof Error ? err.message : String(err);
     return /AUTH_KEY|USER_DEACTIVATED|SESSION_REVOKED|PHONE_NUMBER_BANNED/i.test(msg);
@@ -90,7 +82,7 @@ export class CampaignRunner {
                 await this.deps.incrementCounters(this.cfg.campaignId, "sent");
             }
             catch (err) {
-                const floodSeconds = extractFloodWait(err);
+                const floodSeconds = extractWaitSeconds(err);
                 if (floodSeconds !== null) {
                     this.pool.markFloodWait(account.id, floodSeconds);
                     // Em targets pinned não dá pra trocar de conta (access_hash

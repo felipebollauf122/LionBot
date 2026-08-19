@@ -30,7 +30,7 @@ async function processConfig(db, cfg) {
     // Get bot
     const { data: bot } = await db
         .from("bots")
-        .select("id, tenant_id, telegram_token, protect_content, sigilopay_public_key, sigilopay_secret_key")
+        .select("id, tenant_id, telegram_token, protect_content, payment_gateway, sigilopay_public_key, sigilopay_secret_key, evpay_api_key, evpay_project_id, zuckpay_client_id, zuckpay_client_secret")
         .eq("id", cfg.bot_id)
         .eq("is_active", true)
         .single();

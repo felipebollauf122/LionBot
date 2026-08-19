@@ -8,6 +8,7 @@ import { handleInputNode } from "./nodes/input.js";
 import { handleActionNode } from "./nodes/action.js";
 import { handleVideoNode } from "./nodes/video.js";
 import { handlePaymentBundleNode } from "./nodes/payment-button.js";
+import { handleUnmappedNode } from "./nodes/unmapped.js";
 const handlers = {
     trigger: handleTriggerNode,
     text: handleTextNode,
@@ -18,6 +19,7 @@ const handlers = {
     input: handleInputNode,
     action: handleActionNode,
     video: handleVideoNode,
+    unmapped: handleUnmappedNode,
 };
 export async function executeNode(ctx, deps) {
     try {

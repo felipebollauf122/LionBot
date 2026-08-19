@@ -4,18 +4,35 @@ export class LeadService {
         this.db = db;
     }
     /**
+     * Só a busca do lead — sem nenhuma escrita. Existe separada pra que o
+     * webhook possa disparar esta query EM PARALELO com resolveTenantIdentity
+     * (as duas são independentes: a identidade do tenant só é necessária pra
+     * decidir a atribuição, não pra localizar o lead). Antes as duas rodavam
+     * em série, custando 2 round-trips no caminho de toda mensagem.
+     */
+    async findLead(botId, telegramUserId) {
+        const { data } = await this.db
+            .from("leads")
+            .select("*")
+            .eq("bot_id", botId)
+            .eq("telegram_user_id", telegramUserId)
+            .maybeSingle();
+        return data ?? null;
+    }
+    /**
      * Find existing lead (1 query for returning users — the common case)
      * or create a new one (2 queries only for first-time users).
      * First attribution is preserved: TID/UTMs are never overwritten once set.
+     *
+     * `prefetched` permite reaproveitar um findLead já resolvido (ver acima).
+     * Passar `{ existing: null }` significa "já procurei e não achou" — não
+     * confundir com omitir o argumento, que faz a busca aqui dentro.
      */
-    async findOrCreateLead(params) {
+    async findOrCreateLead(params, prefetched) {
         // Single query: try to find existing lead
-        const { data: existing } = await this.db
-            .from("leads")
-            .select("*")
-            .eq("bot_id", params.botId)
-            .eq("telegram_user_id", params.telegramUserId)
-            .maybeSingle();
+        const existing = prefetched
+            ? prefetched.existing
+            : await this.findLead(params.botId, params.telegramUserId);
         if (existing) {
             const existingLead = existing;
             // Sincroniza atribuição com a identidade do tenant ("last touch"):

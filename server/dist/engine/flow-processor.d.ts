@@ -36,7 +36,7 @@ export declare class FlowProcessor {
     private executeDeps;
     constructor(db: SupabaseClient, leadService: LeadService, delayQueue: DelayQueue, deps?: {
         gateway?: PaymentGateway;
-        gatewayKind?: "sigilopay" | "evpay";
+        gatewayKind?: "sigilopay" | "evpay" | "zuckpay";
         baseWebhookUrl?: string;
     });
     /**
@@ -57,6 +57,14 @@ export declare class FlowProcessor {
      * Queue a message for deletion after `delayMinutes` minutes.
      */
     private queueMessageDeletion;
+    /**
+     * Gera o Pix e processa o resultado (deleção de mensagens em black flow +
+     * merge de stateUpdates). Compartilhado pelos dois pontos de entrada de
+     * pagamento em handleCallbackQuery (bundle "pay:" e botão de pagamento
+     * inline) — mantê-los em um lugar só evita que os dois divirjam quando um
+     * dos dois ganhar um fix (deps, mensagem de erro, etc) e o outro não.
+     */
+    private runPaymentCallback;
     /**
      * Execute a flow. If isBlack=true, messages are queued for deletion after 15min (black flow default).
      * If deleteAfterMinutes is provided, overrides isBlack and uses that delay instead.

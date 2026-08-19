@@ -124,6 +124,22 @@ export async function toggleBlackEnabled(botId: string, enabled: boolean) {
     .eq("id", botId);
 
   if (error) throw new Error(`Failed to toggle black: ${error.message}`);
+
+  // Sem isso o server não enxergava a troca até o TTL de 10 min expirar —
+  // era por isso que resolveFlowName relia black_enabled do banco em TODO
+  // /start. Com a invalidação aqui, o cache passa a ser confiável.
+  //
+  // Este é um interruptor de segurança: awaited e VERIFICADO. Se a
+  // invalidação não chegar ao servidor, o banco já está atualizado mas o
+  // engine seguiria com o valor antigo por até 10 min — então falhamos alto
+  // pra quem clicou saber que precisa repetir, em vez de mentir "salvo".
+  const invalidated = await invalidateBotCache(botId);
+  if (!invalidated) {
+    throw new Error(
+      "Configuração salva no banco, mas o servidor do bot não confirmou a atualização. " +
+        "A mudança pode levar até 10 minutos pra valer. Verifique se o servidor está no ar e tente de novo.",
+    );
+  }
   return { success: true };
 }
 

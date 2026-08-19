@@ -90,16 +90,56 @@ export class FlowProcessor {
     /**
      * Queue a message for deletion after `delayMinutes` minutes.
      */
-    async queueMessageDeletion(botId, botToken, chatId, messageId, delayMinutes) {
+    async queueMessageDeletion(botId, botToken, chatId, messageIds, delayMinutes) {
+        if (messageIds.length === 0)
+            return;
         const deleteAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
-        await this.db.from("message_delete_queue").insert({
+        // Insert em lote: um nó que manda várias mensagens fazia N round-trips
+        // sequenciais aqui, cada um segurando o avanço pro próximo nó do flow.
+        await this.db.from("message_delete_queue").insert(messageIds.map((messageId) => ({
             bot_id: botId,
             bot_token: botToken,
             chat_id: chatId,
             message_id: messageId,
             delete_at: deleteAt,
             status: "pending",
-        });
+        })));
+    }
+    /**
+     * Gera o Pix e processa o resultado (deleção de mensagens em black flow +
+     * merge de stateUpdates). Compartilhado pelos dois pontos de entrada de
+     * pagamento em handleCallbackQuery (bundle "pay:" e botão de pagamento
+     * inline) — mantê-los em um lugar só evita que os dois divirjam quando um
+     * dos dois ganhar um fix (deps, mensagem de erro, etc) e o outro não.
+     */
+    async runPaymentCallback(opts) {
+        const { ctx, productId, paymentButtonId, lead, telegram, chatId, isBlack, resolveBotId, logTag } = opts;
+        if (!this.executeDeps.db || !this.executeDeps.gateway || !this.executeDeps.baseWebhookUrl) {
+            console.error(`[${logTag}] Missing deps`);
+            return;
+        }
+        const { handleProductPaymentCallback } = await import("./nodes/payment-button.js");
+        try {
+            const result = await handleProductPaymentCallback(ctx, this.executeDeps.db, this.executeDeps.gateway, this.executeDeps.baseWebhookUrl, productId, this.executeDeps.gatewayKind ?? "sigilopay", paymentButtonId);
+            // Queue black flow messages for deletion (apenas em flows visuais black)
+            if (isBlack && result.messageIds) {
+                const botId = await resolveBotId();
+                if (botId) {
+                    await this.queueMessageDeletion(botId, telegram.botToken, chatId, result.messageIds, BLACK_DELETE_DELAY_MINUTES);
+                }
+            }
+            if (result.stateUpdates) {
+                lead.state = { ...lead.state, ...result.stateUpdates };
+                await this.leadService.updateState(lead.id, lead.state);
+            }
+        }
+        catch (error) {
+            console.error(`[${logTag}] Error processing payment:`, error);
+            await telegram.sendMessage({
+                chatId,
+                text: "Ocorreu um erro ao processar o pagamento. Tente novamente.",
+            });
+        }
     }
     /**
      * Execute a flow. If isBlack=true, messages are queued for deletion after 15min (black flow default).
@@ -157,9 +197,7 @@ export class FlowProcessor {
             }
             // Auto-delete: black flow (15min) or explicit deleteAfterMinutes
             if (deletionDelay && result.messageIds) {
-                for (const msgId of result.messageIds) {
-                    await this.queueMessageDeletion(flow.bot_id, telegram.botToken, chatId, msgId, deletionDelay);
-                }
+                await this.queueMessageDeletion(flow.bot_id, telegram.botToken, chatId, result.messageIds, deletionDelay);
             }
             // Combina state + posição num único write quando há delay node com
             // persistPosition (#33) — evita 2 roundtrips. Nos demais casos,
@@ -318,7 +356,7 @@ export class FlowProcessor {
                     caption: "📱 QR Code Pix — escaneie com o app do seu banco",
                 });
                 if (isBlack && msg) {
-                    await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, msg.message_id, BLACK_DELETE_DELAY_MINUTES);
+                    await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, [msg.message_id], BLACK_DELETE_DELAY_MINUTES);
                 }
             }
             else {
@@ -356,34 +394,21 @@ export class FlowProcessor {
                 telegram,
                 chatId,
             };
-            const { handleProductPaymentCallback } = await import("./nodes/payment-button.js");
-            if (!this.executeDeps.db || !this.executeDeps.gateway || !this.executeDeps.baseWebhookUrl) {
-                console.error("[pay callback] Missing deps");
-                return;
-            }
-            try {
-                const result = await handleProductPaymentCallback(ctx, this.executeDeps.db, this.executeDeps.gateway, this.executeDeps.baseWebhookUrl, productId, this.executeDeps.gatewayKind ?? "sigilopay");
-                // Queue black flow messages for deletion (apenas em flows visuais black)
-                if (isBlack && result.messageIds && lead.current_flow_id) {
+            await this.runPaymentCallback({
+                ctx,
+                productId,
+                lead,
+                telegram,
+                chatId,
+                isBlack,
+                resolveBotId: async () => {
+                    if (!lead.current_flow_id)
+                        return undefined;
                     const typedFlow = await this.getFlowById(lead.current_flow_id);
-                    if (typedFlow) {
-                        for (const msgId of result.messageIds) {
-                            await this.queueMessageDeletion(typedFlow.bot_id, telegram.botToken, chatId, msgId, BLACK_DELETE_DELAY_MINUTES);
-                        }
-                    }
-                }
-                if (result.stateUpdates) {
-                    lead.state = { ...lead.state, ...result.stateUpdates };
-                    await this.leadService.updateState(lead.id, lead.state);
-                }
-            }
-            catch (error) {
-                console.error("[pay callback] Error processing payment:", error);
-                await telegram.sendMessage({
-                    chatId,
-                    text: "Ocorreu um erro ao processar o pagamento. Tente novamente.",
-                });
-            }
+                    return typedFlow?.bot_id;
+                },
+                logTag: "pay callback",
+            });
             return;
         }
         // Standard button callback: format is "nodeId:value"
@@ -403,10 +428,61 @@ export class FlowProcessor {
             console.log(`[callback] Flow ${lead.current_flow_id} not found`);
             return;
         }
+        // Botão de pagamento inline: dentro de um nó "button" comum, um botão
+        // individual pode estar marcado action:"payment" — o clique gera o Pix
+        // direto (mesmo handleProductPaymentCallback do nó de pagamento
+        // dedicado), sem precisar de um nó separado. Diferente do prefixo
+        // "pay:" acima (fluxo de bundle, reconstrói um nó sintético a partir do
+        // lead.state), aqui usamos o nó vivo do flow_data — pega sale_type/
+        // payment_timeout_minutes reais, sem o gap de reconstrução do outro fluxo.
+        const sourceNode = typedFlow.flow_data.nodes.find((n) => n.id === sourceNodeId);
+        if (sourceNode?.type === "button") {
+            const buttons = (sourceNode.data.buttons ?? []);
+            const btn = buttons.find((b, i) => (b.id ?? `btn_idx_${i}`) === targetValue && b.action === "payment");
+            if (btn) {
+                const productId = String(btn.product_id ?? "");
+                if (!productId) {
+                    await telegram.sendMessage({ chatId, text: "Erro: nenhum produto configurado neste botão." });
+                    return;
+                }
+                // sale_type é configurado por botão (button-config.tsx), não no nó —
+                // sobrepõe aqui (nova cópia, nunca muta sourceNode: ele é a mesma
+                // referência guardada em flowByIdCache) pra handleProductPaymentCallback
+                // gravar a transação com o tipo de venda certo (Análises).
+                const ctx = {
+                    node: { ...sourceNode, data: { ...sourceNode.data, sale_type: btn.sale_type ?? "main" } },
+                    lead,
+                    edges: [],
+                    telegram,
+                    chatId,
+                };
+                await this.runPaymentCallback({
+                    ctx,
+                    productId,
+                    paymentButtonId: targetValue,
+                    lead,
+                    telegram,
+                    chatId,
+                    isBlack,
+                    resolveBotId: async () => typedFlow.bot_id,
+                    logTag: "inline payment",
+                });
+                return;
+            }
+        }
         const edges = typedFlow.flow_data.edges.filter((e) => e.source === sourceNodeId);
         let edge = edges.find((e) => e.sourceHandle === targetValue || e.target === targetValue);
         if (!edge && edges.length > 0) {
-            edge = edges[0];
+            // Fallback "primeira edge do nó" — mas nunca escolhe uma edge de
+            // pagamento aqui: nem as plain "paid"/"not_paid" do nó de pagamento
+            // dedicado (payment-button-node.tsx), nem as "paid:<id>"/"not_paid:<id>"
+            // namespaced por botão do botão de pagamento inline. Sem isso, um
+            // clique sem match exato (ex: botão de recusa renomeado, "Valor" mal
+            // configurado) podia cair acidentalmente na ramificação de pagamento
+            // confirmado/não confirmado — sem nenhum Pix ter sido gerado.
+            const isPaymentHandle = (h) => h === "paid" || h === "not_paid" || h?.startsWith("paid:") || h?.startsWith("not_paid:");
+            const nonPaymentEdges = edges.filter((e) => !isPaymentHandle(e.sourceHandle));
+            edge = nonPaymentEdges[0];
         }
         if (edge) {
             console.log(`[callback] Advancing flow from ${sourceNodeId} to ${edge.target}${isBlack ? " [BLACK]" : ""}`);

@@ -78,9 +78,21 @@ export async function resolveTenantIdentity(
   // Quando vem campanha nova, sobrescreve no DB. Quando não vem nada
   // novo, ainda atualiza last_bot_id e last_updated_at pra refletir
   // a atividade do lead, mas mantém o tracking existente.
+  //
+  // PERF: essas escritas NÃO alimentam o valor de retorno (`effective` já
+  // está calculado acima), então não precisam bloquear a resposta ao lead.
+  // Disparadas fire-and-forget: economiza um round-trip de DB no hot path
+  // de toda mensagem que cria identidade / traz campanha nova / troca de bot.
   const nowIso = new Date().toISOString();
+  const fireAndForget = (p: PromiseLike<unknown>): void => {
+    Promise.resolve(p).then(
+      () => {},
+      (err) => console.error("[lead-identity] write falhou:", err),
+    );
+  };
+
   if (!existing) {
-    await db.from("tenant_lead_identity").insert({
+    fireAndForget(db.from("tenant_lead_identity").insert({
       tenant_id: tenantId,
       telegram_user_id: telegramUserId,
       tid: effective.tid,
@@ -94,10 +106,10 @@ export async function resolveTenantIdentity(
       last_bot_id: botId,
       first_seen_at: nowIso,
       last_updated_at: nowIso,
-    });
+    }));
   } else if (hasIncomingTracking) {
     // Campanha nova — sobrescreve atribuição
-    await db
+    fireAndForget(db
       .from("tenant_lead_identity")
       .update({
         tid: effective.tid,
@@ -111,16 +123,16 @@ export async function resolveTenantIdentity(
         last_updated_at: nowIso,
       })
       .eq("tenant_id", tenantId)
-      .eq("telegram_user_id", telegramUserId);
+      .eq("telegram_user_id", telegramUserId));
   } else if ((ex as { last_bot_id?: string }).last_bot_id !== botId) {
     // Sem campanha nova — só atualiza last_bot_id/last_updated_at, e SÓ
     // quando o bot mudou (#27). Lead voltando no mesmo bot (caso comum)
     // não gera write desnecessário. A atribuição de tracking não muda.
-    await db
+    fireAndForget(db
       .from("tenant_lead_identity")
       .update({ last_bot_id: botId, last_updated_at: nowIso })
       .eq("tenant_id", tenantId)
-      .eq("telegram_user_id", telegramUserId);
+      .eq("telegram_user_id", telegramUserId));
   }
 
   return effective;

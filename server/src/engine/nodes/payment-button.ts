@@ -6,6 +6,17 @@ import { FacebookCapi } from "../../services/facebook-capi.js";
 import { TrackingService } from "../../services/tracking-service.js";
 import { addPaymentTimeoutJob } from "../../queue.js";
 import { logEvent } from "../../services/lead-messages.js";
+import { botCache } from "../../cache.js";
+
+/** Colunas do bot usadas só pra tracking (FB CAPI / Utmify). */
+interface BotTrackingConfig {
+  facebook_pixel_id: string | null;
+  facebook_access_token: string | null;
+  facebook_pixel_id_backup: string | null;
+  facebook_access_token_backup: string | null;
+  facebook_backup_enabled: boolean | null;
+  utmify_api_key: string | null;
+}
 
 interface BundleProduct {
   id: string;
@@ -293,11 +304,26 @@ export async function handleProductPaymentCallback(
         ? `${baseWebhookUrl}/webhook/zuckpay`
         : `${baseWebhookUrl}/webhook/payment`;
 
-  // Instant feedback — send before generating pix (fire-and-forget)
-  const loadingMsg = await ctx.telegram.sendMessage({
-    chatId: ctx.chatId,
-    text: "⏳ Gerando seu Pix, aguarde...",
-  });
+  // Instant feedback — dispara JÁ, sem await: a chamada ao gateway começa
+  // no mesmo tick. Antes isso era awaited, serializando um round-trip do
+  // Telegram (~150-500ms) na frente de toda geração de PIX.
+  const loadingMsgPromise = ctx.telegram
+    .sendMessage({
+      chatId: ctx.chatId,
+      text: "⏳ Gerando seu Pix, aguarde...",
+    })
+    .catch((err: unknown) => {
+      // Antes esse envio era awaited, então uma falha aqui (bot bloqueado,
+      // chat inexistente) abortava ANTES de criar cobrança no gateway. Agora
+      // ele corre em paralelo, então a cobrança pode nascer órfã — raro, já
+      // que o lead acabou de clicar num botão, mas precisa ser rastreável.
+      console.warn(
+        `[payment] mensagem de carregamento falhou p/ chat ${ctx.chatId} (lead ${ctx.lead.id}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    });
 
   const gatewayParams = {
     identifier,
@@ -337,9 +363,11 @@ export async function handleProductPaymentCallback(
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[payment] ${gatewayKind} failed for product ${productId}, lead ${ctx.lead.id}:`, errorMsg);
     // Delete loading message on error
-    if (loadingMsg) {
-      ctx.telegram.deleteMessage(ctx.chatId, loadingMsg.message_id).catch(() => {});
-    }
+    loadingMsgPromise
+      .then((m) => {
+        if (m) ctx.telegram.deleteMessage(ctx.chatId, m.message_id).catch(() => {});
+      })
+      .catch(() => {});
     // Strip any HTML/tags and cap length to avoid Telegram parse errors
     const safeMsg = errorMsg.replace(/<[^>]*>/g, "").replace(/[<>&]/g, "").slice(0, 200);
     await ctx.telegram.sendMessage({
@@ -351,7 +379,18 @@ export async function handleProductPaymentCallback(
 
   // Create transaction record. flow_id pode ser null (ex: pagamento gerado
   // dentro de um flow de remarketing, que não está em `flows`).
-  const { data: txRecord } = await db.from("transactions").insert({
+  //
+  // PERF: o insert viaja em paralelo com o envio da mensagem do PIX logo
+  // abaixo — nada aqui é necessário pra montar essa mensagem, e antes o
+  // cliente esperava esse round-trip (+ o refetch de `bots`) só pra ver o
+  // código que o gateway já tinha devolvido.
+  //
+  // O Promise.resolve() NÃO é decorativo: PostgrestBuilder é um thenable
+  // PREGUIÇOSO — a request só é disparada quando alguém chama .then(). Sem
+  // isso o insert não sairia daqui, e se o envio abaixo lançasse a linha
+  // NUNCA seria gravada: cobrança viva no gateway sem transação no banco,
+  // e o webhook de confirmação não teria o que creditar.
+  const txInsertPromise = Promise.resolve(db.from("transactions").insert({
     tenant_id: ctx.lead.tenant_id,
     lead_id: ctx.lead.id,
     bot_id: ctx.lead.bot_id,
@@ -364,7 +403,7 @@ export async function handleProductPaymentCallback(
     status: "pending",
     // tipo de venda marcado no nó de pagamento (Análises): main/upsell/downsell/orderbump
     sale_type: String(ctx.node.data.sale_type ?? "main"),
-  }).select("id").single();
+  }).select("id").single());
 
   // Marco na timeline do chat (aba Clientes): PIX gerado. Fire-and-forget.
   logEvent(
@@ -378,12 +417,94 @@ export async function handleProductPaymentCallback(
     { amount: typedProduct.price, product_name: typedProduct.name },
   );
 
-  // Fire checkout (Facebook InitiateCheckout) + Utmify waiting_payment
-  const { data: botConfig } = await db
-    .from("bots")
-    .select("facebook_pixel_id, facebook_access_token, facebook_pixel_id_backup, facebook_access_token_backup, facebook_backup_enabled, utmify_api_key")
-    .eq("id", ctx.lead.bot_id)
-    .single();
+  const priceFormatted = amountInReais.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: typedProduct.currency,
+  });
+
+  // Generate QR code URL from pix code if SigiloPay didn't provide one
+  const qrCodeUrl = payment.pixImage
+    || `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(payment.pixCode)}`;
+
+  // Delete loading message now that pix is ready
+  loadingMsgPromise
+    .then((m) => {
+      if (m) ctx.telegram.deleteMessage(ctx.chatId, m.message_id).catch(() => {});
+    })
+    .catch(() => {});
+
+  // Send payment details with QR Code button — PRIMEIRA coisa depois do
+  // gateway responder. Tracking (FB/Utmify) roda depois, sem segurar o user.
+  //
+  // try/finally: a cobrança JÁ existe no gateway neste ponto. Se o envio
+  // falhar (bot bloqueado, chat inexistente, timeout da Telegram), a linha
+  // em `transactions` ainda PRECISA ser gravada — senão o cliente que pagar
+  // pelo código que chegou a aparecer nunca é creditado pelo webhook.
+  let txRecord: { id: string } | null = null;
+  let paymentMsg: Awaited<ReturnType<typeof ctx.telegram.sendMessage>> = null;
+  try {
+    paymentMsg = await ctx.telegram.sendMessage({
+    chatId: ctx.chatId,
+    text: [
+      `🌟 Você selecionou o seguinte plano:`,
+      ``,
+      `🎁 Plano: ${displayName}`,
+      `💰 Valor: ${priceFormatted}`,
+      ``,
+      `💳 Total: ${priceFormatted}`,
+      ``,
+      `💠 Pague via Pix Copia e Cola:`,
+      ``,
+      `<code>${payment.pixCode}</code>`,
+      ``,
+      `👆 Toque no código acima para copiá-lo`,
+      ``,
+      `‼️ Após o pagamento seu acesso será liberado automaticamente.`,
+    ].join("\n"),
+    replyMarkup: {
+      inline_keyboard: [
+        [{ text: "📋 Copiar código Pix", copy_text: { text: payment.pixCode } }],
+        [{ text: "📱 Ver QR Code", callback_data: `qrcode:${ctx.node.id}` }],
+      ],
+    },
+    });
+  } catch (err) {
+    // Envio do PIX falhou (bot bloqueado, chat sumiu, Telegram fora do ar).
+    // A cobrança JÁ existe no gateway — não propaga o erro pra cima: isso
+    // pularia o bloco de tracking logo abaixo (Utmify waiting_payment +
+    // marco "PIX gerado" no funil), deixando o funil mostrar uma compra sem
+    // checkout correspondente quando o lead pagar por fora (ex: reabriu o
+    // chat e copiou o código antes, ou reconciliação manual). paymentMsg
+    // permanece null; runPaymentCallback não depende dele pra nada crítico.
+    console.error(
+      `[payment] ✗ Falha ao enviar mensagem do Pix p/ chat ${ctx.chatId} (lead ${ctx.lead.id}): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  } finally {
+    // Roda inclusive no caminho de exceção do envio acima. O insert já
+    // viajou em paralelo, então normalmente resolve na hora.
+    const { data, error } = await txInsertPromise;
+    txRecord = data;
+    if (error) {
+      // Antes esse erro era descartado em silêncio. Se o insert falhar
+      // (RLS, constraint, PostgREST 5xx) a cobrança fica órfã — precisa
+      // aparecer no log pra dar pra reconciliar.
+      console.error(
+        `[payment] ✗ FALHA ao gravar transaction external_id=${payment.transactionId} lead=${ctx.lead.id}: ${error.message}`,
+      );
+    }
+  }
+
+  // Fire checkout (Facebook InitiateCheckout) + Utmify waiting_payment.
+  // Config do bot vem do botCache — é a MESMA linha que o webhook já
+  // carregou pra atender esse clique; refetch era round-trip puro.
+  const botConfig = (botCache.get(ctx.lead.bot_id) as BotTrackingConfig | undefined)
+    ?? (await db
+      .from("bots")
+      .select("facebook_pixel_id, facebook_access_token, facebook_pixel_id_backup, facebook_access_token_backup, facebook_backup_enabled, utmify_api_key")
+      .eq("id", ctx.lead.bot_id)
+      .single()).data as BotTrackingConfig | null;
 
   if (botConfig) {
     const fbCapi = new FacebookCapi(botConfig.facebook_pixel_id ?? "", botConfig.facebook_access_token ?? "", {
@@ -455,49 +576,6 @@ export async function handleProductPaymentCallback(
       }).catch((e) => console.error("[utmify] Failed to send waiting_payment:", e));
     }
   }
-
-  const priceFormatted = amountInReais.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: typedProduct.currency,
-  });
-
-  console.log(`[payment] pixImage from SigiloPay: ${payment.pixImage ?? "null"}`);
-
-  // Generate QR code URL from pix code if SigiloPay didn't provide one
-  const qrCodeUrl = payment.pixImage
-    || `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(payment.pixCode)}`;
-
-  // Delete loading message now that pix is ready
-  if (loadingMsg) {
-    ctx.telegram.deleteMessage(ctx.chatId, loadingMsg.message_id).catch(() => {});
-  }
-
-  // Send payment details with QR Code button
-  const paymentMsg = await ctx.telegram.sendMessage({
-    chatId: ctx.chatId,
-    text: [
-      `🌟 Você selecionou o seguinte plano:`,
-      ``,
-      `🎁 Plano: ${displayName}`,
-      `💰 Valor: ${priceFormatted}`,
-      ``,
-      `💳 Total: ${priceFormatted}`,
-      ``,
-      `💠 Pague via Pix Copia e Cola:`,
-      ``,
-      `<code>${payment.pixCode}</code>`,
-      ``,
-      `👆 Toque no código acima para copiá-lo`,
-      ``,
-      `‼️ Após o pagamento seu acesso será liberado automaticamente.`,
-    ].join("\n"),
-    replyMarkup: {
-      inline_keyboard: [
-        [{ text: "📋 Copiar código Pix", copy_text: { text: payment.pixCode } }],
-        [{ text: "📱 Ver QR Code", callback_data: `qrcode:${ctx.node.id}` }],
-      ],
-    },
-  });
 
   // Schedule payment timeout — fires "not_paid" edge if payment not confirmed in time
   const timeoutMinutes = Number(ctx.node.data.payment_timeout_minutes ?? 15);

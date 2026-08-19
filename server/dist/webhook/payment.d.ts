@@ -23,6 +23,17 @@ export declare function handleEvPayWebhook(req: Request & {
     rawBody?: Buffer;
 }, res: Response): Promise<void>;
 /**
+ * Express handler for /webhook/zuckpay (ZuckPay gateway).
+ * Valida assinatura HMAC-SHA256 (header X-ZuckPay-Signature) usando o
+ * zuckpay_webhook_secret salvo no bot que originou a transação. Mesma mecânica
+ * do EvPay; funil final é o processPaymentCallback compartilhado.
+ *
+ * Payload ZuckPay: { event: "payment_approved", transaction: { id, status, ... } }
+ */
+export declare function handleZuckPayWebhook(req: Request & {
+    rawBody?: Buffer;
+}, res: Response): Promise<void>;
+/**
  * Reentrega manual de uma transação (botão "Reenviar acesso" no painel).
  * Reexecuta o fluxo de pós-pagamento (edge "paid") pra reentregar produto/
  * mensagens ao cliente. O tracking (Facebook/Utmify) NÃO duplica — o

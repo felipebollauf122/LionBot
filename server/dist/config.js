@@ -20,6 +20,10 @@ export const config = {
     // só loga warning e processa mesmo assim. Mantido tolerante por padrão até
     // confirmar que a assinatura tá calibrada com o que o Yvepay envia.
     evpayRequireSignature: envOptional("EVPAY_REQUIRE_SIGNATURE", "false") === "true",
+    // ZuckPay: mesmo esquema tolerante do EvPay. 'false' (padrão) só loga warning
+    // em assinatura inválida e processa; 'true' rejeita. Suba pra 'true' quando
+    // confirmar que o X-ZuckPay-Signature bate com o webhook_secret salvo.
+    zuckpayRequireSignature: envOptional("ZUCKPAY_REQUIRE_SIGNATURE", "false") === "true",
     // Web Push (VAPID) — push de venda nos dispositivos do tenant.
     // Se as chaves não estiverem setadas, o push é silenciosamente desativado.
     vapidPublicKey: envOptional("VAPID_PUBLIC_KEY", ""),

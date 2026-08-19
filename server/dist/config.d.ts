@@ -8,6 +8,7 @@ export declare const config: {
     readonly telegramApiHash: string;
     readonly mtprotoWorkerEnabled: boolean;
     readonly evpayRequireSignature: boolean;
+    readonly zuckpayRequireSignature: boolean;
     readonly vapidPublicKey: string;
     readonly vapidPrivateKey: string;
     readonly vapidSubject: string;

@@ -142,18 +142,23 @@ export class FlowProcessor {
     botId: string,
     botToken: string,
     chatId: number,
-    messageId: number,
+    messageIds: number[],
     delayMinutes: number,
   ): Promise<void> {
+    if (messageIds.length === 0) return;
     const deleteAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
-    await this.db.from("message_delete_queue").insert({
-      bot_id: botId,
-      bot_token: botToken,
-      chat_id: chatId,
-      message_id: messageId,
-      delete_at: deleteAt,
-      status: "pending",
-    });
+    // Insert em lote: um nó que manda várias mensagens fazia N round-trips
+    // sequenciais aqui, cada um segurando o avanço pro próximo nó do flow.
+    await this.db.from("message_delete_queue").insert(
+      messageIds.map((messageId) => ({
+        bot_id: botId,
+        bot_token: botToken,
+        chat_id: chatId,
+        message_id: messageId,
+        delete_at: deleteAt,
+        status: "pending",
+      })),
+    );
   }
 
   /**
@@ -198,9 +203,13 @@ export class FlowProcessor {
       if (isBlack && result.messageIds) {
         const botId = await resolveBotId();
         if (botId) {
-          for (const msgId of result.messageIds) {
-            await this.queueMessageDeletion(botId, telegram.botToken, chatId, msgId, BLACK_DELETE_DELAY_MINUTES);
-          }
+          await this.queueMessageDeletion(
+            botId,
+            telegram.botToken,
+            chatId,
+            result.messageIds,
+            BLACK_DELETE_DELAY_MINUTES,
+          );
         }
       }
 
@@ -297,9 +306,13 @@ export class FlowProcessor {
 
       // Auto-delete: black flow (15min) or explicit deleteAfterMinutes
       if (deletionDelay && result.messageIds) {
-        for (const msgId of result.messageIds) {
-          await this.queueMessageDeletion(flow.bot_id, telegram.botToken, chatId, msgId, deletionDelay);
-        }
+        await this.queueMessageDeletion(
+          flow.bot_id,
+          telegram.botToken,
+          chatId,
+          result.messageIds,
+          deletionDelay,
+        );
       }
 
       // Combina state + posição num único write quando há delay node com
@@ -517,7 +530,7 @@ export class FlowProcessor {
           caption: "📱 QR Code Pix — escaneie com o app do seu banco",
         });
         if (isBlack && msg) {
-          await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, msg.message_id, BLACK_DELETE_DELAY_MINUTES);
+          await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, [msg.message_id], BLACK_DELETE_DELAY_MINUTES);
         }
       } else {
         await telegram.sendMessage({

@@ -6,6 +6,8 @@ import { MtprotoClient } from "../services/mtproto/client.js";
 import { AccountPool } from "../services/mtproto/pool.js";
 import { CampaignRunner, } from "../services/mtproto/campaign-runner.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
+import { handleCloneRun } from "./clone-handler.js";
+import { handleBotCloneExplore, handleBotCloneBuildFlow } from "./bot-clone-handler.js";
 // Kinds elegíveis pra disparo global. Inclui grupos/canais onde só participa
 // — o owner aceita o risco de ban por spam em troca de alcance máximo.
 // Exclui só 'bot' (mandar pra bots é desperdício) e 'self' (Saved Messages
@@ -684,6 +686,12 @@ export function startMtprotoWorker() {
                 return handleCampaignRun(d.campaignId);
             case "account.sync-dialogs":
                 return handleSyncDialogs(d.accountId);
+            case "clone.run":
+                return handleCloneRun(d.cloneJobId);
+            case "botclone.explore":
+                return handleBotCloneExplore(d.cloneJobId);
+            case "botclone.build-flow":
+                return handleBotCloneBuildFlow(d.cloneJobId);
         }
     }, { connection, concurrency: 4 });
     console.log("[mtproto] worker started");

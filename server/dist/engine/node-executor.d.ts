@@ -4,7 +4,7 @@ import type { PaymentGateway } from "../services/payment-gateway.js";
 export interface ExecuteNodeDeps {
     db?: SupabaseClient;
     gateway?: PaymentGateway;
-    gatewayKind?: "sigilopay" | "evpay";
+    gatewayKind?: "sigilopay" | "evpay" | "zuckpay";
     baseWebhookUrl?: string;
 }
 export declare function executeNode(ctx: NodeContext, deps?: ExecuteNodeDeps): Promise<NodeResult>;

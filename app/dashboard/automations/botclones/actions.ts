@@ -99,11 +99,18 @@ export async function createBotCloneJob(input: {
   maxDepth: number;
   maxNodes: number;
   clickThrottleMs: number;
+  /** 'full' (padrão) roda a BFS inteira; 'remarketing_only' pula direto pra leitura do histórico já existente com o bot-alvo. */
+  mode?: "full" | "remarketing_only";
+  /** Se falso, pula o rehost de mídia (economiza banda/tempo de download MTProto) em qualquer um dos dois modos. */
+  includeMedia?: boolean;
 }): Promise<CreateBotCloneResult> {
   try {
     await requireAutomationsAccess();
     const tenantId = await currentTenantId();
     const supabase = await createClient();
+
+    const mode = input.mode === "remarketing_only" ? "remarketing_only" : "full";
+    const includeMedia = input.includeMedia ?? true;
 
     const targetBotUsername = input.targetBotUsername.trim().replace(/^@/, "");
     if (!targetBotUsername) {
@@ -142,6 +149,8 @@ export async function createBotCloneJob(input: {
         max_depth: maxDepth,
         max_nodes: maxNodes,
         click_throttle_ms: clickThrottleMs,
+        mode,
+        include_media: includeMedia,
         status: "draft",
       })
       .select("id")

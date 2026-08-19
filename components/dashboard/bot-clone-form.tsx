@@ -18,6 +18,8 @@ export function BotCloneForm({
   const [targetBotUsername, setTargetBotUsername] = useState("");
   const [destBotId, setDestBotId] = useState(destBots[0]?.id ?? "");
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [mode, setMode] = useState<"full" | "remarketing_only">("full");
+  const [includeMedia, setIncludeMedia] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [maxDepth, setMaxDepth] = useState("40");
   const [maxNodes, setMaxNodes] = useState("500");
@@ -38,6 +40,8 @@ export function BotCloneForm({
         maxDepth: Number(maxDepth) || 40,
         maxNodes: Number(maxNodes) || 500,
         clickThrottleMs: Number(clickThrottleMs) || 3000,
+        mode,
+        includeMedia,
       });
       if (!res.ok) {
         setShowRiskModal(false);
@@ -60,6 +64,51 @@ export function BotCloneForm({
 
   return (
     <div className="space-y-4">
+      <div>
+        <span className="input-label">Modo</span>
+        <div className="mt-1 inline-flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
+          <button
+            type="button"
+            onClick={() => setMode("full")}
+            className={`toggle-btn ${mode === "full" ? "on" : "off"}`}
+          >
+            Clonar fluxo completo
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("remarketing_only")}
+            className={`toggle-btn ${mode === "remarketing_only" ? "on" : "off"}`}
+          >
+            Clonar apenas remarketing
+          </button>
+        </div>
+        {mode === "remarketing_only" && (
+          <span className="block text-(--text-muted) text-xs mt-2">
+            Esse modo funciona melhor quando a conta escolhida já tem histórico real de conversa
+            com o bot-alvo (por exemplo, reaproveitando a mesma conta de uma clonagem completa
+            anterior nesse mesmo alvo, depois de deixá-la parada tempo suficiente pro remarketing
+            do próprio bot-alvo chegar nessa conversa). Sem esse histórico, nada é capturado.
+          </span>
+        )}
+      </div>
+
+      <label className="row-hover flex items-start gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) cursor-pointer">
+        <input
+          type="checkbox"
+          checked={includeMedia}
+          onChange={(e) => setIncludeMedia(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span className="min-w-0">
+          <span className="block text-foreground text-sm">Incluir mídia</span>
+          <span className="block text-(--text-muted) text-xs mt-0.5">
+            Desmarcar pula o download/reenvio de fotos e vídeos do bot clonado (mais rápido, mas
+            as mensagens clonadas chegam sem mídia até você anexar algo manualmente — por exemplo,
+            da biblioteca de mídia).
+          </span>
+        </span>
+      </label>
+
       <label className="block">
         <span className="input-label">Bot-alvo (@username)</span>
         <input
@@ -112,43 +161,45 @@ export function BotCloneForm({
         </span>
       </label>
 
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="text-(--text-ghost) text-xs hover:text-(--text-muted) transition-colors"
-        >
-          {showAdvanced ? "▾ Esconder opções avançadas" : "▸ Opções avançadas (profundidade, limites, ritmo)"}
-        </button>
-        {showAdvanced && (
-          <div className="mt-3 pt-4 border-t border-(--border-subtle) grid grid-cols-3 gap-3">
-            <label className="block">
-              <span className="text-(--text-muted) text-xs">Profundidade máx.</span>
-              <input
-                value={maxDepth}
-                onChange={(e) => setMaxDepth(e.target.value.replace(/\D/g, ""))}
-                className="input"
-              />
-            </label>
-            <label className="block">
-              <span className="text-(--text-muted) text-xs">Nós máx.</span>
-              <input
-                value={maxNodes}
-                onChange={(e) => setMaxNodes(e.target.value.replace(/\D/g, ""))}
-                className="input"
-              />
-            </label>
-            <label className="block">
-              <span className="text-(--text-muted) text-xs">Pausa por clique (ms)</span>
-              <input
-                value={clickThrottleMs}
-                onChange={(e) => setClickThrottleMs(e.target.value.replace(/\D/g, ""))}
-                className="input"
-              />
-            </label>
-          </div>
-        )}
-      </div>
+      {mode === "full" && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="text-(--text-ghost) text-xs hover:text-(--text-muted) transition-colors"
+          >
+            {showAdvanced ? "▾ Esconder opções avançadas" : "▸ Opções avançadas (profundidade, limites, ritmo)"}
+          </button>
+          {showAdvanced && (
+            <div className="mt-3 pt-4 border-t border-(--border-subtle) grid grid-cols-3 gap-3">
+              <label className="block">
+                <span className="text-(--text-muted) text-xs">Profundidade máx.</span>
+                <input
+                  value={maxDepth}
+                  onChange={(e) => setMaxDepth(e.target.value.replace(/\D/g, ""))}
+                  className="input"
+                />
+              </label>
+              <label className="block">
+                <span className="text-(--text-muted) text-xs">Nós máx.</span>
+                <input
+                  value={maxNodes}
+                  onChange={(e) => setMaxNodes(e.target.value.replace(/\D/g, ""))}
+                  className="input"
+                />
+              </label>
+              <label className="block">
+                <span className="text-(--text-muted) text-xs">Pausa por clique (ms)</span>
+                <input
+                  value={clickThrottleMs}
+                  onChange={(e) => setClickThrottleMs(e.target.value.replace(/\D/g, ""))}
+                  className="input"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-(--red) text-xs">{error}</p>}
 
@@ -163,6 +214,7 @@ export function BotCloneForm({
       <BotCloneRiskModal
         open={showRiskModal}
         confirming={pending}
+        mode={mode}
         onCancel={() => setShowRiskModal(false)}
         onConfirm={handleConfirm}
       />

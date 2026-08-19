@@ -43,6 +43,13 @@ export interface NodeContext {
   edges: FlowEdge[];
   telegram: TelegramApi;
   chatId: number;
+  /** Biblioteca de mídia pré-carregada uma vez por executeFlow (evita N+1
+   * round-trip por nó) — só presente quando algum nó image/video do flow usa
+   * randomize=true. Chave = media_assets.id. */
+  mediaAssets?: Map<string, { url: string; kind: "image" | "video" }>;
+  /** remarketing_flows.id quando este ctx pertence a uma execução de
+   * remarketing (persistPosition=false em executeFlow), null caso contrário. */
+  remarketingFlowId?: string | null;
 }
 
 export interface NodeResult {
@@ -53,6 +60,13 @@ export interface NodeResult {
   messageIds?: number[];
   /** True when the user has blocked the bot — flow should stop and lead should be flagged */
   blocked?: boolean;
+  /** Qual mídia/texto/preço este nó escolheu neste envio (randomizado ou
+   * fixo) — acumulado por executeFlow numa linha de remarketing_variant_sends. */
+  variantChoice?: {
+    mediaAssetId?: string | null;
+    textVariantIndex?: number | null;
+    bundleId?: string | null;
+  };
 }
 
 export type NodeHandler = (ctx: NodeContext) => Promise<NodeResult>;

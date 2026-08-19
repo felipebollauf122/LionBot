@@ -6,12 +6,19 @@ interface PaymentButtonConfigProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
   bundles: BundleOption[];
+  canRandomize?: boolean;
 }
 
-export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonConfigProps) {
+export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = false }: PaymentButtonConfigProps) {
   const bundleId = String(data.bundle_id ?? "");
   const timeoutMinutes = Number(data.payment_timeout_minutes ?? 15);
   const saleType = String(data.sale_type ?? "main");
+  const randomizePrice = Boolean(data.randomize_price);
+  const bundleIds: string[] = Array.isArray(data.bundle_ids) ? (data.bundle_ids as string[]) : [];
+  const toggleBundle = (id: string) => {
+    const next = bundleIds.includes(id) ? bundleIds.filter((b) => b !== id) : [...bundleIds, id];
+    onChange({ ...data, bundle_ids: next });
+  };
 
   const saleTypes: { value: string; label: string; hint: string; color: string }[] = [
     { value: "main", label: "Principal", hint: "Venda principal do funil", color: "var(--accent)" },
@@ -180,23 +187,92 @@ export function PaymentButtonConfig({ data, onChange, bundles }: PaymentButtonCo
       )}
 
       <div>
-        <label className="input-label">Conjunto de Produtos</label>
-        <select
-          value={bundleId}
-          onChange={(e) => onChange({ ...data, bundle_id: e.target.value })}
-          className="input"
-        >
-          <option value="">Selecione um conjunto...</option>
-          {bundles.map((bundle) => (
-            <option key={bundle.id} value={bundle.id}>
-              {bundle.name}
-            </option>
-          ))}
-        </select>
-        {bundles.length === 0 && (
-          <p className="text-(--amber) text-[10px] mt-1.5" style={{ opacity: 0.7 }}>
-            Nenhum conjunto encontrado. Crie um na aba &quot;Conjuntos&quot;.
+        {/* Randomizar preço/oferta — toggle de acesso Premium */}
+        <div className="flex items-center justify-between mb-1">
+          <label className="input-label mb-0!">Randomizar preço/oferta</label>
+          <button
+            type="button"
+            disabled={!canRandomize}
+            onClick={() => onChange({ ...data, randomize_price: !randomizePrice })}
+            className={`toggle-btn ${randomizePrice ? "on" : "off"} disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            {randomizePrice ? "Ativado" : "Desativado"}
+          </button>
+        </div>
+        {!canRandomize && (
+          <p className="text-(--text-muted) text-[10px] mb-2" style={{ opacity: 0.7 }}>
+            Recurso Premium — disponível pra donos ou assinantes Premium.
           </p>
+        )}
+        {canRandomize && (
+          <p className="text-(--text-muted) text-[10px] mb-2" style={{ opacity: 0.7 }}>
+            Sorteia um conjunto entre os selecionados a cada envio.
+          </p>
+        )}
+
+        {randomizePrice && canRandomize ? (
+          <>
+            <label className="input-label">Conjuntos de Produtos</label>
+            {bundles.length === 0 ? (
+              <p className="text-(--amber) text-[10px] mt-1.5" style={{ opacity: 0.7 }}>
+                Nenhum conjunto encontrado. Crie um na aba &quot;Conjuntos&quot;.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {bundles.map((bundle) => {
+                  const checked = bundleIds.includes(bundle.id);
+                  return (
+                    <button
+                      key={bundle.id}
+                      type="button"
+                      onClick={() => toggleBundle(bundle.id)}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all"
+                      style={{
+                        background: checked ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "rgba(255,255,255,0.02)",
+                        borderColor: checked ? "color-mix(in srgb, var(--accent) 40%, transparent)" : "var(--border-subtle)",
+                      }}
+                    >
+                      <span
+                        className="w-4 h-4 shrink-0 rounded border flex items-center justify-center"
+                        style={{
+                          borderColor: checked ? "var(--accent)" : "var(--border-default)",
+                          background: checked ? "var(--accent)" : "transparent",
+                        }}
+                      >
+                        {checked && (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="text-xs text-(--text-secondary)">{bundle.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <label className="input-label">Conjunto de Produtos</label>
+            <select
+              value={bundleId}
+              onChange={(e) => onChange({ ...data, bundle_id: e.target.value })}
+              className="input"
+            >
+              <option value="">Selecione um conjunto...</option>
+              {bundles.map((bundle) => (
+                <option key={bundle.id} value={bundle.id}>
+                  {bundle.name}
+                </option>
+              ))}
+            </select>
+            {bundles.length === 0 && (
+              <p className="text-(--amber) text-[10px] mt-1.5" style={{ opacity: 0.7 }}>
+                Nenhum conjunto encontrado. Crie um na aba &quot;Conjuntos&quot;.
+              </p>
+            )}
+          </>
         )}
       </div>
 

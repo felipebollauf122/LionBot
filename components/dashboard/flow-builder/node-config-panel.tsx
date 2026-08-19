@@ -12,7 +12,7 @@ import { ActionConfig } from "./config-forms/action-config";
 import { VideoConfig } from "./config-forms/video-config";
 import { PaymentButtonConfig } from "./config-forms/payment-button-config";
 import { UnmappedConfig } from "./config-forms/unmapped-config";
-import type { BundleOption, ProductOption } from "./flow-editor";
+import type { BundleOption, ProductOption, MediaAssetOption } from "./flow-editor";
 
 interface NodeConfigPanelProps {
   node: Node | null;
@@ -21,6 +21,10 @@ interface NodeConfigPanelProps {
   onDelete: (nodeId: string) => void;
   bundles: BundleOption[];
   products: ProductOption[];
+  /** Mídias cadastradas na Biblioteca de Mídia do bot — usadas nos seletores de randomização. */
+  mediaAssets?: MediaAssetOption[];
+  /** Libera os controles de randomização (owner ou assinante Premium). */
+  canRandomize?: boolean;
 }
 
 const nodeInfo: Record<string, { label: string; icon: string; color: string }> = {
@@ -37,7 +41,7 @@ const nodeInfo: Record<string, { label: string; icon: string; color: string }> =
   unmapped: { label: "Nao mapeado", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01", color: "var(--amber)" },
 };
 
-export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, products }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, products, mediaAssets = [], canRandomize = false }: NodeConfigPanelProps) {
   if (!node) return null;
 
   const handleChange = (data: Record<string, unknown>) => {
@@ -46,18 +50,20 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, pr
 
   const info = nodeInfo[node.type ?? ""] ?? { label: "Configuracao", icon: "", color: "var(--text-secondary)" };
 
+  // key={node.id}: força remontar o form ao trocar de nó, pra qualquer estado
+  // local (ex: toggle de variação de texto) não vazar de um nó pro outro.
   const configForms: Record<string, React.ReactNode> = {
-    trigger: <TriggerConfig data={node.data} onChange={handleChange} />,
-    text: <TextConfig data={node.data} onChange={handleChange} />,
-    image: <ImageConfig data={node.data} onChange={handleChange} />,
-    button: <ButtonConfig data={node.data} onChange={handleChange} products={products} />,
-    delay: <DelayConfig data={node.data} onChange={handleChange} />,
-    condition: <ConditionConfig data={node.data} onChange={handleChange} />,
-    input: <InputConfig data={node.data} onChange={handleChange} />,
-    action: <ActionConfig data={node.data} onChange={handleChange} />,
-    video: <VideoConfig data={node.data} onChange={handleChange} />,
-    payment_button: <PaymentButtonConfig data={node.data} onChange={handleChange} bundles={bundles} />,
-    unmapped: <UnmappedConfig data={node.data} onChange={handleChange} />,
+    trigger: <TriggerConfig key={node.id} data={node.data} onChange={handleChange} />,
+    text: <TextConfig key={node.id} data={node.data} onChange={handleChange} canRandomize={canRandomize} />,
+    image: <ImageConfig key={node.id} data={node.data} onChange={handleChange} mediaAssets={mediaAssets} canRandomize={canRandomize} />,
+    button: <ButtonConfig key={node.id} data={node.data} onChange={handleChange} products={products} />,
+    delay: <DelayConfig key={node.id} data={node.data} onChange={handleChange} />,
+    condition: <ConditionConfig key={node.id} data={node.data} onChange={handleChange} />,
+    input: <InputConfig key={node.id} data={node.data} onChange={handleChange} />,
+    action: <ActionConfig key={node.id} data={node.data} onChange={handleChange} />,
+    video: <VideoConfig key={node.id} data={node.data} onChange={handleChange} mediaAssets={mediaAssets} canRandomize={canRandomize} />,
+    payment_button: <PaymentButtonConfig key={node.id} data={node.data} onChange={handleChange} bundles={bundles} canRandomize={canRandomize} />,
+    unmapped: <UnmappedConfig key={node.id} data={node.data} onChange={handleChange} />,
   };
 
   return (

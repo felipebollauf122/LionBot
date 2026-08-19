@@ -12,13 +12,17 @@ export function BotCloneRiskModal({
   onCancel,
   onConfirm,
   confirming,
+  mode = "full",
 }: {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   confirming: boolean;
+  /** 'full' (padrão) explora clicando em tudo; 'remarketing_only' só lê histórico já existente, sem clicar em nada. */
+  mode?: "full" | "remarketing_only";
 }) {
   if (!open) return null;
+  const isRemarketingOnly = mode === "remarketing_only";
 
   return (
     <div
@@ -62,42 +66,67 @@ export function BotCloneRiskModal({
           </div>
 
           <h2 id="botclone-risk-modal-title" className="text-foreground font-bold text-lg tracking-tight">
-            Explorar este bot automaticamente?
+            {isRemarketingOnly ? "Ler o histórico de conversa com este bot?" : "Explorar este bot automaticamente?"}
           </h2>
           <p className="text-(--red) text-xs font-bold uppercase tracking-wider mt-1">
-            Ação 100% automática
+            {isRemarketingOnly ? "Leitura automática do histórico" : "Ação 100% automática"}
           </p>
 
           <div className="mt-4 space-y-3 text-sm leading-relaxed text-(--text-secondary)">
-            <p>
-              A exploração é <b className="text-foreground">100% automática</b> — o EagleBot decide
-              sozinho, sem perguntar pra você, em qual botão clicar. Um filtro decide o que pular
-              (veja abaixo), mas nenhuma decisão de clique passa por revisão humana antes de acontecer.
-            </p>
-            <div
-              className="rounded-xl p-3 border border-(--red)/20"
-              style={{ background: "color-mix(in srgb, var(--red) 8%, transparent)" }}
-            >
-              <p className="text-(--text-muted) text-xs">
-                O filtro anti-pagamento é <b className="text-(--red)">melhor esforço, não uma garantia</b> —
-                botões óbvios tipo &quot;Comprar&quot; ou &quot;Continuar&quot; já são sempre pulados, mas
-                uma frase de confirmação mais longa e incomum, ou um preço mostrado só numa imagem sem
-                nenhuma palavra-chave no texto, pode passar despercebido.
-              </p>
-            </div>
-            <p className="text-(--text-muted) text-xs">
-              Se o EagleBot suspeitar de uma confirmação de pagamento depois de um clique, ele{" "}
-              <b className="text-foreground">marca o nó e continua explorando</b> — não pausa sozinho.
-            </p>
-            <p className="text-(--text-muted) text-xs">
-              Todo botão clicado ou pulado fica visível pra revisão manual antes de você ativar o fluxo
-              clonado — <b className="text-foreground">nada é ativado automaticamente</b>.
-            </p>
-            <p className="text-(--text-muted) text-xs">
-              Pro remarketing, o EagleBot <b className="text-foreground">lê o histórico que a conta já tem</b>{" "}
-              com esse bot — não espera mensagem nova chegar. Se a conta já conversou com ele antes, essa
-              conversa antiga entra no fluxo de remarketing junto (fica visível pra revisão, igual o resto).
-            </p>
+            {isRemarketingOnly ? (
+              <>
+                <p>
+                  Esse modo <b className="text-foreground">não clica em nada</b> — o EagleBot não manda
+                  /start nem toca em nenhum botão. Ele só lê o histórico de conversa que a conta já tem
+                  com esse bot-alvo, de forma passiva.
+                </p>
+                <p className="text-(--text-muted) text-xs">
+                  Pro remarketing, o EagleBot <b className="text-foreground">lê o histórico que a conta já tem</b>{" "}
+                  com esse bot — não espera mensagem nova chegar. Isso só produz resultado se essa conta já
+                  teve uma conversa real com o bot-alvo antes (por exemplo, reaproveitando a mesma conta de
+                  uma clonagem completa anterior nesse mesmo alvo, depois de deixá-la parada tempo suficiente
+                  pro remarketing do próprio bot-alvo chegar nessa conversa). Se &quot;Incluir mídia&quot;
+                  estiver marcado, qualquer mídia encontrada nessas mensagens também é baixada e reenviada.
+                  Sem histórico prévio de verdade, <b className="text-foreground">nada é capturado</b>.
+                </p>
+                <p className="text-(--text-muted) text-xs">
+                  Toda mensagem capturada fica visível pra revisão manual antes de você ativar o fluxo de
+                  remarketing clonado — <b className="text-foreground">nada é ativado automaticamente</b>.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  A exploração é <b className="text-foreground">100% automática</b> — o EagleBot decide
+                  sozinho, sem perguntar pra você, em qual botão clicar. Um filtro decide o que pular
+                  (veja abaixo), mas nenhuma decisão de clique passa por revisão humana antes de acontecer.
+                </p>
+                <div
+                  className="rounded-xl p-3 border border-(--red)/20"
+                  style={{ background: "color-mix(in srgb, var(--red) 8%, transparent)" }}
+                >
+                  <p className="text-(--text-muted) text-xs">
+                    O filtro anti-pagamento é <b className="text-(--red)">melhor esforço, não uma garantia</b> —
+                    botões óbvios tipo &quot;Comprar&quot; ou &quot;Continuar&quot; já são sempre pulados, mas
+                    uma frase de confirmação mais longa e incomum, ou um preço mostrado só numa imagem sem
+                    nenhuma palavra-chave no texto, pode passar despercebido.
+                  </p>
+                </div>
+                <p className="text-(--text-muted) text-xs">
+                  Se o EagleBot suspeitar de uma confirmação de pagamento depois de um clique, ele{" "}
+                  <b className="text-foreground">marca o nó e continua explorando</b> — não pausa sozinho.
+                </p>
+                <p className="text-(--text-muted) text-xs">
+                  Todo botão clicado ou pulado fica visível pra revisão manual antes de você ativar o fluxo
+                  clonado — <b className="text-foreground">nada é ativado automaticamente</b>.
+                </p>
+                <p className="text-(--text-muted) text-xs">
+                  Pro remarketing, o EagleBot <b className="text-foreground">lê o histórico que a conta já tem</b>{" "}
+                  com esse bot — não espera mensagem nova chegar. Se a conta já conversou com ele antes, essa
+                  conversa antiga entra no fluxo de remarketing junto (fica visível pra revisão, igual o resto).
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex gap-3 mt-6">

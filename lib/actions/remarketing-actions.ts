@@ -186,3 +186,114 @@ export async function reorderFlows(flowOrders: { id: string; sort_order: number 
 
   return { success: true };
 }
+
+/** Aggregated performance for each distinct media/text/bundle combination sent by a remarketing flow */
+export interface VariantStat {
+  mediaAssetId: string | null;
+  mediaLabel: string | null;
+  textVariantIndex: number | null;
+  bundleId: string | null;
+  bundleName: string | null;
+  sends: number;
+  conversions: number;
+  revenueCents: number;
+}
+
+/** Get per-combination send/conversion/revenue stats for a remarketing flow */
+export async function getRemarketingVariantStats(botId: string, flowId: string): Promise<VariantStat[]> {
+  const { supabase } = await verifyBot(botId);
+
+  const { data: sendRows } = await supabase
+    .from("remarketing_variant_sends")
+    .select("id, media_asset_id, text_variant_index, bundle_id")
+    .eq("remarketing_flow_id", flowId);
+
+  const sends = sendRows ?? [];
+  if (sends.length === 0) return [];
+
+  const { data: txRows } = await supabase
+    .from("transactions")
+    .select("remarketing_send_id, amount")
+    .eq("remarketing_flow_id", flowId)
+    .eq("status", "approved")
+    .not("remarketing_send_id", "is", null);
+
+  const transactions = txRows ?? [];
+
+  type Combo = {
+    mediaAssetId: string | null;
+    textVariantIndex: number | null;
+    bundleId: string | null;
+    sends: number;
+    conversions: number;
+    revenueCents: number;
+  };
+
+  const comboByKey = new Map<string, Combo>();
+  const sendIdToKey = new Map<string, string>();
+
+  for (const row of sends) {
+    const key = JSON.stringify([row.media_asset_id, row.text_variant_index, row.bundle_id]);
+    sendIdToKey.set(row.id, key);
+
+    let combo = comboByKey.get(key);
+    if (!combo) {
+      combo = {
+        mediaAssetId: row.media_asset_id,
+        textVariantIndex: row.text_variant_index,
+        bundleId: row.bundle_id,
+        sends: 0,
+        conversions: 0,
+        revenueCents: 0,
+      };
+      comboByKey.set(key, combo);
+    }
+    combo.sends += 1;
+  }
+
+  for (const tx of transactions) {
+    if (!tx.remarketing_send_id) continue;
+    const key = sendIdToKey.get(tx.remarketing_send_id);
+    if (!key) continue;
+    const combo = comboByKey.get(key);
+    if (!combo) continue;
+    combo.conversions += 1;
+    combo.revenueCents += tx.amount ?? 0;
+  }
+
+  const combos = Array.from(comboByKey.values());
+
+  const mediaIds = Array.from(
+    new Set(combos.map((c) => c.mediaAssetId).filter((id): id is string => !!id)),
+  );
+  const bundleIds = Array.from(
+    new Set(combos.map((c) => c.bundleId).filter((id): id is string => !!id)),
+  );
+
+  const mediaLabels = new Map<string, string | null>();
+  if (mediaIds.length > 0) {
+    const { data: mediaRows } = await supabase.from("media_assets").select("id, label").in("id", mediaIds);
+    for (const m of mediaRows ?? []) mediaLabels.set(m.id, m.label);
+  }
+
+  const bundleNames = new Map<string, string>();
+  if (bundleIds.length > 0) {
+    const { data: bundleRows } = await supabase.from("product_bundles").select("id, name").in("id", bundleIds);
+    for (const b of bundleRows ?? []) bundleNames.set(b.id, b.name);
+  }
+
+  const stats: VariantStat[] = combos.map((c) => ({
+    mediaAssetId: c.mediaAssetId,
+    mediaLabel: c.mediaAssetId ? mediaLabels.get(c.mediaAssetId) ?? null : null,
+    textVariantIndex: c.textVariantIndex,
+    bundleId: c.bundleId,
+    bundleName: c.bundleId ? bundleNames.get(c.bundleId) ?? null : null,
+    sends: c.sends,
+    conversions: c.conversions,
+    revenueCents: c.revenueCents,
+  }));
+
+  stats.sort((a, b) => b.conversions - a.conversions || b.sends - a.sends);
+
+  return stats;
+}

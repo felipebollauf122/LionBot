@@ -1,5 +1,6 @@
 import type { NodeContext, NodeResult } from "../types.js";
 import { findNextNodeId } from "./text.js";
+import { pickRandomIndex } from "./variant-pick.js";
 
 function isValidMediaRef(value: string): boolean {
   const v = value.trim();
@@ -11,7 +12,24 @@ function isValidMediaRef(value: string): boolean {
 }
 
 export async function handleVideoNode(ctx: NodeContext): Promise<NodeResult> {
-  const video = String(ctx.node.data.video_url ?? "");
+  let video = String(ctx.node.data.video_url ?? "");
+  let mediaAssetId: string | null = null;
+
+  if (ctx.node.data.randomize === true && ctx.mediaAssets) {
+    const configuredIds = Array.isArray(ctx.node.data.media_asset_ids) ? ctx.node.data.media_asset_ids : [];
+    const candidates = configuredIds
+      .map((id) => String(id))
+      .filter((id) => ctx.mediaAssets?.get(id)?.kind === "video");
+    if (candidates.length > 0) {
+      const pickedId = candidates[pickRandomIndex(candidates.length)];
+      const asset = ctx.mediaAssets.get(pickedId);
+      if (asset) {
+        video = asset.url;
+        mediaAssetId = pickedId;
+      }
+    }
+  }
+
   const caption = ctx.node.data.caption ? String(ctx.node.data.caption) : undefined;
   const next = findNextNodeId(ctx.edges, ctx.node.id);
 
@@ -31,5 +49,6 @@ export async function handleVideoNode(ctx: NodeContext): Promise<NodeResult> {
   return {
     nextNodeId: next,
     messageIds: sent ? [sent.message_id] : undefined,
+    variantChoice: mediaAssetId ? { mediaAssetId } : undefined,
   };
 }

@@ -338,10 +338,12 @@ export async function handleBotCloneExplore(cloneJobId: string): Promise<void> {
         },
         captureBurst: () => captureBurstFromBot(client.raw, botPeerId as string),
         rehostMedia: (media, nodeIdHint, fileName) =>
-          downloadAndRehostMedia(
-            { raw: client.raw, supabase },
-            { media, tenantId: job.tenant_id, jobId: cloneJobId, nodeIdHint, fileName, tmpDir, maxBytes: MAX_FILE_BYTES },
-          ),
+          job.include_media
+            ? downloadAndRehostMedia(
+                { raw: client.raw, supabase },
+                { media, tenantId: job.tenant_id, jobId: cloneJobId, nodeIdHint, fileName, tmpDir, maxBytes: MAX_FILE_BYTES },
+              )
+            : Promise.resolve(null),
         loadExistingNodes: () => loadExistingNodes(cloneJobId),
         persistNode: async (row: PersistNodeInput) => {
           const { data, error } = await supabase
@@ -386,12 +388,14 @@ export async function handleBotCloneExplore(cloneJobId: string): Promise<void> {
         delay: (ms) => new Promise((r) => setTimeout(r, ms)),
       };
 
-      const explorer = new BotExplorer(deps, {
-        maxDepth: job.max_depth,
-        maxNodes: job.max_nodes,
-        clickThrottleMs: job.click_throttle_ms,
-      });
-      await explorer.run();
+      if (job.mode !== "remarketing_only") {
+        const explorer = new BotExplorer(deps, {
+          maxDepth: job.max_depth,
+          maxNodes: job.max_nodes,
+          clickThrottleMs: job.click_throttle_ms,
+        });
+        await explorer.run();
+      }
 
       // Só segue pra remarketing/build-flow se o job ainda está 'exploring'
       // de verdade (não foi pausado/apagado por fora durante a run —
@@ -407,7 +411,13 @@ export async function handleBotCloneExplore(cloneJobId: string): Promise<void> {
         // exploração, e agenda retomada — o retry reroda explorer.run()
         // (idempotente, vira no-op rápido) e tenta o histórico de novo; a
         // unique(job_id, first_seq_msg_id) evita duplicar rajada já inserida.
-        await captureHistoricalRemarketing(client, botInputPeer, { id: cloneJobId, tenant_id: job.tenant_id }, tmpDir);
+        await captureHistoricalRemarketing(
+          client,
+          botInputPeer,
+          { id: cloneJobId, tenant_id: job.tenant_id },
+          tmpDir,
+          job.include_media,
+        );
         await supabase.from("bot_clone_jobs").update({ status: "building_flow" }).eq("id", cloneJobId);
         await enqueueMtproto({ kind: "botclone.build-flow", cloneJobId });
       }
@@ -510,6 +520,7 @@ async function captureHistoricalRemarketing(
   botInputPeer: Api.InputPeerUser,
   job: { id: string; tenant_id: string },
   tmpDir: string,
+  includeMedia: boolean,
 ): Promise<void> {
   const collected: Api.Message[] = [];
   for await (const raw of client.raw.iterMessages(botInputPeer, {
@@ -550,7 +561,7 @@ async function captureHistoricalRemarketing(
       const m = burst[i];
       const { mediaKind, media, fileName } = classifyRawMedia(m);
       let mediaPublicUrl: string | null = null;
-      if (media && fileName) {
+      if (media && fileName && includeMedia) {
         mediaPublicUrl = await downloadAndRehostMedia(
           { raw: client.raw, supabase },
           { media, tenantId: job.tenant_id, jobId: job.id, nodeIdHint: `remarketing_${m.id}`, fileName, tmpDir, maxBytes: MAX_FILE_BYTES },
@@ -711,23 +722,30 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
         ? await createClonedProductsAndBundles(supabase, { tenantId: job.tenant_id, botId: job.dest_bot_id }, priceCandidates)
         : new Map<string, string>();
 
-    const flowData = buildFlowGraph(capturedNodes, priceMap);
+    let destFlowId: string | null = null;
+    if (job.mode !== "remarketing_only") {
+      // Em remarketing_only nenhuma BFS rodou (capturedNodes sempre vazio
+      // aqui), então montar/gravar o fluxo principal só produziria uma linha
+      // inútil em `flows` contendo nada além do nó sintético de trigger.
+      const flowData = buildFlowGraph(capturedNodes, priceMap);
 
-    const { data: flowRow, error: flowErr } = await supabase
-      .from("flows")
-      .insert({
-        tenant_id: job.tenant_id,
-        bot_id: job.dest_bot_id,
-        name: `Clone: @${job.target_bot_username}`,
-        trigger_type: "command",
-        trigger_value: "/start",
-        flow_data: flowData,
-        is_active: false,
-        version: 1,
-      })
-      .select("id")
-      .single();
-    if (flowErr || !flowRow) throw new Error(`insert flows falhou: ${flowErr?.message}`);
+      const { data: flowRow, error: flowErr } = await supabase
+        .from("flows")
+        .insert({
+          tenant_id: job.tenant_id,
+          bot_id: job.dest_bot_id,
+          name: `Clone: @${job.target_bot_username}`,
+          trigger_type: "command",
+          trigger_value: "/start",
+          flow_data: flowData,
+          is_active: false,
+          version: 1,
+        })
+        .select("id")
+        .single();
+      if (flowErr || !flowRow) throw new Error(`insert flows falhou: ${flowErr?.message}`);
+      destFlowId = flowRow.id as string;
+    }
 
     let remarketingConfigId: string | null = null;
     if (rmRows && rmRows.length > 0) {
@@ -747,6 +765,7 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
       for (let i = 0; i < syntheticRmNodes.length; i++) {
         const rmFlowData = buildFlowGraph([syntheticRmNodes[i]], priceMap);
         const { error: rmFlowErr } = await supabase.from("remarketing_flows").insert({
+          tenant_id: job.tenant_id,
           config_id: remarketingConfigId,
           bot_id: job.dest_bot_id,
           name: `Remarketing clonado #${i + 1}`,
@@ -766,7 +785,7 @@ export async function handleBotCloneBuildFlow(cloneJobId: string): Promise<void>
       .update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        dest_flow_id: flowRow.id,
+        dest_flow_id: destFlowId,
         dest_remarketing_config_id: remarketingConfigId,
       })
       .eq("id", cloneJobId);

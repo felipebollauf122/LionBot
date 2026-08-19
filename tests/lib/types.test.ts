@@ -319,6 +319,8 @@ describe("Database Types", () => {
         status: "approved",
         paid_at: "2026-04-01T10:30:00Z",
         created_at: "2026-04-01T10:00:00Z",
+        remarketing_flow_id: null,
+        remarketing_send_id: null,
       };
 
       expect(transaction.id).toBe("txn-1");
@@ -345,6 +347,8 @@ describe("Database Types", () => {
           status,
           paid_at: status === "approved" ? "2026-04-01T10:30:00Z" : null,
           created_at: "2026-04-01T10:00:00Z",
+          remarketing_flow_id: null,
+          remarketing_send_id: null,
         };
 
         expect(transaction.status).toBe(status);
@@ -366,6 +370,8 @@ describe("Database Types", () => {
         status: "pending",
         paid_at: null,
         created_at: "2026-04-01T10:00:00Z",
+        remarketing_flow_id: null,
+        remarketing_send_id: null,
       };
 
       expect(transaction.paid_at).toBeNull();
@@ -591,6 +597,8 @@ describe("Database Types", () => {
         status: "approved",
         paid_at: "2026-04-01T11:20:00Z",
         created_at: "2026-04-01T11:15:00Z",
+        remarketing_flow_id: null,
+        remarketing_send_id: null,
       };
 
       expect(flow.id).toBe(lead.current_flow_id);

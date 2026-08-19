@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NodeContext, NodeResult } from "../types.js";
+import { pickRandomIndex } from "./variant-pick.js";
 import type { PaymentGateway } from "../../services/payment-gateway.js";
 import { UtmifyService } from "../../services/utmify.js";
 import { FacebookCapi } from "../../services/facebook-capi.js";
@@ -55,7 +56,18 @@ export async function handlePaymentBundleNode(
   _gateway: PaymentGateway,
   _baseWebhookUrl: string,
 ): Promise<NodeResult> {
-  const bundleId = String(ctx.node.data.bundle_id ?? "");
+  // Randomização de preço/oferta: sorteia 1 de N bundles configurados
+  // (biblioteca de remarketing) em vez do bundle_id fixo. Sem lista
+  // configurada (ou randomize_price desligado), cai no campo fixo de sempre.
+  let bundleId = String(ctx.node.data.bundle_id ?? "");
+  if (ctx.node.data.randomize_price === true) {
+    const candidates = (Array.isArray(ctx.node.data.bundle_ids) ? ctx.node.data.bundle_ids : [])
+      .map((id) => String(id))
+      .filter((id) => id.length > 0);
+    if (candidates.length > 0) {
+      bundleId = candidates[pickRandomIndex(candidates.length)];
+    }
+  }
 
   if (!bundleId) {
     await ctx.telegram.sendMessage({
@@ -247,7 +259,14 @@ export async function handlePaymentBundleNode(
       pending_payment_node_id: ctx.node.id,
       pending_bundle_id: bundleId,
       awaiting_product_selection: true,
+      // Sempre explícito (mesmo null) — limpa a atribuição de remarketing de
+      // uma oferta anterior pra não vazar num pagamento de outra origem
+      // (mesma disciplina de pending_payment_button_id no callback abaixo).
+      pending_remarketing_flow_id: ctx.remarketingFlowId ?? null,
     },
+    // bundleId é reportado sempre (randomizado ou fixo) — é um eixo de stats
+    // válido de qualquer forma; ver remarketing_variant_sends.
+    variantChoice: { bundleId },
   };
 }
 
@@ -260,6 +279,8 @@ export async function handleProductPaymentCallback(
   productId: string,
   gatewayKind: "sigilopay" | "evpay" | "zuckpay" = "sigilopay",
   paymentButtonId?: string,
+  remarketingFlowId?: string | null,
+  remarketingSendId?: string | null,
 ): Promise<NodeResult> {
   // Fetch product
   const { data: product } = await db
@@ -399,6 +420,11 @@ export async function handleProductPaymentCallback(
     lead_id: ctx.lead.id,
     bot_id: ctx.lead.bot_id,
     flow_id: ctx.lead.current_flow_id ?? null,
+    // Atribuição de remarketing: current_flow_id nunca aponta pro flow de
+    // remarketing (persistPosition=false em executeFlow), então essa é a
+    // única forma de ligar a compra de volta ao flow/envio que a gerou.
+    remarketing_flow_id: remarketingFlowId ?? null,
+    remarketing_send_id: remarketingSendId ?? null,
     product_id: typedProduct.id,
     gateway: gatewayKind,
     external_id: payment.transactionId,

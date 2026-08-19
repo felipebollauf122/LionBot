@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { FlowEditor } from "@/components/dashboard/flow-builder/flow-editor";
 import { saveRemarketingFlowData } from "@/lib/actions/remarketing-actions";
+import { listMediaAssets } from "@/lib/actions/media-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import type { RemarketingFlow } from "@/lib/types/database";
 
 export default async function RemarketingFlowEditorPage({
@@ -12,7 +14,7 @@ export default async function RemarketingFlowEditorPage({
   const { botId, flowId } = await params;
   const supabase = await createClient();
 
-  const [{ data: flow }, { data: bundles }, { data: products }] = await Promise.all([
+  const [{ data: flow }, { data: bundles }, { data: products }, mediaAssets, canRandomize] = await Promise.all([
     supabase
       .from("remarketing_flows")
       .select("*")
@@ -31,6 +33,8 @@ export default async function RemarketingFlowEditorPage({
       .eq("bot_id", botId)
       .eq("is_active", true)
       .order("name"),
+    listMediaAssets(botId),
+    canAccessAutomations(),
   ]);
 
   if (!flow) notFound();
@@ -45,6 +49,8 @@ export default async function RemarketingFlowEditorPage({
       botId={botId}
       bundles={(bundles ?? []) as { id: string; name: string }[]}
       products={(products ?? []) as { id: string; name: string; price: number; currency: string }[]}
+      mediaAssets={mediaAssets}
+      canRandomize={canRandomize}
       saveAction={saveRemarketingFlowData}
       backUrl={`/dashboard/bots/${botId}/remarketing`}
     />

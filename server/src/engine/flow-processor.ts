@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TelegramApi } from "../telegram/api.js";
-import type { NodeContext, FlowNode, FlowEdge, Lead } from "./types.js";
+import type { NodeContext, NodeResult, FlowNode, FlowEdge, Lead } from "./types.js";
 import { executeNode } from "./node-executor.js";
 import { handleInputResponse } from "./nodes/input.js";
 import type { LeadService } from "../services/lead-service.js";
@@ -105,6 +105,33 @@ export class FlowProcessor {
   }
 
   /**
+   * Pré-carrega, uma vez por executeFlow, os media_assets referenciados por
+   * nós image/video com randomize=true — evita 1 round-trip por nó (por
+   * lead, por tick) no worker de remarketing. Retorna undefined (custo zero)
+   * quando nenhum nó do flow usa a biblioteca.
+   */
+  private async loadMediaAssetsForFlow(
+    nodes: FlowNode[],
+  ): Promise<Map<string, { url: string; kind: "image" | "video" }> | undefined> {
+    const ids = new Set<string>();
+    for (const n of nodes) {
+      if ((n.type === "image" || n.type === "video") && n.data.randomize === true) {
+        const assetIds = Array.isArray(n.data.media_asset_ids) ? n.data.media_asset_ids : [];
+        for (const id of assetIds) ids.add(String(id));
+      }
+    }
+    if (ids.size === 0) return undefined;
+
+    const { data } = await this.db
+      .from("media_assets")
+      .select("id, url, kind")
+      .in("id", [...ids])
+      .eq("is_active", true);
+
+    return new Map((data ?? []).map((r) => [r.id as string, { url: r.url as string, kind: r.kind as "image" | "video" }]));
+  }
+
+  /**
    * Fetch a named flow (e.g. _visual_flow, _black_flow) for a bot.
    * Always falls back to a fresh DB query if not found in cache —
    * critical for _black_flow which must never be silently skipped.
@@ -178,8 +205,10 @@ export class FlowProcessor {
     isBlack: boolean;
     resolveBotId: () => Promise<string | undefined>;
     logTag: string;
+    remarketingFlowId?: string | null;
+    remarketingSendId?: string | null;
   }): Promise<void> {
-    const { ctx, productId, paymentButtonId, lead, telegram, chatId, isBlack, resolveBotId, logTag } = opts;
+    const { ctx, productId, paymentButtonId, lead, telegram, chatId, isBlack, resolveBotId, logTag, remarketingFlowId, remarketingSendId } = opts;
 
     if (!this.executeDeps.db || !this.executeDeps.gateway || !this.executeDeps.baseWebhookUrl) {
       console.error(`[${logTag}] Missing deps`);
@@ -197,6 +226,8 @@ export class FlowProcessor {
         productId,
         this.executeDeps.gatewayKind ?? "sigilopay",
         paymentButtonId,
+        remarketingFlowId ?? null,
+        remarketingSendId ?? null,
       );
 
       // Queue black flow messages for deletion (apenas em flows visuais black)
@@ -256,6 +287,11 @@ export class FlowProcessor {
     }
     const nodes = flowData.nodes;
     const edges = Array.isArray(flowData.edges) ? flowData.edges : [];
+    const mediaAssets = await this.loadMediaAssetsForFlow(nodes);
+    // Acumula as escolhas (mídia/texto/preço) feitas ao longo desta execução
+    // de remarketing — só usado quando !persistPosition (ver bloco de
+    // remarketing_variant_sends abaixo).
+    const variantAccumulator: NonNullable<NodeResult["variantChoice"]> = {};
 
     let currentNodeId = startNodeId ?? nodes.find((n) => n.type === "trigger")?.id;
     if (!currentNodeId) {
@@ -285,6 +321,8 @@ export class FlowProcessor {
         edges: nodeEdges,
         telegram,
         chatId,
+        mediaAssets,
+        remarketingFlowId: persistPosition ? null : flow.id,
       };
 
       const result = await executeNode(ctx, this.executeDeps);
@@ -313,6 +351,36 @@ export class FlowProcessor {
           result.messageIds,
           deletionDelay,
         );
+      }
+
+      // Rastreio de remarketing: acumula a escolha deste nó (mídia/texto/
+      // preço, randomizados ou fixos — variantChoice sempre vem preenchido
+      // pelos handlers relevantes) e, ao chegar num ponto terminal desta
+      // execução ("wait" = espera clique, null = flow acabou sem próximo
+      // nó), grava UMA linha em remarketing_variant_sends com o que foi
+      // escolhido ao longo de toda a execução. Escrito em result.stateUpdates
+      // ANTES do merge abaixo pra viajar no mesmo round-trip de updateState
+      // que já existe — sem round-trip extra no hot path.
+      if (!persistPosition) {
+        if (result.variantChoice) Object.assign(variantAccumulator, result.variantChoice);
+        if (result.nextNodeId === "wait" || result.nextNodeId === null) {
+          const { data: sendRow } = await this.db
+            .from("remarketing_variant_sends")
+            .insert({
+              tenant_id: flow.tenant_id,
+              bot_id: flow.bot_id,
+              remarketing_flow_id: flow.id,
+              lead_id: lead.id,
+              media_asset_id: variantAccumulator.mediaAssetId ?? null,
+              text_variant_index: variantAccumulator.textVariantIndex ?? null,
+              bundle_id: variantAccumulator.bundleId ?? null,
+            })
+            .select("id")
+            .single();
+          if (sendRow && result.nextNodeId === "wait") {
+            result.stateUpdates = { ...(result.stateUpdates ?? {}), pending_remarketing_send_id: sendRow.id };
+          }
+        }
       }
 
       // Combina state + posição num único write quando há delay node com
@@ -546,6 +614,8 @@ export class FlowProcessor {
       const productId = callbackData.substring(4);
       const paymentNodeId = String(lead.state.pending_payment_node_id ?? "");
       const bundleId = String(lead.state.pending_bundle_id ?? "");
+      const remarketingFlowId = (lead.state.pending_remarketing_flow_id as string | null) ?? null;
+      const remarketingSendId = (lead.state.pending_remarketing_send_id as string | null) ?? null;
 
       if (!productId || !paymentNodeId || !bundleId) {
         console.log(`[pay callback] Missing state: productId=${productId}, paymentNodeId=${paymentNodeId}, bundleId=${bundleId}`);
@@ -585,6 +655,8 @@ export class FlowProcessor {
           return typedFlow?.bot_id;
         },
         logTag: "pay callback",
+        remarketingFlowId,
+        remarketingSendId,
       });
       return;
     }
@@ -654,6 +726,11 @@ export class FlowProcessor {
           isBlack,
           resolveBotId: async () => typedFlow.bot_id,
           logTag: "inline payment",
+          // Este caminho só dispara quando lead.current_flow_id está setado
+          // (nó "button" vivo em flow_data) — remarketing nunca seta isso
+          // (persistPosition=false), então nunca é uma origem legítima aqui.
+          remarketingFlowId: null,
+          remarketingSendId: null,
         });
         return;
       }

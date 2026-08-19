@@ -46,6 +46,13 @@ export interface ProductOption {
   currency: string;
 }
 
+export interface MediaAssetOption {
+  id: string;
+  url: string;
+  kind: "image" | "video";
+  label: string | null;
+}
+
 interface FlowEditorProps {
   flowId: string;
   flowName: string;
@@ -53,6 +60,10 @@ interface FlowEditorProps {
   botId: string;
   bundles: BundleOption[];
   products: ProductOption[];
+  /** Mídias cadastradas na Biblioteca de Mídia do bot — usadas nos seletores de randomização. */
+  mediaAssets?: MediaAssetOption[];
+  /** Libera os controles de randomização (owner ou assinante Premium). */
+  canRandomize?: boolean;
   saveAction?: (flowId: string, flowData: FlowData) => Promise<{ success: boolean }>;
   backUrl?: string;
 }
@@ -91,7 +102,7 @@ function generateNodeId(type: string) {
   return `${type}-${Date.now()}-${nodeIdCounter}`;
 }
 
-export function FlowEditor({ flowId, flowName, initialData, botId, bundles, products, saveAction, backUrl }: FlowEditorProps) {
+export function FlowEditor({ flowId, flowName, initialData, botId, bundles, products, mediaAssets = [], canRandomize = false, saveAction, backUrl }: FlowEditorProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialData.edges);
@@ -335,6 +346,8 @@ export function FlowEditor({ flowId, flowName, initialData, botId, bundles, prod
         onDelete={handleDeleteNode}
         bundles={bundles}
         products={products}
+        mediaAssets={mediaAssets}
+        canRandomize={canRandomize}
       />
 
       {/* Mobile: sheet de blocos (toque pra adicionar) */}

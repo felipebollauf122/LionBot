@@ -35,8 +35,12 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
       }
 
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
       const ext = file.name.split(".").pop() ?? "bin";
-      const fileName = `uploads/${nanoid()}.${ext}`;
+      // Prefixo por usuário: exigido pela policy de DELETE do bucket 'media'
+      // (002_storage_media.sql usa storage.foldername(name)[1] = auth.uid()) —
+      // sem isso a policy nunca casava com nenhum upload real.
+      const fileName = `${user?.id ?? "uploads"}/${nanoid()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("media")

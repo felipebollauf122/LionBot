@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   updateConfig,
   createRemarketingFlow,
   updateRemarketingFlow,
   deleteRemarketingFlow,
   reorderFlows,
+  getRemarketingVariantStats,
+  type VariantStat,
 } from "@/lib/actions/remarketing-actions";
 import type { RemarketingConfig, RemarketingFlow, RemarketingAudience } from "@/lib/types/database";
 import { CommandBar, KpiPill, FilterChip } from "@/components/dashboard/console/command-bar";
@@ -25,6 +27,15 @@ const AUDIENCE_LABELS: Record<RemarketingAudience, string> = {
   pending_payment: "Pix gerado, nao pagou",
 };
 
+/** Short display label for a variant combination, joining whichever axes were recorded */
+function formatVariantLabel(stat: VariantStat): string {
+  const parts: string[] = [];
+  if (stat.mediaAssetId) parts.push(stat.mediaLabel || "Mídia sem nome");
+  if (stat.textVariantIndex != null) parts.push(`Texto #${stat.textVariantIndex + 1}`);
+  if (stat.bundleId) parts.push(stat.bundleName || "Combo removido");
+  return parts.length > 0 ? parts.join(" · ") : "Envio fixo";
+}
+
 interface Props {
   botId: string;
   config: RemarketingConfig;
@@ -41,9 +52,36 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
   const [newAudience, setNewAudience] = useState<RemarketingAudience>("all");
   const [creating, setCreating] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [variantStats, setVariantStats] = useState<VariantStat[]>([]);
+  const [variantStatsLoading, setVariantStatsLoading] = useState(false);
 
   const selected = flows.find((f) => f.id === selectedId) ?? null;
   const activeCount = flows.filter((f) => f.is_active).length;
+
+  useEffect(() => {
+    if (!selected) {
+      setVariantStats([]);
+      setVariantStatsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setVariantStatsLoading(true);
+    getRemarketingVariantStats(botId, selected.id)
+      .then((stats) => {
+        if (!cancelled) setVariantStats(stats);
+      })
+      .catch((e) => {
+        console.error(e);
+        if (!cancelled) setVariantStats([]);
+      })
+      .finally(() => {
+        if (!cancelled) setVariantStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, botId]);
 
   const handleToggle = async () => {
     const next = !isActive;
@@ -389,6 +427,50 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
             <div className="flex items-center justify-between gap-4">
               <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Conteúdo</span>
               <span className="text-sm text-foreground"><span className="stat-value">{selected.flow_data.nodes.length}</span> nós</span>
+            </div>
+
+            <div className="divider my-2" />
+
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Melhores combinações</span>
+
+              <div className="mt-2 space-y-1.5">
+                {variantStatsLoading ? (
+                  <p className="text-(--text-ghost) text-xs py-3 text-center">Carregando…</p>
+                ) : variantStats.length === 0 ? (
+                  <p className="text-(--text-ghost) text-xs py-3 text-center">Nenhum envio registrado ainda</p>
+                ) : (
+                  variantStats.slice(0, 8).map((stat, i) => {
+                    const rate = stat.sends > 0 ? (stat.conversions / stat.sends) * 100 : 0;
+                    return (
+                      <div
+                        key={`${stat.mediaAssetId ?? "x"}-${stat.textVariantIndex ?? "x"}-${stat.bundleId ?? "x"}-${i}`}
+                        className="rounded-lg bg-white/[0.02] border border-(--border-subtle) px-3 py-2.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold stat-value"
+                            style={{ background: "color-mix(in srgb, var(--amber) 16%, transparent)", color: "var(--amber)" }}
+                          >
+                            {i + 1}
+                          </span>
+                          <p className="text-xs text-foreground truncate font-medium flex-1 min-w-0">{formatVariantLabel(stat)}</p>
+                          <span className="text-xs font-bold stat-value text-(--accent) shrink-0">
+                            {(stat.revenueCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 pl-7 text-[10px] text-(--text-muted)">
+                          <span><span className="stat-value">{stat.sends}</span> envios</span>
+                          <span className="text-(--text-ghost)">·</span>
+                          <span><span className="stat-value">{stat.conversions}</span> conversões</span>
+                          <span className="text-(--text-ghost)">·</span>
+                          <span className="stat-value">{rate.toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             <a

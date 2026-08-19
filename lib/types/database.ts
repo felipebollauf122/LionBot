@@ -200,7 +200,7 @@ export interface Transaction {
   tenant_id: string;
   lead_id: string;
   bot_id: string;
-  flow_id: string;
+  flow_id: string | null;
   product_id: string;
   gateway: string;
   external_id: string;
@@ -208,6 +208,19 @@ export interface Transaction {
   currency: string;
   status: TransactionStatus;
   paid_at: string | null;
+  created_at: string;
+  remarketing_flow_id: string | null;
+  remarketing_send_id: string | null;
+}
+
+export interface MediaAsset {
+  id: string;
+  tenant_id: string;
+  bot_id: string;
+  url: string;
+  kind: "image" | "video";
+  label: string | null;
+  is_active: boolean;
   created_at: string;
 }
 

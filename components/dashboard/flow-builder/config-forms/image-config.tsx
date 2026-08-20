@@ -39,12 +39,12 @@ export function ImageConfig({ data, onChange, mediaAssets = [], canRandomize = f
           </button>
         </div>
         {!canRandomize && (
-          <p className="text-(--text-muted) text-[10px]" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
             Recurso Premium — disponível pra donos ou assinantes Premium.
           </p>
         )}
         {canRandomize && (
-          <p className="text-(--text-muted) text-[10px]" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
             Escolhe uma imagem aleatória da lista a cada envio, em vez de sempre a mesma.
           </p>
         )}
@@ -54,7 +54,7 @@ export function ImageConfig({ data, onChange, mediaAssets = [], canRandomize = f
         <div className="space-y-2">
           <label className="input-label">Imagens (uma é sorteada a cada envio)</label>
           {imageAssets.length === 0 ? (
-            <p className="text-(--amber) text-[11px]" style={{ opacity: 0.8 }}>
+            <p className="text-(--amber) text-[0.6875rem] leading-snug">
               Nenhuma imagem cadastrada. Cadastre mídias em <strong>Mídia</strong>, no menu do bot, pra usar aqui.
             </p>
           ) : (
@@ -80,7 +80,7 @@ export function ImageConfig({ data, onChange, mediaAssets = [], canRandomize = f
                       }}
                     >
                       {checked && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+                        <svg aria-hidden="true" focusable="false" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
                       )}
@@ -104,7 +104,10 @@ export function ImageConfig({ data, onChange, mediaAssets = [], canRandomize = f
       ) : (
         <MediaUpload
           value={String(data.image_url ?? "")}
-          onChange={(url) => onChange({ ...data, image_url: url })}
+          // PATCH só do campo alterado: o merge do editor preserva o resto do
+          // data — essencial na conclusão de upload demorado, que não pode
+          // sobrescrever edições feitas no nó enquanto o arquivo subia.
+          onChange={(url) => onChange({ image_url: url })}
           accept="image/jpeg,image/png,image/gif,image/webp"
           label="Imagem"
           placeholder="https://... ou envie do computador"

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/actions/admin-actions";
 import type { FlowData, RemarketingAudience } from "@/lib/types/database";
+import { validateFlowData } from "@/lib/flow-validation";
 
 async function verifyBot(botId: string) {
   const supabase = await createClient();
@@ -146,12 +147,18 @@ export async function saveRemarketingFlowData(flowId: string, flowData: FlowData
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
+  const validation = validateFlowData(flowData);
+  if (!validation.ok) return { success: false };
+
   const admin = await isAdmin();
   let query = supabase.from("remarketing_flows").update({ flow_data: flowData }).eq("id", flowId);
   if (!admin) query = query.eq("tenant_id", user.id);
 
-  const { error } = await query;
+  const { data, error } = await query.select("id");
   if (error) throw new Error(`Failed to save flow data: ${error.message}`);
+  // 0 rows updated: flow deleted in another tab, wrong tenant, or blocked by RLS
+  if (!data || data.length === 0) return { success: false };
+
   return { success: true };
 }
 

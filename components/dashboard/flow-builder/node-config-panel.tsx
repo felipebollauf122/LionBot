@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useId, useState } from "react";
 import type { Node } from "@xyflow/react";
+import { NODE_META } from "./flow-utils";
 import { TriggerConfig } from "./config-forms/trigger-config";
 import { TextConfig } from "./config-forms/text-config";
 import { ImageConfig } from "./config-forms/image-config";
@@ -19,6 +21,10 @@ interface NodeConfigPanelProps {
   onUpdate: (nodeId: string, data: Record<string, unknown>) => void;
   onClose: () => void;
   onDelete: (nodeId: string) => void;
+  /** Duplica o nó selecionado (quando o editor suporta). */
+  onDuplicate?: (nodeId: string) => void;
+  /** Todos os nós do fluxo — usado pelo seletor "Ir para no" dos botões. */
+  flowNodes?: { id: string; type?: string; data: Record<string, unknown> }[];
   bundles: BundleOption[];
   products: ProductOption[];
   /** Mídias cadastradas na Biblioteca de Mídia do bot — usadas nos seletores de randomização. */
@@ -27,28 +33,68 @@ interface NodeConfigPanelProps {
   canRandomize?: boolean;
 }
 
-const nodeInfo: Record<string, { label: string; icon: string; color: string }> = {
-  trigger: { label: "Gatilho", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", color: "var(--accent)" },
-  text: { label: "Texto", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", color: "var(--cyan)" },
-  image: { label: "Imagem", icon: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z", color: "var(--cyan)" },
-  video: { label: "Video", icon: "M23 7l-7 5 7 5V7zM14 5H3a2 2 0 00-2 2v10a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2z", color: "var(--cyan)" },
-  button: { label: "Botoes", icon: "M4 9h16M4 15h16M10 3L8 21M16 3l-2 18", color: "var(--cyan)" },
-  delay: { label: "Delay", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zM12 6v6l4 2", color: "var(--text-secondary)" },
-  condition: { label: "Condicao", icon: "M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5", color: "var(--amber)" },
-  input: { label: "Input", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z", color: "var(--purple)" },
-  action: { label: "Acao", icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", color: "var(--text-secondary)" },
-  payment_button: { label: "Pagamento", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--amber)" },
-  unmapped: { label: "Nao mapeado", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01", color: "var(--amber)" },
-};
+export function NodeConfigPanel({
+  node,
+  onUpdate,
+  onClose,
+  onDelete,
+  onDuplicate,
+  flowNodes = [],
+  bundles,
+  products,
+  mediaAssets = [],
+  canRandomize = false,
+}: NodeConfigPanelProps) {
+  const titleId = useId();
+  // Exclusão em duas etapas: 1º clique arma a confirmação, 2º clique deleta.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Só a variante mobile (bottom sheet com backdrop) é um dialog modal de
+  // verdade — no md/lg o painel convive com o canvas, então nada de aria-modal.
+  const [isMobile, setIsMobile] = useState(false);
 
-export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, products, mediaAssets = [], canRandomize = false }: NodeConfigPanelProps) {
+  const nodeId = node?.id ?? null;
+
+  // Trocou de nó (ou fechou): desarma a confirmação de exclusão.
+  useEffect(() => {
+    setConfirmingDelete(false);
+  }, [nodeId]);
+
+  // Confirmação armada expira sozinha em 3s sem o segundo clique.
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const t = setTimeout(() => setConfirmingDelete(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmingDelete]);
+
+  // Escape fecha o painel enquanto houver nó selecionado.
+  useEffect(() => {
+    if (!nodeId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [nodeId, onClose]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   if (!node) return null;
 
   const handleChange = (data: Record<string, unknown>) => {
     onUpdate(node.id, data);
   };
 
-  const info = nodeInfo[node.type ?? ""] ?? { label: "Configuracao", icon: "", color: "var(--text-secondary)" };
+  const info = NODE_META[node.type ?? ""] ?? { label: "Configuracao", icon: "", color: "var(--text-secondary)" };
+
+  // Gatilho não é deletável (o editor bloqueia); unmapped não faz sentido duplicar.
+  const canDelete = node.type !== "trigger";
+  const canDuplicate = Boolean(onDuplicate) && node.type !== "trigger" && node.type !== "unmapped";
 
   // key={node.id}: força remontar o form ao trocar de nó, pra qualquer estado
   // local (ex: toggle de variação de texto) não vazar de um nó pro outro.
@@ -56,7 +102,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, pr
     trigger: <TriggerConfig key={node.id} data={node.data} onChange={handleChange} />,
     text: <TextConfig key={node.id} data={node.data} onChange={handleChange} canRandomize={canRandomize} />,
     image: <ImageConfig key={node.id} data={node.data} onChange={handleChange} mediaAssets={mediaAssets} canRandomize={canRandomize} />,
-    button: <ButtonConfig key={node.id} data={node.data} onChange={handleChange} products={products} />,
+    button: <ButtonConfig key={node.id} data={node.data} onChange={handleChange} products={products} flowNodes={flowNodes} />,
     delay: <DelayConfig key={node.id} data={node.data} onChange={handleChange} />,
     condition: <ConditionConfig key={node.id} data={node.data} onChange={handleChange} />,
     input: <InputConfig key={node.id} data={node.data} onChange={handleChange} />,
@@ -75,11 +121,20 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, pr
         className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-in"
       />
       <div
+        role={isMobile ? "dialog" : undefined}
+        aria-modal={isMobile ? "true" : undefined}
+        aria-labelledby={titleId}
         className={
-          // MOBILE: bottom sheet (fixo embaixo, animado). DESKTOP: coluna lateral.
-          "flex flex-col overflow-y-auto relative z-50 " +
+          // MOBILE: bottom sheet (fixo embaixo, animado).
+          // md (768–1024): overlay fixo à direita — se ficasse no flex, o painel
+          // espremeria o canvas nessa faixa. `fixed` (e não absolute) porque o
+          // pai no flow-editor não é positioned e o editor ocupa 100dvh — o
+          // resultado visual é o mesmo, sem depender de mudança lá.
+          // lg+: coluna lateral estática no flex do editor.
+          "flex flex-col overflow-y-auto z-50 " +
           "fixed inset-x-0 bottom-0 max-h-[80vh] rounded-t-2xl border-t border-(--border-default) pb-safe animate-up " +
-          "md:static md:z-auto md:inset-auto md:bottom-auto md:max-h-none md:rounded-none md:border-t-0 md:w-72 lg:w-80 md:shrink-0 md:animate-none"
+          "md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:z-30 md:max-h-none md:rounded-none md:border-t-0 md:w-72 md:shadow-xl md:animate-none " +
+          "lg:static lg:inset-auto lg:z-auto lg:w-80 lg:shrink-0 lg:shadow-none"
         }
         style={{
           background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
@@ -90,11 +145,14 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, pr
         <div className="md:hidden sticky top-0 z-10 pt-3 pb-1 flex justify-center bg-(--bg-surface)/90 backdrop-blur-md">
           <div className="w-10 h-1 rounded-full bg-white/15" />
         </div>
-      {/* Ambient glow */}
-      <div
-        className="absolute top-0 left-0 right-0 h-20 pointer-events-none"
-        style={{ background: `linear-gradient(180deg, color-mix(in srgb, ${info.color} 5%, transparent) 0%, transparent 100%)` }}
-      />
+      {/* Ambient glow — wrapper relative de altura 0: no lg o painel vira
+          `static`, então o absolute precisa de um pai posicionado próprio. */}
+      <div className="relative h-0 shrink-0">
+        <div
+          className="absolute top-0 left-0 right-0 h-20 pointer-events-none"
+          style={{ background: `linear-gradient(180deg, color-mix(in srgb, ${info.color} 5%, transparent) 0%, transparent 100%)` }}
+        />
+      </div>
 
       {/* Header */}
       <div className="px-4 pt-4 pb-3 relative">
@@ -104,17 +162,18 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, pr
               className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{ background: `color-mix(in srgb, ${info.color} 12%, transparent)`, boxShadow: `0 0 10px -4px ${info.color}` }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={info.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={info.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d={info.icon} />
               </svg>
             </div>
-            <h3 className="text-foreground font-semibold text-xs tracking-tight">{info.label}</h3>
+            <h3 id={titleId} className="text-foreground font-semibold text-xs tracking-tight">{info.label}</h3>
           </div>
           <button
             onClick={onClose}
-            className="w-6 h-6 rounded-md flex items-center justify-center text-(--text-muted) hover:text-foreground hover:bg-white/6 transition-all"
+            aria-label="Fechar painel de configuração"
+            className="w-11 h-11 md:w-8 md:h-8 shrink-0 rounded-md flex items-center justify-center text-(--text-muted) hover:text-foreground hover:bg-white/6 transition-all"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
@@ -129,19 +188,54 @@ export function NodeConfigPanel({ node, onUpdate, onClose, onDelete, bundles, pr
         {configForms[node.type ?? ""]}
       </div>
 
-      {/* Delete button */}
-      <div className="px-4 pb-4">
-        <div className="divider mb-4" />
-        <button
-          onClick={() => onDelete(node.id)}
-          className="btn-danger w-full"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-          </svg>
-          Excluir No
-        </button>
-      </div>
+      {/* Ações do bloco (duplicar/excluir) */}
+      {(canDuplicate || canDelete) && (
+        <div className="px-4 pb-4">
+          <div className="divider mb-4" />
+          <div className="space-y-2">
+            {canDuplicate && (
+              <button
+                type="button"
+                onClick={() => onDuplicate?.(node.id)}
+                className="btn-ghost w-full"
+              >
+                <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                </svg>
+                Duplicar bloco
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Duas etapas: 1º clique arma, 2º clique (em até 3s) deleta.
+                  if (!confirmingDelete) {
+                    setConfirmingDelete(true);
+                    return;
+                  }
+                  onDelete(node.id);
+                }}
+                className="btn-danger w-full"
+                style={
+                  confirmingDelete
+                    ? {
+                        background: "color-mix(in srgb, var(--red) 22%, transparent)",
+                        borderColor: "color-mix(in srgb, var(--red) 60%, transparent)",
+                        boxShadow: "0 0 18px -4px color-mix(in srgb, var(--red) 70%, transparent)",
+                      }
+                    : undefined
+                }
+              >
+                <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+                {confirmingDelete ? "Confirmar exclusão?" : "Excluir bloco"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </>
   );

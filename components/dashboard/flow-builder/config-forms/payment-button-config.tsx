@@ -9,6 +9,12 @@ interface PaymentButtonConfigProps {
   canRandomize?: boolean;
 }
 
+// Id nunca-reutilizável (timestamp + aleatório em base36) — nunca "recicla" o
+// id de um botão deletado, senão uma edge órfã antiga reatacaria no botão novo.
+function freshId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = false }: PaymentButtonConfigProps) {
   const bundleId = String(data.bundle_id ?? "");
   const timeoutMinutes = Number(data.payment_timeout_minutes ?? 15);
@@ -43,11 +49,10 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
     setButtons(next);
   };
   const addButton = () => {
-    // id estável e único (reject já existe por padrão; extras viram btn_N)
-    const used = new Set(offerButtons.map((b) => b.id));
-    let n = 0;
-    while (used.has(`btn_${n}`)) n++;
-    setButtons([...offerButtons, { id: `btn_${n}`, label: "Novo botão" }]);
+    // id nunca-reutilizável (timestamp + aleatório) — reaproveitar o menor
+    // btn_N livre fazia a edge órfã de um botão deletado reatacar em silêncio
+    // no próximo botão criado. O default semântico "reject" segue intocado.
+    setButtons([...offerButtons, { id: freshId("btn"), label: "Novo botão" }]);
   };
   const removeButton = (i: number) => {
     const next = offerButtons.filter((_, idx) => idx !== i);
@@ -67,13 +72,11 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
     setCustomButtons(customButtons.map((b, idx) => (idx === i ? { ...b, ...patch } : b)));
   };
   const addCustomButton = () => {
-    // prefixo próprio (custom_N) pra nunca colidir com os ids de
-    // accept_reject_buttons (reject/btn_N) — os dois podem coexistir no
+    // prefixo próprio (custom_*) pra nunca colidir com os ids de
+    // accept_reject_buttons (reject/btn_*) — os dois podem coexistir no
     // mesmo nó (ex: upsell com "Recusar" E um botão extra de suporte).
-    const used = new Set(customButtons.map((b) => b.id));
-    let n = 0;
-    while (used.has(`custom_${n}`)) n++;
-    setCustomButtons([...customButtons, { id: `custom_${n}`, label: "Novo botão", kind: "link", url: "" }]);
+    // Sufixo nunca-reutilizável: ver comentário em addButton.
+    setCustomButtons([...customButtons, { id: freshId("custom"), label: "Novo botão", kind: "link", url: "" }]);
   };
   const removeCustomButton = (i: number) => {
     setCustomButtons(customButtons.filter((_, idx) => idx !== i));
@@ -90,7 +93,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
         }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={current.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={current.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" />
           </svg>
           <label className="input-label mb-0!" style={{ color: current.color }}>Tipo de Venda</label>
@@ -111,12 +114,12 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
                 }}
               >
                 <span className="block text-xs font-semibold" style={{ color: active ? s.color : "var(--text-secondary)" }}>{s.label}</span>
-                <span className="block text-[9px] leading-tight mt-0.5 text-(--text-muted)">{s.hint}</span>
+                <span className="block text-[0.625rem] leading-tight mt-0.5 text-(--text-secondary)">{s.hint}</span>
               </button>
             );
           })}
         </div>
-        <p className="text-[10px] mt-2 text-(--text-muted)" style={{ opacity: 0.85 }}>
+        <p className="text-[0.6875rem] leading-snug mt-2 text-(--text-secondary)">
           Define como as vendas deste botão aparecem no card <strong>Upsell / Downsell / Order Bump</strong> das Análises. Não muda o fluxo — só a classificação.
         </p>
       </div>
@@ -129,14 +132,14 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
         >
           <div>
             <label className="input-label mb-0!">Botões de oferta</label>
-            <p className="text-[10px] text-(--text-muted) mt-0.5 mb-2" style={{ opacity: 0.8 }}>
+            <p className="text-[0.6875rem] leading-snug text-(--text-secondary) mt-0.5 mb-2">
               Clicar no <strong>produto</strong> = Aceitar (gera o Pix e segue por “Aceitou/Pagou”). Os botões abaixo viram saídas próprias no fluxo (ex: “Recusar” → conecte a um downsell).
             </p>
           </div>
 
           {/* Layout */}
           <div>
-            <span className="text-[10px] text-(--text-muted) uppercase tracking-wider">Layout</span>
+            <span className="text-[10px] text-(--text-secondary) uppercase tracking-wider">Layout</span>
             <div className="mt-1 inline-flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
               {[
                 { v: "vertical", l: "Vertical" },
@@ -167,10 +170,10 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
                 <button
                   type="button"
                   onClick={() => removeButton(i)}
-                  aria-label="Remover botão"
-                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
+                  aria-label={`Remover botão ${b.label}`}
+                  className="w-11 h-11 md:w-7 md:h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 </button>
               </div>
             ))}
@@ -180,7 +183,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
             onClick={addButton}
             className="w-full text-xs py-2 rounded-lg border border-dashed border-(--border-default) text-(--text-secondary) hover:text-foreground hover:bg-white/[0.03] transition-colors flex items-center justify-center gap-1.5"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             Adicionar botão
           </button>
         </div>
@@ -200,12 +203,12 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
           </button>
         </div>
         {!canRandomize && (
-          <p className="text-(--text-muted) text-[10px] mb-2" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mb-2">
             Recurso Premium — disponível pra donos ou assinantes Premium.
           </p>
         )}
         {canRandomize && (
-          <p className="text-(--text-muted) text-[10px] mb-2" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mb-2">
             Sorteia um conjunto entre os selecionados a cada envio.
           </p>
         )}
@@ -214,7 +217,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
           <>
             <label className="input-label">Conjuntos de Produtos</label>
             {bundles.length === 0 ? (
-              <p className="text-(--amber) text-[10px] mt-1.5" style={{ opacity: 0.7 }}>
+              <p className="text-(--amber) text-[0.6875rem] leading-snug mt-1.5">
                 Nenhum conjunto encontrado. Crie um na aba &quot;Conjuntos&quot;.
               </p>
             ) : (
@@ -240,7 +243,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
                         }}
                       >
                         {checked && (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+                          <svg aria-hidden="true" focusable="false" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         )}
@@ -268,7 +271,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
               ))}
             </select>
             {bundles.length === 0 && (
-              <p className="text-(--amber) text-[10px] mt-1.5" style={{ opacity: 0.7 }}>
+              <p className="text-(--amber) text-[0.6875rem] leading-snug mt-1.5">
                 Nenhum conjunto encontrado. Crie um na aba &quot;Conjuntos&quot;.
               </p>
             )}
@@ -283,7 +286,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
       >
         <div>
           <label className="input-label mb-0!">Botões extras</label>
-          <p className="text-[10px] text-(--text-muted) mt-0.5 mb-2" style={{ opacity: 0.8 }}>
+          <p className="text-[0.6875rem] leading-snug text-(--text-secondary) mt-0.5 mb-2">
             Aparecem embaixo dos preços. <strong>Link</strong> abre uma URL direto (canal, grupo, qualquer
             link). <strong>Fluxo</strong> vira um handle no cardzinho, do lado de Pagou/Não Pagou — conecte a
             outro nó pra continuar o fluxo por ali.
@@ -303,10 +306,10 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
                 <button
                   type="button"
                   onClick={() => removeCustomButton(i)}
-                  aria-label="Remover botão"
-                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
+                  aria-label={`Remover botão ${b.label}`}
+                  className="w-11 h-11 md:w-7 md:h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 </button>
               </div>
               <div className="inline-flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
@@ -333,7 +336,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
                   className="input text-xs py-1.5!"
                 />
               ) : (
-                <p className="text-(--purple) text-[10px]" style={{ opacity: 0.85 }}>
+                <p className="text-(--purple) text-[0.6875rem] leading-snug">
                   Conecte esse botão a um nó no editor — o handle aparece no cardzinho deste nó.
                 </p>
               )}
@@ -354,13 +357,20 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
         <label className="input-label">Timeout &quot;Nao Pagou&quot; (minutos)</label>
         <input
           type="number"
-          min={1}
+          min={0}
           max={1440}
           value={timeoutMinutes}
-          onChange={(e) => onChange({ ...data, payment_timeout_minutes: Number(e.target.value) || 15 })}
+          onChange={(e) => {
+            // 0 é válido e DESATIVA o timeout (a engine só agenda quando > 0)
+            // — nada de `|| 15`, que convertia 0 em 15 em silêncio. Campo
+            // vazio volta pro padrão 15.
+            const raw = e.target.value;
+            const next = raw === "" ? 15 : Math.min(1440, Math.max(0, parseInt(raw, 10) || 0));
+            onChange({ ...data, payment_timeout_minutes: next });
+          }}
           className="input"
         />
-        <p className="text-(--text-muted) text-[10px] mt-1" style={{ opacity: 0.7 }}>
+        <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mt-1">
           Tempo ate disparar o fluxo &quot;Nao Pagou&quot;. Use 0 para desativar.
         </p>
       </div>
@@ -368,9 +378,8 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
         className="rounded-xl p-3 text-[11px]"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 6%, transparent), color-mix(in srgb, var(--amber) 2%, transparent))",
-          border: "1px solid rgba(255,184,0,0.1)",
+          border: "1px solid color-mix(in srgb, var(--amber) 10%, transparent)",
           color: "var(--amber)",
-          opacity: 0.75,
         }}
       >
         <strong>Pagou:</strong> Dispara imediatamente quando o pagamento e confirmado.

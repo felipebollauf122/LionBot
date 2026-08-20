@@ -39,12 +39,12 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
           </button>
         </div>
         {!canRandomize && (
-          <p className="text-(--text-muted) text-[10px]" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
             Recurso Premium — disponível pra donos ou assinantes Premium.
           </p>
         )}
         {canRandomize && (
-          <p className="text-(--text-muted) text-[10px]" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
             Escolhe um vídeo aleatório da lista a cada envio, em vez de sempre o mesmo.
           </p>
         )}
@@ -54,7 +54,7 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
         <div className="space-y-2">
           <label className="input-label">Vídeos (um é sorteado a cada envio)</label>
           {videoAssets.length === 0 ? (
-            <p className="text-(--amber) text-[11px]" style={{ opacity: 0.8 }}>
+            <p className="text-(--amber) text-[0.6875rem] leading-snug">
               Nenhum vídeo cadastrado. Cadastre mídias em <strong>Mídia</strong>, no menu do bot, pra usar aqui.
             </p>
           ) : (
@@ -80,7 +80,7 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
                       }}
                     >
                       {checked && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
+                        <svg aria-hidden="true" focusable="false" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round">
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
                       )}
@@ -89,7 +89,7 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
                       className="w-8 h-8 rounded shrink-0 flex items-center justify-center"
                       style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border-subtle)" }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M23 7l-7 5 7 5V7zM14 5H3a2 2 0 00-2 2v10a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2z" />
                       </svg>
                     </span>
@@ -105,7 +105,10 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
       ) : (
         <MediaUpload
           value={String(data.video_url ?? "")}
-          onChange={(url) => onChange({ ...data, video_url: url })}
+          // PATCH só do campo alterado: o merge do editor preserva o resto do
+          // data — essencial na conclusão de upload demorado, que não pode
+          // sobrescrever edições feitas no nó enquanto o arquivo subia.
+          onChange={(url) => onChange({ video_url: url })}
           accept="video/mp4,video/webm,video/quicktime"
           label="Video"
           placeholder="https://... ou envie do computador"
@@ -127,7 +130,6 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
           background: "linear-gradient(135deg, color-mix(in srgb, var(--cyan) 6%, transparent), color-mix(in srgb, var(--cyan) 2%, transparent))",
           border: "1px solid color-mix(in srgb, var(--cyan) 10%, transparent)",
           color: "var(--cyan)",
-          opacity: 0.7,
         }}
       >
         Formatos suportados: MP4, WebM. Maximo 50MB.

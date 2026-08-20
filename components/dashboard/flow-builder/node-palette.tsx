@@ -1,39 +1,23 @@
 "use client";
 
 import type { DragEvent } from "react";
+import { NODE_META, NODE_CATEGORIES } from "./flow-utils";
 
-export interface NodeTypeItem {
-  type: string;
-  label: string;
-  icon: string;
-  color: string;
-  category: string;
-}
-
-export const paletteNodeTypes: NodeTypeItem[] = [
-  { type: "trigger", label: "Gatilho", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", color: "var(--accent)", category: "Inicio" },
-  { type: "text", label: "Texto", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", color: "var(--cyan)", category: "Mensagens" },
-  { type: "image", label: "Imagem", icon: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z", color: "var(--cyan)", category: "Mensagens" },
-  { type: "video", label: "Video", icon: "M23 7l-7 5 7 5V7zM14 5H3a2 2 0 00-2 2v10a2 2 0 002 2h11a2 2 0 002-2V7a2 2 0 00-2-2z", color: "var(--cyan)", category: "Mensagens" },
-  { type: "button", label: "Botoes", icon: "M4 9h16M4 15h16M10 3L8 21M16 3l-2 18", color: "var(--cyan)", category: "Mensagens" },
-  { type: "input", label: "Input", icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z", color: "var(--purple)", category: "Mensagens" },
-  { type: "delay", label: "Delay", icon: "M12 2a10 10 0 100 20 10 10 0 000-20zM12 6v6l4 2", color: "var(--text-secondary)", category: "Logica" },
-  { type: "condition", label: "Condicao", icon: "M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5", color: "var(--amber)", category: "Logica" },
-  { type: "action", label: "Acao", icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", color: "var(--text-secondary)", category: "Acoes" },
-  { type: "payment_button", label: "Pagamento", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--amber)", category: "Pagamento" },
-];
-
-export const paletteCategories = ["Inicio", "Mensagens", "Logica", "Acoes", "Pagamento"];
+// Itens adicionáveis pela paleta: tudo de NODE_META menos "unmapped",
+// que só existe em fluxos clonados e não pode ser criado manualmente.
+const paletteItems = Object.entries(NODE_META)
+  .filter(([type]) => type !== "unmapped")
+  .map(([type, meta]) => ({ type, ...meta }));
 
 function onDragStart(event: DragEvent, nodeType: string) {
   event.dataTransfer.setData("application/reactflow", nodeType);
   event.dataTransfer.effectAllowed = "move";
 }
 
-export function NodePalette() {
+export function NodePalette({ onAdd }: { onAdd?: (type: string) => void }) {
   return (
     <div
-      className="w-56 overflow-y-auto relative hidden md:flex flex-col"
+      className="w-64 overflow-y-auto relative hidden md:flex flex-col"
       style={{
         background: "linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-root) 100%)",
         borderRight: "1px solid var(--border-subtle)",
@@ -49,44 +33,51 @@ export function NodePalette() {
             className="w-7 h-7 rounded-lg flex items-center justify-center"
             style={{ background: "color-mix(in srgb, var(--cyan) 12%, transparent)", boxShadow: "0 0 10px -4px var(--cyan)" }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
             </svg>
           </div>
           <span className="text-foreground font-semibold text-xs tracking-tight">Componentes</span>
         </div>
+        <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">Arraste ou clique para adicionar</p>
         {/* Separator */}
         <div className="absolute bottom-0 left-3 right-3 h-px bg-linear-to-r from-transparent via-(--border-default) to-transparent" />
       </div>
 
-      {/* Categories */}
+      {/* Categorias */}
       <div className="flex-1 px-3 pt-3 pb-4 space-y-4">
-        {paletteCategories.map((cat) => {
-          const items = paletteNodeTypes.filter((n) => n.category === cat);
+        {NODE_CATEGORIES.map((cat) => {
+          const items = paletteItems.filter((n) => n.category === cat);
           if (items.length === 0) return null;
           return (
             <div key={cat}>
-              <p className="text-(--text-ghost) text-[10px] font-bold uppercase tracking-[0.14em] px-1.5 mb-2">{cat}</p>
+              <p className="text-(--text-secondary) text-[0.6875rem] font-bold uppercase tracking-[0.14em] px-1.5 mb-2">{cat}</p>
               <div className="space-y-0.5">
                 {items.map((item) => (
-                  <div
+                  <button
                     key={item.type}
+                    type="button"
                     draggable
                     onDragStart={(e) => onDragStart(e, item.type)}
-                    className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl cursor-grab active:cursor-grabbing transition-all hover:bg-white/5 group"
+                    onClick={() => onAdd?.(item.type)}
+                    title={item.description}
+                    className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left cursor-grab active:cursor-grabbing transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent) group"
                   >
                     <div
-                      className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-all"
+                      className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-all"
                       style={{
                         background: `color-mix(in srgb, ${item.color} 10%, transparent)`,
                       }}
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={item.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg aria-hidden="true" focusable="false" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={item.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d={item.icon} />
                       </svg>
                     </div>
-                    <span className="text-(--text-secondary) text-xs font-medium group-hover:text-foreground transition-colors">{item.label}</span>
-                  </div>
+                    <span className="min-w-0 flex flex-col">
+                      <span className="text-foreground text-xs font-medium">{item.label}</span>
+                      <span className="text-(--text-secondary) text-[0.6875rem] leading-snug">{item.description}</span>
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>

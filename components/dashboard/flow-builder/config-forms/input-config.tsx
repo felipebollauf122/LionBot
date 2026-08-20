@@ -27,7 +27,7 @@ export function InputConfig({ data, onChange }: InputConfigProps) {
           placeholder="email"
           className="input"
         />
-        <p className="text-(--text-muted) text-[10px] mt-2">
+        <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mt-2">
           A resposta sera salva como <span className="text-(--purple) stat-value">{`{{${data.variable || "variavel"}}}`}</span>
         </p>
       </div>

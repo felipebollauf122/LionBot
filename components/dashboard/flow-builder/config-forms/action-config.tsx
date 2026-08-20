@@ -20,8 +20,12 @@ export function ActionConfig({ data, onChange }: ActionConfigProps) {
           <option value="add_tag">Adicionar Tag</option>
           <option value="remove_tag">Remover Tag</option>
           <option value="set_variable">Definir Variavel</option>
-          <option value="start_flow">Iniciar Fluxo</option>
-          <option value="stop_flow">Parar Fluxo</option>
+          {/* start_flow/stop_flow são no-ops na engine (só add_tag/remove_tag/
+              set_variable executam) — não são mais selecionáveis. Nó antigo
+              que já tenha um desses valores mostra a option marcada como não
+              suportada, pra não mentir no select. */}
+          {actionType === "start_flow" && <option value="start_flow">Iniciar Fluxo (não suportado)</option>}
+          {actionType === "stop_flow" && <option value="stop_flow">Parar Fluxo (não suportado)</option>}
         </select>
       </div>
       {(actionType === "add_tag" || actionType === "remove_tag") && (

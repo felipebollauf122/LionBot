@@ -22,6 +22,11 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ref sempre-atual do onChange: um upload demorado concluía chamando o
+  // onChange capturado no INÍCIO do upload — com o `data` velho no closure do
+  // pai, apagando qualquer edição feita no nó enquanto o arquivo subia.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -52,7 +57,7 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
       if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`);
 
       const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
-      onChange(urlData.publicUrl);
+      onChangeRef.current(urlData.publicUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro no upload");
     } finally {
@@ -97,14 +102,14 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
       >
         {uploading ? (
           <span className="flex items-center justify-center gap-2">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin">
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin">
               <path d="M21 12a9 9 0 11-6.219-8.56" />
             </svg>
             Enviando...
           </span>
         ) : (
           <span className="flex items-center justify-center gap-2">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
             </svg>
             Enviar do computador
@@ -113,12 +118,12 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
       </button>
 
       {error && (
-        <p className="text-(--red) text-[10px] font-medium">{error}</p>
+        <p className="text-(--red) text-[0.6875rem] leading-snug font-medium">{error}</p>
       )}
 
       {value && (
-        <p className="text-(--accent) text-[10px] truncate flex items-center gap-1.5" style={{ opacity: 0.7 }}>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+        <p className="text-(--accent) text-[0.6875rem] leading-snug truncate flex items-center gap-1.5">
+          <svg aria-hidden="true" focusable="false" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
           {value.split("/").pop()}
         </p>
       )}

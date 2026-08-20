@@ -99,12 +99,12 @@ export function TextConfig({ data, onChange, canRandomize = false }: TextConfigP
           </button>
         </div>
         {!canRandomize && (
-          <p className="text-(--text-muted) text-[10px]" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
             Recurso Premium — disponível pra donos ou assinantes Premium.
           </p>
         )}
         {canRandomize && (
-          <p className="text-(--text-muted) text-[10px]" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
             Sorteia um texto entre as variações abaixo a cada envio.
           </p>
         )}
@@ -130,9 +130,9 @@ export function TextConfig({ data, onChange, canRandomize = false }: TextConfigP
                   type="button"
                   onClick={() => removeVariant(i)}
                   aria-label="Remover variação"
-                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
+                  className="w-11 h-11 md:w-7 md:h-7 shrink-0 rounded-lg flex items-center justify-center text-(--text-muted) hover:text-(--red) hover:bg-(--red)/10 transition-colors"
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  <svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 </button>
               </div>
             ))}
@@ -142,7 +142,7 @@ export function TextConfig({ data, onChange, canRandomize = false }: TextConfigP
             onClick={addVariant}
             className="w-full text-xs py-2 rounded-lg border border-dashed border-(--border-default) text-(--text-secondary) hover:text-foreground hover:bg-white/[0.03] transition-colors flex items-center justify-center gap-1.5"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             Adicionar variação
           </button>
         </div>
@@ -159,7 +159,8 @@ export function TextConfig({ data, onChange, canRandomize = false }: TextConfigP
               type="button"
               onClick={() => wrapSelection(btn.tag)}
               title={btn.title}
-              className="px-2 py-1 text-xs rounded border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 font-mono"
+              aria-label={btn.title}
+              className="px-3 py-2.5 md:px-2 md:py-1 text-xs rounded border border-white/10 bg-white/5 hover:bg-white/10 text-white/80 font-mono"
             >
               {btn.label}
             </button>
@@ -173,7 +174,7 @@ export function TextConfig({ data, onChange, canRandomize = false }: TextConfigP
           placeholder="Use {{first_name}} para variaveis"
           className="input resize-none font-mono text-sm"
         />
-        <p className="text-(--text-muted) text-[10px] mt-2">
+        <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mt-2">
           {variantsEnabled && canRandomize
             ? "Usada quando nenhuma variação estiver definida (ou como texto único se a lista de variações ficar vazia). "
             : ""}

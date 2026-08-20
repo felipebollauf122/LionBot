@@ -59,7 +59,7 @@ export function UnmappedConfig({ data }: UnmappedConfigProps) {
         </div>
       )}
 
-      <p className="text-(--text-ghost) text-[11px]">
+      <p className="text-(--text-secondary) text-[0.6875rem] leading-snug">
         Substitua este bloco por um no de verdade (texto, midia, botao, ou pagamento) antes de ativar este fluxo.
       </p>
     </div>

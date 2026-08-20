@@ -6,6 +6,7 @@ import type { FlowData, TriggerType } from "@/lib/types/database";
 import { invalidateBotCache } from "@/lib/actions/cache-actions";
 import { isAdmin } from "@/lib/actions/admin-actions";
 import { buildDefaultLoginFlow } from "@/lib/mtproto-login-flow-template";
+import { validateFlowData } from "@/lib/flow-validation";
 
 /**
  * Cria (uma única vez) o flow padrão de um bot de login MTProto.
@@ -109,12 +110,17 @@ export async function saveFlow(flowId: string, flowData: FlowData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
+  const validation = validateFlowData(flowData);
+  if (!validation.ok) return { success: false };
+
   const admin = await isAdmin();
   let query = supabase.from("flows").update({ flow_data: flowData }).eq("id", flowId);
   if (!admin) query = query.eq("tenant_id", user.id);
 
-  const { error } = await query;
+  const { data, error } = await query.select("id");
   if (error) throw new Error(`Failed to save flow: ${error.message}`);
+  // 0 rows updated: flow deleted in another tab, wrong tenant, or blocked by RLS
+  if (!data || data.length === 0) return { success: false };
 
   // Invalidate engine cache — fetch bot_id from the flow
   const { data: flowRow } = await supabase.from("flows").select("bot_id").eq("id", flowId).single();

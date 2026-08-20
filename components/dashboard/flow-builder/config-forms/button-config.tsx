@@ -1,5 +1,6 @@
 "use client";
 
+import { NODE_META } from "../flow-utils";
 import type { ProductOption } from "../flow-editor";
 
 interface ButtonData {
@@ -12,10 +13,18 @@ interface ButtonData {
   style?: string;
 }
 
+interface FlowNodeOption {
+  id: string;
+  type?: string;
+  data: Record<string, unknown>;
+}
+
 interface ButtonConfigProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
   products: ProductOption[];
+  /** Nós do fluxo — alimenta o seletor "Ir para no" (repassado pelo NodeConfigPanel). */
+  flowNodes?: FlowNodeOption[];
 }
 
 const SALE_TYPES: { value: string; label: string }[] = [
@@ -24,6 +33,10 @@ const SALE_TYPES: { value: string; label: string }[] = [
   { value: "upsell", label: "Upsell" },
   { value: "downsell", label: "Downsell" },
 ];
+
+// Actions que o select conhece — qualquer outra (ex: "next" dos botões
+// clonados) ganha uma option própria pra não ser exibida como "Callback".
+const KNOWN_ACTIONS = ["callback", "go_to_node", "open_url", "payment"];
 
 // Cor do botão no Telegram (Bot API 8.x+) — não é CSS livre, é um campo
 // nativo do inline keyboard limitado pelo próprio Telegram a esses 3
@@ -35,47 +48,64 @@ const BUTTON_STYLES: { value: string; label: string }[] = [
   { value: "primary", label: "🔵 Azul" },
 ];
 
-// gera um id estável (btn_N) que nunca colide com os já existentes —
-// mesmo padrão usado pra custom_buttons em payment-button-config.tsx.
-function genButtonId(existing: ButtonData[]): string {
-  const used = new Set(existing.map((b) => b.id).filter(Boolean));
-  let n = 0;
-  while (used.has(`btn_${n}`)) n++;
-  return `btn_${n}`;
+// Id NUNCA-reutilizável (timestamp + aleatório em base36). O esquema antigo
+// (menor btn_N livre) reaproveitava o id de um botão deletado — a edge órfã
+// dele reatacava em silêncio no próximo botão criado, roteando pagamento pro
+// destino errado.
+function genButtonId(): string {
+  return `btn_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function formatPrice(cents: number, currency: string): string {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency });
 }
 
-export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
+// Rótulo amigável de um nó pro seletor "Ir para no".
+function nodeOptionLabel(n: FlowNodeOption): string {
+  const label = NODE_META[n.type ?? ""]?.label ?? (n.type ?? "Bloco");
+  const preview = String(n.data.text ?? n.data.prompt ?? n.data.caption ?? "").trim().slice(0, 30);
+  return preview ? `${label} — ${preview}` : label;
+}
+
+export function ButtonConfig({ data, onChange, products, flowNodes = [] }: ButtonConfigProps) {
   const text = String(data.text ?? "");
-  const buttons = (data.buttons ?? []) as ButtonData[];
+  const rawButtons = (data.buttons ?? []) as ButtonData[];
+  // Backfill de ids legados: botão sem id ganha PERMANENTEMENTE btn_idx_N —
+  // exatamente a fórmula do handle indexado que o canvas/engine já usam pra
+  // ele hoje, então as edges existentes continuam válidas. A lista normalizada
+  // é persistida junto com o primeiro onChange do nó (via commit abaixo).
+  const needsBackfill = rawButtons.some((b) => !b.id);
+  const buttons = needsBackfill
+    ? rawButtons.map((b, i) => (b.id ? b : { ...b, id: `btn_idx_${i}` }))
+    : rawButtons;
   const hasPaymentButton = buttons.some((b) => b.action === "payment");
   const timeoutMinutes = Number(data.payment_timeout_minutes ?? 15);
 
+  // Toda alteração do nó passa por aqui pra garantir que o backfill de ids
+  // seja gravado mesmo quando o campo tocado não é a lista de botões.
+  const commit = (patch: Record<string, unknown>) => {
+    onChange(needsBackfill ? { ...data, buttons, ...patch } : { ...data, ...patch });
+  };
+
   const updateButton = (index: number, field: keyof ButtonData, value: string) => {
     const updated = [...buttons];
-    const current = { ...updated[index], [field]: value };
-    // botao criado antes dessa feature existir (ou legado) nao tem id —
-    // ganha um agora, so quando vira pagamento (id so importa pro roteamento
-    // pagou/nao-pagou; pros demais actions o handle generico segue igual).
-    if (field === "action" && value === "payment" && !current.id) {
-      current.id = genButtonId(buttons);
-    }
-    updated[index] = current;
-    onChange({ ...data, buttons: updated });
+    updated[index] = { ...updated[index], [field]: value };
+    commit({ buttons: updated });
   };
 
   const addButton = () => {
-    onChange({
-      ...data,
-      buttons: [...buttons, { id: genButtonId(buttons), text: "Novo Botao", action: "callback", value: "" }],
+    // value nunca nasce vazio: a engine roteia callback/go_to_node pelo
+    // btn.value CRU (server/src/engine/nodes/button.ts) — dois botões com
+    // value "" geram o mesmo callback_data e ficam indistinguíveis em
+    // runtime (e no canvas, já que o handle do botão também deriva de value).
+    const id = genButtonId();
+    commit({
+      buttons: [...buttons, { id, text: "Novo Botao", action: "callback", value: id }],
     });
   };
 
   const removeButton = (index: number) => {
-    onChange({ ...data, buttons: buttons.filter((_, i) => i !== index) });
+    commit({ buttons: buttons.filter((_, i) => i !== index) });
   };
 
   return (
@@ -84,7 +114,7 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
         <label className="input-label">Mensagem</label>
         <textarea
           value={text}
-          onChange={(e) => onChange({ ...data, text: e.target.value })}
+          onChange={(e) => commit({ text: e.target.value })}
           rows={3}
           className="input resize-none"
         />
@@ -97,7 +127,9 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
             className="rounded-xl p-3 mb-2 space-y-2"
             style={{
               background: "rgba(255,255,255,0.02)",
-              border: btn.action === "payment" ? "1px solid rgba(255,184,0,0.18)" : "1px solid var(--border-subtle)",
+              border: btn.action === "payment"
+                ? "1px solid color-mix(in srgb, var(--amber) 18%, transparent)"
+                : "1px solid var(--border-subtle)",
             }}
           >
             <input
@@ -107,12 +139,17 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
               placeholder="Texto do botao"
               className="input py-2! text-xs!"
             />
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <select
                 value={btn.action}
                 onChange={(e) => updateButton(i, "action", e.target.value)}
                 className="input flex-1 py-2! text-xs!"
               >
+                {/* Botões clonados vêm com action "next" — sem essa option o
+                    select mostrava "Callback" e mentia sobre o comportamento. */}
+                {!KNOWN_ACTIONS.includes(btn.action) && (
+                  <option value={btn.action}>Seguir fluxo (clonado)</option>
+                )}
                 <option value="callback">Callback</option>
                 <option value="go_to_node">Ir para no</option>
                 <option value="open_url">Abrir URL</option>
@@ -120,9 +157,10 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
               </select>
               <button
                 onClick={() => removeButton(i)}
-                className="px-2 py-1 text-(--red) text-xs rounded-lg hover:bg-(--red-muted) transition"
+                aria-label={`Remover botão ${btn.text}`}
+                className="w-11 h-11 md:w-7 md:h-7 shrink-0 rounded-lg flex items-center justify-center text-(--red) hover:bg-(--red-muted) transition"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
@@ -154,7 +192,7 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
                   ))}
                 </select>
                 {products.length === 0 && (
-                  <p className="text-(--amber) text-[10px]" style={{ opacity: 0.7 }}>
+                  <p className="text-(--amber) text-[0.6875rem] leading-snug">
                     Nenhum produto encontrado. Crie um na aba &quot;Produtos&quot;.
                   </p>
                 )}
@@ -169,10 +207,38 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
                     </option>
                   ))}
                 </select>
-                <p className="text-(--amber) text-[10px]" style={{ opacity: 0.8 }}>
+                <p className="text-(--amber) text-[0.6875rem] leading-snug">
                   Gera um Pix ao clicar. Conecte os handles <strong>Pagou</strong> / <strong>Nao Pagou</strong> deste botao no canvas pra continuar o fluxo.
                 </p>
               </div>
+            ) : btn.action === "go_to_node" ? (
+              // Seletor de blocos do fluxo — sem exigir que o usuário digite o
+              // id interno do nó. Fallback pro input livre se a lista não veio.
+              flowNodes.length > 0 ? (
+                <select
+                  value={btn.value}
+                  onChange={(e) => updateButton(i, "value", e.target.value)}
+                  className="input py-2! text-xs!"
+                >
+                  <option value="">Selecione um bloco...</option>
+                  {btn.value && !flowNodes.some((n) => n.id === btn.value) && (
+                    <option value={btn.value}>(bloco removido do fluxo)</option>
+                  )}
+                  {flowNodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {nodeOptionLabel(n)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={btn.value}
+                  onChange={(e) => updateButton(i, "value", e.target.value)}
+                  placeholder="Id do bloco de destino"
+                  className="input py-2! text-xs!"
+                />
+              )
             ) : (
               <input
                 type="text"
@@ -200,13 +266,20 @@ export function ButtonConfig({ data, onChange, products }: ButtonConfigProps) {
           <label className="input-label">Timeout &quot;Nao Pagou&quot; (minutos)</label>
           <input
             type="number"
-            min={1}
+            min={0}
             max={1440}
             value={timeoutMinutes}
-            onChange={(e) => onChange({ ...data, payment_timeout_minutes: Number(e.target.value) || 15 })}
+            onChange={(e) => {
+              // 0 é válido e DESATIVA o timeout (a engine só agenda quando
+              // > 0) — nada de `|| 15`, que convertia 0 em 15 em silêncio.
+              // Campo vazio volta pro padrão 15.
+              const raw = e.target.value;
+              const next = raw === "" ? 15 : Math.min(1440, Math.max(0, parseInt(raw, 10) || 0));
+              commit({ payment_timeout_minutes: next });
+            }}
             className="input"
           />
-          <p className="text-(--text-muted) text-[10px] mt-1" style={{ opacity: 0.7 }}>
+          <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mt-1">
             Tempo ate disparar o fluxo &quot;Nao Pagou&quot; de qualquer botao de pagamento desta mensagem. Use 0 para desativar.
           </p>
         </div>

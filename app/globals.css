@@ -35,6 +35,7 @@
   --accent-muted: rgba(255, 43, 214, 0.12);
   --accent-glow: rgba(255, 43, 214, 0.45);
   --accent-deep: rgba(255, 43, 214, 0.06);
+  --on-accent: #14020f;
 
   --cyan: #00e5ff;
   --cyan-muted: rgba(0, 229, 255, 0.12);
@@ -98,6 +99,7 @@
   --accent-muted: rgba(0, 255, 140, 0.12);
   --accent-glow: rgba(0, 255, 140, 0.45);
   --accent-deep: rgba(0, 255, 140, 0.06);
+  --on-accent: #05030a;
 
   --cyan: #00e5ff;
   --cyan-muted: rgba(0, 229, 255, 0.12);
@@ -147,6 +149,7 @@
   --accent-muted: rgba(255, 77, 46, 0.12);
   --accent-glow: rgba(255, 77, 46, 0.45);
   --accent-deep: rgba(255, 77, 46, 0.06);
+  --on-accent: #05030a;
 
   --cyan: #ffb800;
   --cyan-muted: rgba(255, 184, 0, 0.12);
@@ -196,6 +199,7 @@
   --accent-muted: rgba(56, 189, 248, 0.12);
   --accent-glow: rgba(56, 189, 248, 0.45);
   --accent-deep: rgba(56, 189, 248, 0.06);
+  --on-accent: #05030a;
 
   --cyan: #22d3ee;
   --cyan-muted: rgba(34, 211, 238, 0.12);
@@ -245,6 +249,7 @@
   --accent-muted: rgba(245, 200, 92, 0.12);
   --accent-glow: rgba(245, 200, 92, 0.45);
   --accent-deep: rgba(245, 200, 92, 0.06);
+  --on-accent: #05030a;
 
   --cyan: #e0a44a;
   --cyan-muted: rgba(224, 164, 74, 0.12);
@@ -294,6 +299,7 @@
   --accent-muted: rgba(255, 255, 255, 0.12);
   --accent-glow: rgba(255, 255, 255, 0.35);
   --accent-deep: rgba(255, 255, 255, 0.06);
+  --on-accent: #05030a;
 
   --cyan: #a3a3a3;
   --cyan-muted: rgba(163, 163, 163, 0.12);
@@ -344,6 +350,7 @@
   --accent-muted: rgba(226, 59, 59, 0.13);
   --accent-glow: rgba(226, 59, 59, 0.45);
   --accent-deep: rgba(226, 59, 59, 0.06);
+  --on-accent: #ffffff;
 
   --cyan: #d14b4b;
   --cyan-muted: rgba(209, 75, 75, 0.12);
@@ -539,7 +546,8 @@ body {
 }
 
 .input::placeholder {
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  opacity: 0.8;
 }
 
 .input:focus {
@@ -597,7 +605,7 @@ select[class*="bg-transparent"] option {
   gap: 8px;
   padding: 10px 22px;
   background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
-  color: #fff;
+  color: var(--on-accent, #fff);
   font-size: 13px;
   font-weight: 700;
   border-radius: 10px;
@@ -1121,7 +1129,7 @@ select[class*="bg-transparent"] option {
 
 .toggle-btn.off {
   background: color-mix(in srgb, var(--purple) 4%, transparent);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   border-color: var(--border-subtle);
 }
 
@@ -1260,4 +1268,13 @@ select[class*="bg-transparent"] option {
   .reveal, .reveal-1, .reveal-2, .reveal-3, .reveal-4, .reveal-5, .reveal-6, .reveal-7, .reveal-8,
   .num-pop, .draw-line, .bar-grow, .glow-pulse { animation: none !important; }
   .card-interactive { transition: none; }
+  .react-flow__edge-path,
+  .react-flow__connection-path {
+    animation: none !important;
+  }
+  .animate-in,
+  .animate-up,
+  .animate-spin {
+    animation: none !important;
+  }
 }

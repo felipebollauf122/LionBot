@@ -8,43 +8,64 @@ import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
+import { resolveViewScope, getViewableUsers } from "@/lib/actions/admin-actions";
+import { AdminViewSwitcher } from "@/components/dashboard/admin-view-switcher";
 import { notFound } from "next/navigation";
 
-export default async function AutomationsPage() {
+export const dynamic = "force-dynamic";
+
+type SP = { [key: string]: string | string[] | undefined };
+
+export default async function AutomationsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   if (!(await canAccessAutomations())) notFound();
 
-  const { data: accounts } = await supabase
+  const sp = await searchParams;
+  const requestedView = typeof sp.view === "string" ? sp.view : undefined;
+  // Visão de admin (Minha/Todos/Por usuário) — mesmo seletor do /dashboard e /dashboard/bots.
+  const scope = await resolveViewScope(requestedView);
+  const viewTenantId = scope.tenantId;
+
+  let accountsQuery = supabase
     .from("mtproto_accounts")
     .select("id, phone_number, display_name, status, last_error, create_restricted")
-    .eq("tenant_id", user.id)
     .order("created_at", { ascending: false });
+  if (viewTenantId) accountsQuery = accountsQuery.eq("tenant_id", viewTenantId);
 
-  const { data: campaigns } = await supabase
+  let campaignsQuery = supabase
     .from("mtproto_campaigns")
     .select("id, name, status, total_targets, sent_count, failed_count, created_at, recurrence_hours, next_run_at")
-    .eq("tenant_id", user.id)
     .order("created_at", { ascending: false });
+  if (viewTenantId) campaignsQuery = campaignsQuery.eq("tenant_id", viewTenantId);
 
-  const { data: bot } = await supabase
-    .from("automation_bots")
-    .select("username, bot_user_id")
-    .eq("tenant_id", user.id)
-    .maybeSingle();
+  // .limit(1) em vez de .maybeSingle(): no modo "Todos" (viewTenantId null) pode
+  // haver 1 automation_bot por tenant, e maybeSingle() lança erro se vier >1 linha.
+  let botQuery = supabase.from("automation_bots").select("username, bot_user_id").limit(1);
+  if (viewTenantId) botQuery = botQuery.eq("tenant_id", viewTenantId);
 
-  const { data: clones } = await supabase
+  let clonesQuery = supabase
     .from("clone_jobs")
     .select("id, dest_title, source_title, status, copied_count, total_seen")
-    .eq("tenant_id", user.id)
     .order("created_at", { ascending: false });
+  if (viewTenantId) clonesQuery = clonesQuery.eq("tenant_id", viewTenantId);
 
-  const { data: botClones } = await supabase
+  let botClonesQuery = supabase
     .from("bot_clone_jobs")
     .select("id, target_bot_username, status, nodes_discovered")
-    .eq("tenant_id", user.id)
     .order("created_at", { ascending: false });
+  if (viewTenantId) botClonesQuery = botClonesQuery.eq("tenant_id", viewTenantId);
+
+  const [{ data: accounts }, { data: campaigns }, { data: botRows }, { data: clones }, { data: botClones }, viewUsers] = await Promise.all([
+    accountsQuery,
+    campaignsQuery,
+    botQuery,
+    clonesQuery,
+    botClonesQuery,
+    scope.isAdmin ? getViewableUsers() : Promise.resolve([]),
+  ]);
+  const bot = (botRows ?? [])[0] ?? null;
 
   const activeAccounts = (accounts ?? []).filter((a) => a.status === "active").length;
   const clonesCompleted = (clones ?? []).filter((c) => c.status === "completed").length;
@@ -54,11 +75,16 @@ export default async function AutomationsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto">
-      <header className="mb-6 reveal">
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Automações</h1>
-        <p className="text-(--text-secondary) text-sm mt-1">
-          Conecte contas do Telegram, clone canais e dispare mensagens em massa.
-        </p>
+      <header className="mb-6 reveal flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Automações</h1>
+          <p className="text-(--text-secondary) text-sm mt-1">
+            Conecte contas do Telegram, clone canais e dispare mensagens em massa.
+          </p>
+        </div>
+        {scope.isAdmin && (
+          <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "mine"} />
+        )}
       </header>
 
       {/* Faixa de KPIs — mesmos cards do dashboard (KpiCard), herdam o tema */}

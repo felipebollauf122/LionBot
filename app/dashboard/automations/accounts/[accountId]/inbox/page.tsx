@@ -13,14 +13,14 @@ export default async function InboxPage({
   if (!(await canAccessAutomations())) notFound();
   const { accountId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
 
+  // Sem filtro de tenant_id — RLS de mtproto_accounts cobre (própria conta
+  // ou, se admin, qualquer tenant, espelhando o seletor Minha/Todos/Usuário
+  // da lista em /dashboard/automations).
   const { data: account } = await supabase
     .from("mtproto_accounts")
     .select("id, display_name, phone_number, status")
     .eq("id", accountId)
-    .eq("tenant_id", user.id)
     .single();
   if (!account) notFound();
 

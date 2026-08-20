@@ -13,21 +13,21 @@ export default async function AccountDialogsPage({
   if (!(await canAccessAutomations())) notFound();
   const { accountId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
 
+  // Sem filtro de tenant_id — RLS de mtproto_accounts cobre (própria conta
+  // ou, se admin, qualquer tenant).
   const { data: account } = await supabase
     .from("mtproto_accounts")
-    .select("id, display_name, phone_number")
+    .select("id, display_name, phone_number, tenant_id")
     .eq("id", accountId)
-    .eq("tenant_id", user.id)
     .single();
   if (!account) notFound();
 
+  // Bot companheiro do DONO da conta (não do admin que está olhando).
   const { data: bot } = await supabase
     .from("automation_bots")
     .select("username")
-    .eq("tenant_id", user.id)
+    .eq("tenant_id", account.tenant_id)
     .maybeSingle();
 
   return (
@@ -47,7 +47,7 @@ export default async function AccountDialogsPage({
         </p>
       </header>
       <CardShell title="Conteúdo da conta" subtitle="canais, grupos, bots e contatos" icon={icons.users} accent="purple">
-        <AccountDialogs accountId={accountId} hasBot={Boolean(bot)} />
+        <AccountDialogs accountId={accountId} hasBot={Boolean(bot)} ownerTenantId={account.tenant_id} />
       </CardShell>
     </div>
   );

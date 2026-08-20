@@ -13,16 +13,14 @@ export default async function BotClonePage({
   if (!(await canAccessAutomations())) notFound();
   const { cloneId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
 
+  // Sem filtro de tenant_id — RLS de bot_clone_jobs cobre (próprio ou, se admin, qualquer tenant).
   const { data: job } = await supabase
     .from("bot_clone_jobs")
     .select(
       "id, status, target_bot_username, nodes_discovered, nodes_skipped, messages_captured, remarketing_messages_captured, suspected_payment_hit, last_error, dest_flow_id, dest_bot_id, dest_remarketing_config_id",
     )
     .eq("id", cloneId)
-    .eq("tenant_id", user.id)
     .single();
   if (!job) notFound();
 

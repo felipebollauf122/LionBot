@@ -3,14 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
+import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 import { deriveDestKind, isClonableKind } from "@/lib/mtproto/clone-kind";
-
-async function currentTenantId(): Promise<string> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("not authenticated");
-  return user.id;
-}
 
 async function enqueueClone(cloneJobId: string): Promise<void> {
   const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(
@@ -31,9 +25,9 @@ export type SaveBotResult = { ok: true; username: string } | { ok: false; error:
  * Valida o token no Telegram antes de salvar. O erro comum é o owner colar o
  * token errado e só descobrir quando o clone falha na mensagem 1.
  */
-export async function saveAutomationBot(token: string): Promise<SaveBotResult> {
+export async function saveAutomationBot(token: string, actingTenantId?: string): Promise<SaveBotResult> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const clean = token.trim();
   if (!clean) return { ok: false, error: "Cole o token do BotFather." };
 
@@ -74,9 +68,9 @@ export async function saveAutomationBot(token: string): Promise<SaveBotResult> {
   return { ok: true, username: me.username };
 }
 
-export async function removeAutomationBot(): Promise<void> {
+export async function removeAutomationBot(actingTenantId?: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
   const { error } = await supabase.from("automation_bots").delete().eq("tenant_id", tenantId);
   if (error) throw new Error(error.message);
@@ -112,10 +106,11 @@ export async function createCloneJob(input: {
   linkReplaceGroup: string;
   /** Link pra trocar todo canal mencionado/linkado. Vazio = não troca. */
   linkReplaceChannel: string;
+  actingTenantId?: string;
 }): Promise<CreateCloneResult> {
   try {
     await requireAutomationsAccess();
-    const tenantId = await currentTenantId();
+    const tenantId = await resolveActingTenantId(input.actingTenantId);
     const supabase = await createClient();
 
     const { data: bot } = await supabase
@@ -200,13 +195,12 @@ export async function createCloneJob(input: {
 
 export async function launchClone(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
+  // Sem filtro de tenant_id — RLS de clone_jobs cobre (própria ou, se admin, qualquer tenant).
   const { data: updated, error } = await supabase
     .from("clone_jobs")
     .update({ status: "running", last_error: null })
     .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId)
     .select("id")
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -221,26 +215,22 @@ export async function launchClone(cloneJobId: string): Promise<void> {
 /** Pausa: o runner checa o status entre cada grupo e aborta. O cursor fica salvo. */
 export async function pauseClone(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
     .from("clone_jobs")
     .update({ status: "paused" })
-    .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId);
+    .eq("id", cloneJobId);
   if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/automations/clones/${cloneJobId}`);
 }
 
 export async function deleteClone(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
     .from("clone_jobs")
     .delete()
-    .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId);
+    .eq("id", cloneJobId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/automations");
 }
@@ -249,13 +239,11 @@ export async function deleteClone(cloneJobId: string): Promise<void> {
 export async function listCloneSkipReport(
   cloneJobId: string,
 ): Promise<Array<{ reason: string; count: number }>> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data: job } = await supabase
     .from("clone_jobs")
     .select("id")
     .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!job) return [];
 
@@ -281,10 +269,10 @@ export async function listCloneSkipReport(
  * anti-spam do Telegram (create_restricted=false). Alimenta o seletor "criar
  * destino em" do formulário de clone.
  */
-export async function listEligibleDestAccounts(): Promise<
+export async function listEligibleDestAccounts(actingTenantId?: string): Promise<
   Array<{ id: string; display_name: string | null; phone_number: string }>
 > {
-  const tenantId = await currentTenantId();
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("mtproto_accounts")
@@ -303,13 +291,11 @@ export async function listEligibleDestAccounts(): Promise<
  */
 export async function clearAccountRestriction(accountId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
     .from("mtproto_accounts")
     .update({ create_restricted: false })
-    .eq("id", accountId)
-    .eq("tenant_id", tenantId);
+    .eq("id", accountId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/automations");
 }

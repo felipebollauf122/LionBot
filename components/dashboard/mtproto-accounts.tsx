@@ -20,7 +20,14 @@ interface Account {
   create_restricted?: boolean;
 }
 
-export function MtprotoAccounts({ accounts, readOnly = false }: { accounts: Account[]; readOnly?: boolean }) {
+export function MtprotoAccounts({
+  accounts,
+  actingTenantId,
+}: {
+  accounts: Account[];
+  /** Tenant pra quem criar uma conta nova (visão admin "Usuário"). Undefined = próprio usuário logado, ou "Conectar conta" desabilitado em "Todos". */
+  actingTenantId?: string;
+}) {
   const [adding, setAdding] = useState(false);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -64,7 +71,7 @@ export function MtprotoAccounts({ accounts, readOnly = false }: { accounts: Acco
     setError(null);
     startTransition(async () => {
       try {
-        const { accountId } = await startAddAccount(phone, name);
+        const { accountId } = await startAddAccount(phone, name, actingTenantId);
         setPendingAccountId(accountId);
       } catch (err) {
         setError(err instanceof Error ? err.message : "erro");
@@ -127,80 +134,76 @@ export function MtprotoAccounts({ accounts, readOnly = false }: { accounts: Acco
                 >
                   ⚠ restrita — não cria canais
                 </span>
-                {!readOnly && (
-                  <button
-                    onClick={() =>
-                      startTransition(() =>
-                        clearAccountRestriction(a.id).then(() => window.location.reload()),
-                      )
-                    }
-                    className="btn-ghost text-xs px-3 py-1.5"
-                  >
-                    marcar como liberada
-                  </button>
-                )}
+                <button
+                  onClick={() =>
+                    startTransition(() =>
+                      clearAccountRestriction(a.id).then(() => window.location.reload()),
+                    )
+                  }
+                  className="btn-ghost text-xs px-3 py-1.5"
+                >
+                  marcar como liberada
+                </button>
               </div>
             )}
             {a.last_error && (
               <div className="text-(--red) text-xs">{a.last_error}</div>
             )}
-          {!readOnly && (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {a.status === "active" && (
-                <>
-                  <a
-                    href={`/dashboard/automations/accounts/${a.id}/inbox`}
-                    className="btn-ghost text-xs px-3 py-1.5"
-                    title="Mensagens recebidas do Telegram oficial (códigos de login, alertas)"
-                  >
-                    Mensagens
-                  </a>
-                  <button
-                    onClick={() =>
-                      startTransition(async () => {
-                        try {
-                          await syncAccountDialogs(a.id);
-                          alert("Sincronização iniciada. Em alguns segundos seus contatos/grupos vão aparecer no formulário de campanha.");
-                        } catch (err) {
-                          alert(err instanceof Error ? err.message : "erro");
-                        }
-                      })
-                    }
-                    className="btn-ghost text-xs px-3 py-1.5"
-                    title="Sincroniza contatos, DMs, grupos e canais da conta — pode levar 10-30s em contas grandes"
-                  >
-                    Sincronizar
-                  </button>
-                </>
-              )}
-              <a
-                href={`/dashboard/automations/accounts/${a.id}/dialogs`}
-                className="btn-ghost text-xs px-3 py-1.5"
-              >
-                Ver conteúdo
-              </a>
-              <button
-                onClick={() =>
-                  startTransition(() =>
-                    removeAccount(a.id).then(() => window.location.reload()),
-                  )
-                }
-                className="btn-ghost text-xs px-3 py-1.5"
-              >
-                Remover
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2 mt-1">
+            {a.status === "active" && (
+              <>
+                <a
+                  href={`/dashboard/automations/accounts/${a.id}/inbox`}
+                  className="btn-ghost text-xs px-3 py-1.5"
+                  title="Mensagens recebidas do Telegram oficial (códigos de login, alertas)"
+                >
+                  Mensagens
+                </a>
+                <button
+                  onClick={() =>
+                    startTransition(async () => {
+                      try {
+                        await syncAccountDialogs(a.id);
+                        alert("Sincronização iniciada. Em alguns segundos seus contatos/grupos vão aparecer no formulário de campanha.");
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : "erro");
+                      }
+                    })
+                  }
+                  className="btn-ghost text-xs px-3 py-1.5"
+                  title="Sincroniza contatos, DMs, grupos e canais da conta — pode levar 10-30s em contas grandes"
+                >
+                  Sincronizar
+                </button>
+              </>
+            )}
+            <a
+              href={`/dashboard/automations/accounts/${a.id}/dialogs`}
+              className="btn-ghost text-xs px-3 py-1.5"
+            >
+              Ver conteúdo
+            </a>
+            <button
+              onClick={() =>
+                startTransition(() =>
+                  removeAccount(a.id).then(() => window.location.reload()),
+                )
+              }
+              className="btn-ghost text-xs px-3 py-1.5"
+            >
+              Remover
+            </button>
+          </div>
         </div>
       ))}
 
-      {!readOnly && !adding && (
+      {actingTenantId && !adding && (
         <button onClick={() => setAdding(true)} className="btn-ghost text-sm">
           + Conectar conta
         </button>
       )}
 
-      {!readOnly && adding && step === "form" && (
+      {actingTenantId && adding && step === "form" && (
         <form onSubmit={submitPhone} className="rounded-lg bg-white/[0.02] border border-(--border-subtle) p-4 space-y-3">
           <div>
             <label className="input-label">Nome da conta</label>

@@ -8,11 +8,13 @@ import { BotCloneRiskModal } from "@/components/dashboard/bot-clone-risk-modal";
 export function BotCloneForm({
   destBots,
   accounts,
+  actingTenantId,
 }: {
   /** Bots do próprio tenant — pra qual deles o fluxo descoberto vai ser clonado. */
   destBots: Array<{ id: string; label: string }>;
   /** Contas MTProto ativas que podem conversar com o bot-alvo. */
   accounts: Array<{ id: string; label: string }>;
+  actingTenantId?: string;
 }) {
   const router = useRouter();
   const [targetBotUsername, setTargetBotUsername] = useState("");
@@ -42,6 +44,7 @@ export function BotCloneForm({
         clickThrottleMs: Number(clickThrottleMs) || 3000,
         mode,
         includeMedia,
+        actingTenantId,
       });
       if (!res.ok) {
         setShowRiskModal(false);

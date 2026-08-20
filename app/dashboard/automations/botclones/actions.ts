@@ -3,15 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
-
-async function currentTenantId(): Promise<string> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("not authenticated");
-  return user.id;
-}
+import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 
 async function enqueueBotClone(kind: "botclone.explore" | "botclone.build-flow", cloneJobId: string): Promise<void> {
   const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(
@@ -42,21 +34,21 @@ async function enqueueBotClone(kind: "botclone.explore" | "botclone.build-flow",
  */
 async function casTransitionAndEnqueue(
   cloneJobId: string,
-  tenantId: string,
   fromStatus: string | string[],
   toStatus: string,
   kind: "botclone.explore" | "botclone.build-flow",
   supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<void> {
+  // Sem filtro de tenant_id — RLS de bot_clone_jobs cobre (própria ou, se
+  // admin, qualquer tenant).
   const fromList = Array.isArray(fromStatus) ? fromStatus : [fromStatus];
   const { data: before } = await supabase
     .from("bot_clone_jobs")
     .select("status")
     .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId)
     .in("status", fromList)
     .maybeSingle();
-  if (!before) return; // já noutro status, outro tenant, ou inexistente — no-op.
+  if (!before) return; // já noutro status, ou inexistente/sem permissão — no-op.
   const previousStatus = before.status;
 
   const { data: updated, error } = await supabase
@@ -64,7 +56,6 @@ async function casTransitionAndEnqueue(
     .update({ status: toStatus, last_error: null })
     .eq("id", cloneJobId)
     .eq("status", previousStatus)
-    .eq("tenant_id", tenantId)
     .select("id")
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -82,8 +73,7 @@ async function casTransitionAndEnqueue(
       .from("bot_clone_jobs")
       .update({ status: previousStatus, last_error: `Falha ao enfileirar: ${err instanceof Error ? err.message : String(err)}` })
       .eq("id", cloneJobId)
-      .eq("status", toStatus)
-      .eq("tenant_id", tenantId);
+      .eq("status", toStatus);
     throw err;
   }
 }
@@ -103,10 +93,11 @@ export async function createBotCloneJob(input: {
   mode?: "full" | "remarketing_only";
   /** Se falso, pula o rehost de mídia (economiza banda/tempo de download MTProto) em qualquer um dos dois modos. */
   includeMedia?: boolean;
+  actingTenantId?: string;
 }): Promise<CreateBotCloneResult> {
   try {
     await requireAutomationsAccess();
-    const tenantId = await currentTenantId();
+    const tenantId = await resolveActingTenantId(input.actingTenantId);
     const supabase = await createClient();
 
     const mode = input.mode === "remarketing_only" ? "remarketing_only" : "full";
@@ -176,9 +167,8 @@ export async function createBotCloneJob(input: {
 
 export async function launchBotCloneJob(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
-  await casTransitionAndEnqueue(cloneJobId, tenantId, "draft", "exploring", "botclone.explore", supabase);
+  await casTransitionAndEnqueue(cloneJobId, "draft", "exploring", "botclone.explore", supabase);
   revalidatePath("/dashboard/automations");
   revalidatePath(`/dashboard/automations/botclones/${cloneJobId}`);
 }
@@ -194,14 +184,12 @@ export async function launchBotCloneJob(cloneJobId: string): Promise<void> {
  */
 export async function pauseBotCloneJob(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
     .from("bot_clone_jobs")
     .update({ status: "paused" })
     .eq("id", cloneJobId)
-    .in("status", ["exploring", "waiting_flood"])
-    .eq("tenant_id", tenantId);
+    .in("status", ["exploring", "waiting_flood"]);
   if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/automations/botclones/${cloneJobId}`);
 }
@@ -214,21 +202,18 @@ export async function pauseBotCloneJob(cloneJobId: string): Promise<void> {
  */
 export async function resumeBotCloneJob(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
-  await casTransitionAndEnqueue(cloneJobId, tenantId, ["paused", "failed"], "exploring", "botclone.explore", supabase);
+  await casTransitionAndEnqueue(cloneJobId, ["paused", "failed"], "exploring", "botclone.explore", supabase);
   revalidatePath(`/dashboard/automations/botclones/${cloneJobId}`);
 }
 
 export async function deleteBotCloneJob(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { error } = await supabase
     .from("bot_clone_jobs")
     .delete()
-    .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId);
+    .eq("id", cloneJobId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/automations");
 }
@@ -244,13 +229,11 @@ type NodeMessage = { buttons?: SkippedButton[] };
 export async function listBotCloneSkipReport(
   cloneJobId: string,
 ): Promise<Array<{ reason: string; count: number }>> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data: job } = await supabase
     .from("bot_clone_jobs")
     .select("id")
     .eq("id", cloneJobId)
-    .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!job) return [];
 
@@ -292,10 +275,10 @@ export async function listBotCloneSkipReport(
  * contrário do clone de canal, não há criação de canal aqui (create_restricted
  * é irrelevante), só conversa com o bot-alvo via MTProto.
  */
-export async function listEligibleBotCloneAccounts(): Promise<
+export async function listEligibleBotCloneAccounts(actingTenantId?: string): Promise<
   Array<{ id: string; display_name: string | null; phone_number: string }>
 > {
-  const tenantId = await currentTenantId();
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("mtproto_accounts")
@@ -308,8 +291,8 @@ export async function listEligibleBotCloneAccounts(): Promise<
 }
 
 /** Bots do próprio tenant, pra escolher em qual clonar o fluxo descoberto. */
-export async function listDestBots(): Promise<Array<{ id: string; bot_username: string }>> {
-  const tenantId = await currentTenantId();
+export async function listDestBots(actingTenantId?: string): Promise<Array<{ id: string; bot_username: string }>> {
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("bots")

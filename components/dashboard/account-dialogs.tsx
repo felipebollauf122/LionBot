@@ -27,7 +27,16 @@ const KIND_LABEL: Record<string, string> = {
   group_member: "você participa",
 };
 
-export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBot: boolean }) {
+export function AccountDialogs({
+  accountId,
+  hasBot,
+  ownerTenantId,
+}: {
+  accountId: string;
+  hasBot: boolean;
+  /** Dono da conta (pode ser outro tenant, na visão admin) — vai no link de clonar. */
+  ownerTenantId: string;
+}) {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("canais");
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<Dialog[]>([]);
@@ -126,7 +135,7 @@ export function AccountDialogs({ accountId, hasBot }: { accountId: string; hasBo
             {isClonableKind(d.kind) &&
               (hasBot ? (
                 <a
-                  href={`/dashboard/automations/clones/new?dialogId=${d.id}`}
+                  href={`/dashboard/automations/clones/new?dialogId=${d.id}&view=${ownerTenantId}`}
                   className="btn-primary text-xs px-3 py-1.5 shrink-0"
                 >
                   Clonar

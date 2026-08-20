@@ -265,6 +265,24 @@ export interface ViewScope {
  * - admin + <tenantId> → esse tenant.
  * `requested` vem do searchParam `view` (mine | all | <uuid>).
  */
+/**
+ * Resolve QUAL tenant uma Server Action de escrita deve usar, com SEGURANÇA:
+ * o valor pedido pelo cliente (`requestedTenantId`, tipicamente vindo do
+ * seletor "Minha/Todos/Usuário") só é honrado se quem chama é admin de
+ * verdade — reconferido aqui no servidor a cada chamada, nunca confiando no
+ * que o cliente mandou. Não-admin (ou admin sem pedir outro tenant) sempre
+ * cai no próprio id. Usado pelas actions de Automações pra deixar o admin
+ * agir "como" o usuário selecionado (criar conta/campanha/clone etc.).
+ */
+export async function resolveActingTenantId(requestedTenantId?: string | null): Promise<string> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("not authenticated");
+  if (!requestedTenantId || requestedTenantId === user.id) return user.id;
+  if (!(await isAdmin())) return user.id;
+  return requestedTenantId;
+}
+
 export async function resolveViewScope(requested?: string): Promise<ViewScope> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

@@ -42,7 +42,8 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
 
   // .limit(1) em vez de .maybeSingle(): no modo "Todos" (viewTenantId null) pode
   // haver 1 automation_bot por tenant, e maybeSingle() lança erro se vier >1 linha.
-  let botQuery = supabase.from("automation_bots").select("username, bot_user_id").limit(1);
+  // tenant_id vai junto pro botão "Trocar" saber de quem remover mesmo em "Todos".
+  let botQuery = supabase.from("automation_bots").select("username, bot_user_id, tenant_id").limit(1);
   if (viewTenantId) botQuery = botQuery.eq("tenant_id", viewTenantId);
 
   let clonesQuery = supabase
@@ -67,11 +68,19 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
   ]);
   const bot = (botRows ?? [])[0] ?? null;
 
-  // Ações de escrita (sincronizar, remover, criar campanha/clone...) usam a sessão
-  // do admin (currentTenantId()), não o tenant selecionado — então em "Todos"/outro
-  // usuário a UI vira só-leitura pra evitar 404/erro ao clicar e pra não disparar
-  // ações acidentalmente na conta de outro usuário.
-  const readOnly = scope.mode !== "mine";
+  // Ações sobre linha existente (sincronizar, remover, pausar, ver conteúdo/
+  // mensagens...) resolvem o dono pela RLS (tenant_id = auth.uid() OR
+  // is_admin()), então funcionam em qualquer visão sem precisar saber qual
+  // tenant é. CRIAR algo novo (conta/bot/campanha/clone) não tem uma linha
+  // existente pra RLS checar — precisa saber PRA QUEM criar, e isso só faz
+  // sentido com um tenant específico selecionado (não em "Todos", que é
+  // agregado). resolveActingTenantId() no server confere de novo que quem
+  // chama é admin antes de aceitar esse tenant — nunca confia só na UI.
+  const canCreate = scope.mode !== "all";
+  // Propaga o tenant selecionado pras páginas "Novo"/"Nova campanha" (rotas
+  // próprias, sem o seletor visível) — só quando um usuário específico foi
+  // escolhido; em "mine" o padrão (sem query) já resolve pro próprio admin.
+  const createQuery = canCreate && scope.mode === "user" ? `?view=${viewTenantId}` : "";
 
   const activeAccounts = (accounts ?? []).filter((a) => a.status === "active").length;
   const clonesCompleted = (clones ?? []).filter((c) => c.status === "completed").length;
@@ -91,9 +100,9 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
         {scope.isAdmin && (
           <div className="flex flex-col items-end gap-1.5">
             <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "mine"} />
-            {readOnly && (
+            {!canCreate && (
               <span className="text-(--text-muted) text-[11px]">
-                Visão somente leitura — ações ficam disponíveis em &quot;Minha&quot;
+                Criar conta/bot/campanha/clone exige selecionar um usuário específico
               </span>
             )}
           </div>
@@ -151,7 +160,10 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="purple"
           revealIndex={2}
         >
-          <MtprotoAccounts accounts={accounts ?? []} readOnly={readOnly} />
+          <MtprotoAccounts
+            accounts={accounts ?? []}
+            actingTenantId={canCreate ? (viewTenantId ?? undefined) : undefined}
+          />
         </CardShell>
       </div>
 
@@ -164,7 +176,10 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="cyan"
           revealIndex={3}
         >
-          <AutomationBotCard bot={bot ?? null} readOnly={readOnly} />
+          <AutomationBotCard
+            bot={bot ?? null}
+            createTenantId={canCreate ? (viewTenantId ?? undefined) : undefined}
+          />
         </CardShell>
       </div>
 
@@ -177,7 +192,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="magenta"
           revealIndex={4}
         >
-          <CloneList clones={clones ?? []} readOnly={readOnly} />
+          <CloneList clones={clones ?? []} />
         </CardShell>
       </div>
 
@@ -190,14 +205,14 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="purple"
           revealIndex={5}
           right={
-            !readOnly && (
-              <a href="/dashboard/automations/botclones/new" className="btn-primary text-xs px-4 py-2">
+            canCreate && (
+              <a href={`/dashboard/automations/botclones/new${createQuery}`} className="btn-primary text-xs px-4 py-2">
                 Novo
               </a>
             )
           }
         >
-          <BotCloneList clones={botClones ?? []} readOnly={readOnly} />
+          <BotCloneList clones={botClones ?? []} />
         </CardShell>
       </div>
 
@@ -210,14 +225,14 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="amber"
           revealIndex={6}
           right={
-            !readOnly && (
-              <a href="/dashboard/automations/new-campaign" className="btn-primary text-xs px-4 py-2">
+            canCreate && (
+              <a href={`/dashboard/automations/new-campaign${createQuery}`} className="btn-primary text-xs px-4 py-2">
                 Nova campanha
               </a>
             )
           }
         >
-          <MtprotoCampaignList campaigns={campaigns ?? []} readOnly={readOnly} />
+          <MtprotoCampaignList campaigns={campaigns ?? []} />
         </CardShell>
       </div>
 

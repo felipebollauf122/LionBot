@@ -15,7 +15,6 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
 // barra de % seria inventada. Mostra a contagem crua, honesta.
 export function BotCloneList({
   clones,
-  readOnly = false,
 }: {
   clones: Array<{
     id: string;
@@ -23,7 +22,6 @@ export function BotCloneList({
     status: string;
     nodes_discovered: number;
   }>;
-  readOnly?: boolean;
 }) {
   if (clones.length === 0) {
     return (
@@ -36,11 +34,12 @@ export function BotCloneList({
     <div className="space-y-1.5">
       {clones.map((c, i) => {
         const meta = STATUS_MAP[c.status] ?? { label: c.status.toUpperCase(), badge: "badge-inactive" };
-        // readOnly (visão admin de outro usuário): a página de detalhe usa a
-        // sessão do admin pra achar o clone, então linkar daria 404 — vira <div>.
-        const rowClass = `row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) ${readOnly ? "" : "hover:border-(--border-default) transition-colors"}`;
-        const content = (
-          <>
+        return (
+          <a
+            key={c.id}
+            href={`/dashboard/automations/botclones/${c.id}`}
+            className={`row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) hover:border-(--border-default) transition-colors`}
+          >
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm text-foreground font-medium truncate">
                 @{c.target_bot_username}
@@ -51,15 +50,6 @@ export function BotCloneList({
               {c.nodes_discovered} nó{c.nodes_discovered === 1 ? "" : "s"} descoberto
               {c.nodes_discovered === 1 ? "" : "s"}
             </div>
-          </>
-        );
-        return readOnly ? (
-          <div key={c.id} className={rowClass}>
-            {content}
-          </div>
-        ) : (
-          <a key={c.id} href={`/dashboard/automations/botclones/${c.id}`} className={rowClass}>
-            {content}
           </a>
         );
       })}

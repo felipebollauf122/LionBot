@@ -7,10 +7,11 @@ import { saveAutomationBot, removeAutomationBot } from "@/app/dashboard/automati
 // (com o ícone do bot), então aqui não há card externo nem título duplicado.
 export function AutomationBotCard({
   bot,
-  readOnly = false,
+  createTenantId,
 }: {
-  bot: { username: string; bot_user_id: string } | null;
-  readOnly?: boolean;
+  bot: { username: string; bot_user_id: string; tenant_id: string } | null;
+  /** Tenant pra quem criar o bot quando ainda não existe (visão admin "Usuário"). Undefined = próprio usuário logado, ou desabilitado em "Todos". */
+  createTenantId?: string;
 }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,20 +26,18 @@ export function AutomationBotCard({
             Publica os clones e é promovido a admin nos destinos criados.
           </div>
         </div>
-        {!readOnly && (
-          <button
-            onClick={() => start(() => void removeAutomationBot())}
-            disabled={pending}
-            className="btn-ghost text-xs px-3 py-1.5 shrink-0 disabled:opacity-40"
-          >
-            Trocar
-          </button>
-        )}
+        <button
+          onClick={() => start(() => void removeAutomationBot(bot.tenant_id))}
+          disabled={pending}
+          className="btn-ghost text-xs px-3 py-1.5 shrink-0 disabled:opacity-40"
+        >
+          Trocar
+        </button>
       </div>
     );
   }
 
-  if (readOnly) {
+  if (!createTenantId) {
     return (
       <p className="py-6 text-center text-(--text-ghost) text-xs">
         Nenhum bot companheiro cadastrado por este usuário.
@@ -65,7 +64,7 @@ export function AutomationBotCard({
         onClick={() =>
           start(async () => {
             setError(null);
-            const res = await saveAutomationBot(token);
+            const res = await saveAutomationBot(token, createTenantId);
             if (!res.ok) setError(res.error);
             else setToken("");
           })

@@ -13,16 +13,14 @@ export default async function ClonePage({
   if (!(await canAccessAutomations())) notFound();
   const { cloneId } = await params;
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
 
+  // Sem filtro de tenant_id — RLS de clone_jobs cobre (próprio ou, se admin, qualquer tenant).
   const { data: job } = await supabase
     .from("clone_jobs")
     .select(
       "id, status, effective_strategy, dest_invite_link, total_seen, copied_count, skipped_count, failed_count, message_limit, last_error, source_title, dest_title",
     )
     .eq("id", cloneId)
-    .eq("tenant_id", user.id)
     .single();
   if (!job) notFound();
 

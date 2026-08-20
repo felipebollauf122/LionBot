@@ -57,7 +57,7 @@ function campaignBadge(status: string): { cls: string; label: string } {
   }
 }
 
-export function MtprotoCampaignList({ campaigns, readOnly = false }: { campaigns: Campaign[]; readOnly?: boolean }) {
+export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -94,16 +94,13 @@ export function MtprotoCampaignList({ campaigns, readOnly = false }: { campaigns
           c.total_targets > 0
             ? Math.min(100, Math.round((c.sent_count / c.total_targets) * 100))
             : 0;
-        // readOnly (visão admin de outro usuário): a página de detalhe usa a
-        // sessão do admin pra achar a campanha, então linkar daria 404 — vira <div>.
-        const RowTag = readOnly ? "div" : "a";
         return (
           <div
             key={c.id}
             className={`row-hover flex items-center gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) reveal-${Math.min(i + 1, 8)} ${deleting ? "opacity-50" : ""}`}
           >
-            <RowTag
-              {...(readOnly ? {} : { href: `/dashboard/automations/campaigns/${c.id}` })}
+            <a
+              href={`/dashboard/automations/campaigns/${c.id}`}
               className="flex-1 flex items-center justify-between gap-3 min-w-0"
             >
               <div className="min-w-0 flex-1">
@@ -143,21 +140,19 @@ export function MtprotoCampaignList({ campaigns, readOnly = false }: { campaigns
               <div className="text-(--text-ghost) text-xs shrink-0 pl-3">
                 {new Date(c.created_at).toLocaleDateString("pt-BR")}
               </div>
-            </RowTag>
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={(e) => handleDelete(e, c)}
-                disabled={deleting}
-                title="Excluir campanha"
-                className="btn-danger shrink-0 p-0 w-9 h-9 disabled:opacity-40"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-2 14a2 2 0 01-2 2H9a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                </svg>
-              </button>
-            )}
+            </a>
+            <button
+              type="button"
+              onClick={(e) => handleDelete(e, c)}
+              disabled={deleting}
+              title="Excluir campanha"
+              className="btn-danger shrink-0 p-0 w-9 h-9 disabled:opacity-40"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-2 14a2 2 0 01-2 2H9a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+            </button>
           </div>
         );
       })}

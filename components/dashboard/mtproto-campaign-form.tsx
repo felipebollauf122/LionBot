@@ -51,7 +51,7 @@ const ALL_FILTERABLE_KINDS = [
   "channel_subscriber",
 ];
 
-export function MtprotoCampaignForm() {
+export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [targetsRaw, setTargetsRaw] = useState("");
@@ -75,7 +75,7 @@ export function MtprotoCampaignForm() {
   const [selectedDialogIds, setSelectedDialogIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    listActiveAccounts()
+    listActiveAccounts(actingTenantId)
       .then((accs) => {
         setAccounts(accs);
         if (accs.length > 0 && !selectedAccountId) {
@@ -162,6 +162,7 @@ export function MtprotoCampaignForm() {
           dialogIds: isGlobal ? [] : Array.from(selectedDialogIds),
           recurrenceHours: recurrenceEnabled ? recurrenceHours : null,
           global: isGlobal,
+          actingTenantId,
         });
         if (!res.ok) {
           setError(res.error);

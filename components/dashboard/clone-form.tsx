@@ -37,6 +37,7 @@ export function CloneForm({
   sourceTitle,
   sourceAccountId,
   destAccounts,
+  actingTenantId,
 }: {
   dialogId: string;
   sourceTitle: string;
@@ -44,6 +45,7 @@ export function CloneForm({
   sourceAccountId: string;
   /** Contas ativas e não-restritas que podem criar o destino. */
   destAccounts: Array<{ id: string; label: string }>;
+  actingTenantId?: string;
 }) {
   const router = useRouter();
   const [destTitle, setDestTitle] = useState(`${sourceTitle} (clone)`);
@@ -196,6 +198,7 @@ export function CloneForm({
               destAccountId,
               ...flags,
               ...replacements,
+              actingTenantId,
             });
             if (!res.ok) {
               setError(res.error);

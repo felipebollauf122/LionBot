@@ -1,16 +1,23 @@
 import { notFound } from "next/navigation";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
+import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 import { BotCloneForm } from "@/components/dashboard/bot-clone-form";
 import { listDestBots, listEligibleBotCloneAccounts } from "@/app/dashboard/automations/botclones/actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
-export default async function NewBotClonePage() {
+type SP = { [key: string]: string | string[] | undefined };
+
+export default async function NewBotClonePage({ searchParams }: { searchParams: Promise<SP> }) {
   if (!(await canAccessAutomations())) notFound();
+  const sp = await searchParams;
+  const requestedView = typeof sp.view === "string" ? sp.view : undefined;
+  // resolveActingTenantId reconfere admin no server — ?view= de um não-admin é ignorado.
+  const actingTenantId = await resolveActingTenantId(requestedView);
 
   const [destBots, accounts] = await Promise.all([
-    listDestBots(),
-    listEligibleBotCloneAccounts(),
+    listDestBots(actingTenantId),
+    listEligibleBotCloneAccounts(actingTenantId),
   ]);
 
   return (
@@ -28,6 +35,7 @@ export default async function NewBotClonePage() {
         <BotCloneForm
           destBots={destBots.map((b) => ({ id: b.id, label: `@${b.bot_username}` }))}
           accounts={accounts.map((a) => ({ id: a.id, label: a.display_name || a.phone_number }))}
+          actingTenantId={actingTenantId}
         />
       </CardShell>
     </div>

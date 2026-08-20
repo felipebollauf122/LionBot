@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { parseTargets } from "@/lib/mtproto/target-parser";
 import { revalidatePath } from "next/cache";
 import { requireAutomationsAccess } from "@/lib/actions/automations-access-actions";
+import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 
 // Kinds elegíveis em campanha global — owner pediu alcance máximo, então
 // inclui grupos/canais onde só participa (risco de ban por spam aceito).
@@ -38,19 +39,13 @@ async function enqueueJob(job: MtprotoJob): Promise<void> {
   }
 }
 
-async function currentTenantId(): Promise<string> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("not authenticated");
-  return user.id;
-}
-
 export async function startAddAccount(
   phoneNumber: string,
   displayName: string,
+  actingTenantId?: string,
 ): Promise<{ accountId: string }> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("mtproto_accounts")
@@ -115,10 +110,11 @@ export async function createCampaign(input: {
   dialogIds?: string[];
   recurrenceHours?: number | null;
   global?: boolean;
+  actingTenantId?: string;
 }): Promise<CreateCampaignResult> {
   try {
     await requireAutomationsAccess();
-    const tenantId = await currentTenantId();
+    const tenantId = await resolveActingTenantId(input.actingTenantId);
     const supabase = await createClient();
 
     let recurrenceHours: number | null = null;
@@ -270,13 +266,14 @@ export async function createCampaign(input: {
 
 export async function syncAccountDialogs(accountId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
+  // Sem filtro de tenant_id: a RLS de mtproto_accounts (tenant_id = auth.uid()
+  // OR is_admin()) já garante que só vê/afeta conta própria ou, se admin, de
+  // qualquer tenant — é o que permite o seletor "Minha/Todos/Usuário" agir.
   const { data: account } = await supabase
     .from("mtproto_accounts")
-    .select("id, tenant_id")
+    .select("id")
     .eq("id", accountId)
-    .eq("tenant_id", tenantId)
     .single();
   if (!account) throw new Error("Conta não encontrada");
   await enqueueJob({ kind: "account.sync-dialogs", accountId });
@@ -294,14 +291,13 @@ export async function listAccountDialogs(
   peer_type: string;
   is_bot: boolean;
 }>> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
-  // Garante que a conta pertence ao tenant
+  // Sem filtro de tenant_id — RLS de mtproto_accounts cobre (própria ou, se
+  // admin, qualquer tenant).
   const { data: account } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("id", accountId)
-    .eq("tenant_id", tenantId)
     .single();
   if (!account) return [];
 
@@ -330,12 +326,12 @@ export async function listAccountDialogs(
   }>;
 }
 
-export async function listActiveAccounts(): Promise<Array<{
+export async function listActiveAccounts(actingTenantId?: string): Promise<Array<{
   id: string;
   display_name: string | null;
   phone_number: string;
 }>> {
-  const tenantId = await currentTenantId();
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("mtproto_accounts")
@@ -369,14 +365,12 @@ async function postBotServer(path: string, body: unknown): Promise<Response> {
 }
 
 export async function openMtprotoInbox(accountId: string): Promise<{ ok: boolean; error?: string }> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
-  // RLS guard: garante que a conta é do tenant
+  // RLS guard: mtproto_accounts só deixa ver a própria conta ou, se admin, qualquer uma.
   const { data } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("id", accountId)
-    .eq("tenant_id", tenantId)
     .single();
   if (!data) return { ok: false, error: "account not found" };
   const res = await postBotServer("/api/mtproto/inbox/open", { accountId });
@@ -385,26 +379,22 @@ export async function openMtprotoInbox(accountId: string): Promise<{ ok: boolean
 }
 
 export async function heartbeatMtprotoInbox(accountId: string): Promise<void> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("id", accountId)
-    .eq("tenant_id", tenantId)
     .single();
   if (!data) return;
   await postBotServer("/api/mtproto/inbox/heartbeat", { accountId });
 }
 
 export async function closeMtprotoInbox(accountId: string): Promise<void> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("id", accountId)
-    .eq("tenant_id", tenantId)
     .single();
   if (!data) return;
   await postBotServer("/api/mtproto/inbox/close", { accountId });
@@ -413,13 +403,11 @@ export async function closeMtprotoInbox(accountId: string): Promise<void> {
 export async function listInboxMessages(
   accountId: string,
 ): Promise<Array<{ id: string; tg_message_id: number; text: string | null; received_at: string; from_peer_name: string | null }>> {
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
   const { data: account } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("id", accountId)
-    .eq("tenant_id", tenantId)
     .single();
   if (!account) return [];
   const { data } = await supabase
@@ -439,13 +427,12 @@ export async function listInboxMessages(
  */
 export async function pauseCampaign(campaignId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
+  // Sem filtro de tenant_id — RLS de mtproto_campaigns cobre.
   await supabase
     .from("mtproto_campaigns")
     .update({ status: "paused" })
-    .eq("id", campaignId)
-    .eq("tenant_id", tenantId);
+    .eq("id", campaignId);
   revalidatePath("/dashboard/automations");
   revalidatePath(`/dashboard/automations/campaigns/${campaignId}`);
 }
@@ -457,13 +444,12 @@ export async function pauseCampaign(campaignId: string): Promise<void> {
  */
 export async function deleteCampaign(campaignId: string): Promise<void> {
   await requireAutomationsAccess();
-  const tenantId = await currentTenantId();
   const supabase = await createClient();
+  // Sem filtro de tenant_id — RLS de mtproto_campaigns cobre.
   const { error } = await supabase
     .from("mtproto_campaigns")
     .delete()
-    .eq("id", campaignId)
-    .eq("tenant_id", tenantId);
+    .eq("id", campaignId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard/automations");
 }

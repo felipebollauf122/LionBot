@@ -1,11 +1,18 @@
 import { MtprotoCampaignForm } from "@/components/dashboard/mtproto-campaign-form";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
+import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 import { notFound } from "next/navigation";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
-export default async function NewCampaignPage() {
+type SP = { [key: string]: string | string[] | undefined };
+
+export default async function NewCampaignPage({ searchParams }: { searchParams: Promise<SP> }) {
   if (!(await canAccessAutomations())) notFound();
+  const sp = await searchParams;
+  const requestedView = typeof sp.view === "string" ? sp.view : undefined;
+  // resolveActingTenantId reconfere admin no server — ?view= de um não-admin é ignorado.
+  const actingTenantId = await resolveActingTenantId(requestedView);
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
       <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
@@ -23,7 +30,7 @@ export default async function NewCampaignPage() {
         icon={icons.megaphone}
         accent="amber"
       >
-        <MtprotoCampaignForm />
+        <MtprotoCampaignForm actingTenantId={actingTenantId} />
       </CardShell>
     </div>
   );

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
+import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 import { CloneForm } from "@/components/dashboard/clone-form";
 import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
@@ -9,28 +10,28 @@ import { icons } from "@/components/dashboard/analytics/icons";
 export default async function NewClonePage({
   searchParams,
 }: {
-  searchParams: Promise<{ dialogId?: string }>;
+  searchParams: Promise<{ dialogId?: string; view?: string }>;
 }) {
   if (!(await canAccessAutomations())) notFound();
-  const { dialogId } = await searchParams;
+  const { dialogId, view } = await searchParams;
   if (!dialogId) notFound();
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  // resolveActingTenantId reconfere admin no server — ?view= de um não-admin é ignorado.
+  const actingTenantId = await resolveActingTenantId(view);
 
   const { data: dialog } = await supabase
     .from("mtproto_dialogs")
     .select("id, title, kind, account_id, mtproto_accounts!inner(tenant_id)")
     .eq("id", dialogId)
-    .eq("mtproto_accounts.tenant_id", user.id)
+    .eq("mtproto_accounts.tenant_id", actingTenantId)
     .single();
   if (!dialog) notFound();
 
   // Contas que podem CRIAR o destino: ativas e não-restritas. A conta da
   // origem entra na lista só se ela mesma puder criar (não estiver restrita).
   // Reusa a mesma action que valida a fonte da verdade, sem duplicar a query.
-  const eligible = await listEligibleDestAccounts();
+  const eligible = await listEligibleDestAccounts(actingTenantId);
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
@@ -57,6 +58,7 @@ export default async function NewClonePage({
             id: a.id,
             label: a.display_name || a.phone_number,
           }))}
+          actingTenantId={actingTenantId}
         />
       </CardShell>
     </div>

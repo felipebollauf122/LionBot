@@ -67,6 +67,12 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
   ]);
   const bot = (botRows ?? [])[0] ?? null;
 
+  // Ações de escrita (sincronizar, remover, criar campanha/clone...) usam a sessão
+  // do admin (currentTenantId()), não o tenant selecionado — então em "Todos"/outro
+  // usuário a UI vira só-leitura pra evitar 404/erro ao clicar e pra não disparar
+  // ações acidentalmente na conta de outro usuário.
+  const readOnly = scope.mode !== "mine";
+
   const activeAccounts = (accounts ?? []).filter((a) => a.status === "active").length;
   const clonesCompleted = (clones ?? []).filter((c) => c.status === "completed").length;
   const clonesRunning = (clones ?? []).filter(
@@ -83,7 +89,14 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           </p>
         </div>
         {scope.isAdmin && (
-          <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "mine"} />
+          <div className="flex flex-col items-end gap-1.5">
+            <AdminViewSwitcher users={viewUsers} currentView={requestedView ?? "mine"} />
+            {readOnly && (
+              <span className="text-(--text-muted) text-[11px]">
+                Visão somente leitura — ações ficam disponíveis em &quot;Minha&quot;
+              </span>
+            )}
+          </div>
         )}
       </header>
 
@@ -138,7 +151,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="purple"
           revealIndex={2}
         >
-          <MtprotoAccounts accounts={accounts ?? []} />
+          <MtprotoAccounts accounts={accounts ?? []} readOnly={readOnly} />
         </CardShell>
       </div>
 
@@ -151,7 +164,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="cyan"
           revealIndex={3}
         >
-          <AutomationBotCard bot={bot ?? null} />
+          <AutomationBotCard bot={bot ?? null} readOnly={readOnly} />
         </CardShell>
       </div>
 
@@ -164,7 +177,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="magenta"
           revealIndex={4}
         >
-          <CloneList clones={clones ?? []} />
+          <CloneList clones={clones ?? []} readOnly={readOnly} />
         </CardShell>
       </div>
 
@@ -177,12 +190,14 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="purple"
           revealIndex={5}
           right={
-            <a href="/dashboard/automations/botclones/new" className="btn-primary text-xs px-4 py-2">
-              Novo
-            </a>
+            !readOnly && (
+              <a href="/dashboard/automations/botclones/new" className="btn-primary text-xs px-4 py-2">
+                Novo
+              </a>
+            )
           }
         >
-          <BotCloneList clones={botClones ?? []} />
+          <BotCloneList clones={botClones ?? []} readOnly={readOnly} />
         </CardShell>
       </div>
 
@@ -195,12 +210,14 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           accent="amber"
           revealIndex={6}
           right={
-            <a href="/dashboard/automations/new-campaign" className="btn-primary text-xs px-4 py-2">
-              Nova campanha
-            </a>
+            !readOnly && (
+              <a href="/dashboard/automations/new-campaign" className="btn-primary text-xs px-4 py-2">
+                Nova campanha
+              </a>
+            )
           }
         >
-          <MtprotoCampaignList campaigns={campaigns ?? []} />
+          <MtprotoCampaignList campaigns={campaigns ?? []} readOnly={readOnly} />
         </CardShell>
       </div>
 

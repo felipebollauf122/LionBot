@@ -12,6 +12,7 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
 // do painel sólido, row-hover e reveal escalonado.
 export function CloneList({
   clones,
+  readOnly = false,
 }: {
   clones: Array<{
     id: string;
@@ -21,6 +22,7 @@ export function CloneList({
     copied_count: number;
     total_seen: number;
   }>;
+  readOnly?: boolean;
 }) {
   if (clones.length === 0) {
     return (
@@ -39,12 +41,11 @@ export function CloneList({
             : c.status === "completed"
               ? 100
               : 0;
-        return (
-          <a
-            key={c.id}
-            href={`/dashboard/automations/clones/${c.id}`}
-            className={`row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) hover:border-(--border-default) transition-colors`}
-          >
+        // readOnly (visão admin de outro usuário): a página de detalhe usa a
+        // sessão do admin pra achar o clone, então linkar daria 404 — vira <div>.
+        const rowClass = `row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) ${readOnly ? "" : "hover:border-(--border-default) transition-colors"}`;
+        const content = (
+          <>
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm text-foreground font-medium truncate">{c.dest_title}</span>
               <span className={`badge ${meta.badge} shrink-0`}>{meta.label}</span>
@@ -67,6 +68,15 @@ export function CloneList({
                 {c.copied_count} copiadas
               </span>
             </div>
+          </>
+        );
+        return readOnly ? (
+          <div key={c.id} className={rowClass}>
+            {content}
+          </div>
+        ) : (
+          <a key={c.id} href={`/dashboard/automations/clones/${c.id}`} className={rowClass}>
+            {content}
           </a>
         );
       })}

@@ -7,8 +7,10 @@ import { saveAutomationBot, removeAutomationBot } from "@/app/dashboard/automati
 // (com o ícone do bot), então aqui não há card externo nem título duplicado.
 export function AutomationBotCard({
   bot,
+  readOnly = false,
 }: {
   bot: { username: string; bot_user_id: string } | null;
+  readOnly?: boolean;
 }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,14 +25,24 @@ export function AutomationBotCard({
             Publica os clones e é promovido a admin nos destinos criados.
           </div>
         </div>
-        <button
-          onClick={() => start(() => void removeAutomationBot())}
-          disabled={pending}
-          className="btn-ghost text-xs px-3 py-1.5 shrink-0 disabled:opacity-40"
-        >
-          Trocar
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => start(() => void removeAutomationBot())}
+            disabled={pending}
+            className="btn-ghost text-xs px-3 py-1.5 shrink-0 disabled:opacity-40"
+          >
+            Trocar
+          </button>
+        )}
       </div>
+    );
+  }
+
+  if (readOnly) {
+    return (
+      <p className="py-6 text-center text-(--text-ghost) text-xs">
+        Nenhum bot companheiro cadastrado por este usuário.
+      </p>
     );
   }
 

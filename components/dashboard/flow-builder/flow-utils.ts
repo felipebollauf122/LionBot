@@ -191,15 +191,41 @@ export function isNodeIncomplete(
   }
 }
 
+export interface ButtonLike {
+  id?: string;
+  value?: string;
+  action?: string;
+}
+
+/**
+ * IDs de handle que UM botão realmente ganha no canvas — única fonte de
+ * verdade, usada tanto pelo desenho do nó (button-node.tsx) quanto pela poda
+ * de arestas órfãs (validSourceHandles abaixo) e pelo rename de aresta ao
+ * editar um botão (flow-editor.tsx, handleUpdateNode). As três precisam bater
+ * exatamente — divergir faz uma aresta editada não ser nem renomeada nem
+ * podada, e sobrar órfã pra sempre.
+ *
+ * - "payment": 2 handles fixos, derivados do id (nunca do value) — bate com
+ *   o callback_data que o botão de pagamento gera (button-node.tsx).
+ * - "open_url": nenhum handle — o Telegram abre a URL direto no cliente, o
+ *   engine nunca gera callback_data pra esse botão.
+ * - qualquer outra ação: 1 handle, derivado do value (o que a engine usa de
+ *   verdade no callback_data comum — server/src/engine/nodes/button.ts).
+ */
+export function buttonHandleIds(b: ButtonLike, index: number): string[] {
+  const btnId = String(b.id ?? "").trim() || `btn_idx_${index}`;
+  if (b.action === "payment") return [`paid:${btnId}`, `not_paid:${btnId}`];
+  if (b.action === "open_url") return [];
+  const plain = String(b.value ?? "").trim() || String(b.id ?? "").trim() || `btn_idx_${index}`;
+  return [plain];
+}
+
 /**
  * Conjunto de sourceHandles válidos de um nó dado seu data atual, para podar
  * arestas presas a handles que deixaram de existir (botão removido, sale_type
  * trocado, kind flow→link). Retorna null quando o tipo não tem handles
  * deriváveis com segurança — nesses casos NUNCA podar (ex.: unmapped e nós
  * clonados, cujos handles vêm do transcript).
- *
- * Deliberadamente SUPER-inclusivo no tipo "button": inclui ids, values e os
- * handles legados por índice (btn_idx_N), pra nunca destruir conexão legítima.
  */
 export function validSourceHandles(
   type: string | undefined,
@@ -210,17 +236,9 @@ export function validSourceHandles(
       return new Set(["true", "false"]);
     case "button": {
       const set = new Set<string>();
-      const buttons = Array.isArray(data.buttons)
-        ? (data.buttons as { id?: string; value?: string }[])
-        : [];
+      const buttons = Array.isArray(data.buttons) ? (data.buttons as ButtonLike[]) : [];
       buttons.forEach((b, i) => {
-        for (const key of [b.id, b.value, `btn_idx_${i}`]) {
-          if (key) {
-            set.add(String(key));
-            set.add(`paid:${key}`);
-            set.add(`not_paid:${key}`);
-          }
-        }
+        for (const handle of buttonHandleIds(b, i)) set.add(handle);
       });
       return set;
     }

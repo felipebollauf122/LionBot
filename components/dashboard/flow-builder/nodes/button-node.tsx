@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { NODE_META, handleStyle } from "../flow-utils";
+import { NODE_META, handleStyle, buttonHandleIds } from "../flow-utils";
 import { BaseNode, inlineHandleStyle } from "./base-node";
 
 interface ButtonData { id?: string; text: string; action: string; value: string; product_id?: string; style?: string; }
@@ -38,16 +38,12 @@ export function ButtonNode({ data, selected }: NodeProps) {
         <div className="space-y-1.5">
           {buttons.map((btn, i) => {
             const isPayment = btn.action === "payment";
-            // Contrato com a engine (paid:/not_paid:) — NÃO mudar.
-            const btnId = btn.id ?? `btn_idx_${i}`;
-            // Handle do botão comum: precisa casar com o que a engine usa de
-            // verdade no callback_data (server/src/engine/nodes/button.ts:
-            // `${nodeId}:${btn.value}` — SEMPRE btn.value cru pras ações
-            // callback/go_to_node/"next" de clone, nunca btn.id). value vem
-            // primeiro; id e btn_idx_N são só fallback pra botão legado sem
-            // value preenchido. String vazia não conta como id válido.
-            const plainHandleId =
-              String(btn.value ?? "").trim() || String(btn.id ?? "").trim() || `btn_idx_${i}`;
+            // Única fonte de verdade dos ids de handle deste botão
+            // (flow-utils.ts) — validSourceHandles (poda) e o rename de
+            // aresta em flow-editor.tsx dependem de bater exatamente com o
+            // que é renderizado aqui, senão uma aresta editada não é nem
+            // renomeada nem podada, e sobra órfã pra sempre.
+            const handles = buttonHandleIds(btn, i);
             const styleColor = btn.style ? STYLE_COLORS[btn.style] : undefined;
             return (
               <div
@@ -106,7 +102,7 @@ export function ButtonNode({ data, selected }: NodeProps) {
                   <Handle
                     type="source"
                     position={Position.Right}
-                    id={plainHandleId}
+                    id={handles[0]}
                     style={{
                       ...handleStyle(COLOR),
                       position: "absolute",
@@ -126,7 +122,7 @@ export function ButtonNode({ data, selected }: NodeProps) {
                       <Handle
                         type="source"
                         position={Position.Bottom}
-                        id={`paid:${btnId}`}
+                        id={handles[0]}
                         style={inlineHandleStyle("var(--accent)")}
                       />
                       <span className="text-(--accent) text-[0.6875rem] font-semibold leading-none">Pagou</span>
@@ -135,7 +131,7 @@ export function ButtonNode({ data, selected }: NodeProps) {
                       <Handle
                         type="source"
                         position={Position.Bottom}
-                        id={`not_paid:${btnId}`}
+                        id={handles[1]}
                         style={inlineHandleStyle("var(--red)")}
                       />
                       <span className="text-(--red) text-[0.6875rem] font-semibold leading-none">Não pagou</span>

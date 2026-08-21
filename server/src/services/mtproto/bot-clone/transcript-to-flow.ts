@@ -19,7 +19,33 @@ export interface CapturedNodeForFlow {
 
 const SUPPORTED_MEDIA = new Set(["photo", "video"]);
 const NODE_WIDTH_X = 260;
-const SIBLING_HEIGHT_Y = 160;
+// Passo vertical por nó — generoso o bastante pro maior card comum do editor
+// nunca ficar visualmente empilhado atrás do anterior. Raiz do bug original:
+// um turno com 2+ mensagens sequenciais (ex.: duas fotos seguidas) empilhava
+// os nós a só 40px um do outro, quase sobrepostos — o segundo nó (com a
+// mídia ANTIGA) ficava escondido atrás do primeiro, indistinguível de "1
+// bloco só" no canvas; o usuário editava o visível achando que tinha
+// corrigido tudo, mas o engine continuava mandando os dois em sequência.
+const BASE_STEP_Y = 220;
+// Nó de botão cresce com a quantidade de botões (1 linha por botão,
+// button-node.tsx) — um passo fixo não escala: a partir de ~4 botões o card
+// já é mais alto que qualquer constante fixa razoável, reintroduzindo a
+// mesma sobreposição que este ajuste existe pra evitar.
+const BUTTON_STEP_PER_BUTTON_Y = 60;
+// Respiro entre turnos irmãos na mesma profundidade (coluna X), além da
+// altura REAL que cada um consumiu — turnos não têm tamanho fixo (uma rajada
+// capturada pode ter várias mensagens), então usar um múltiplo fixo por
+// índice de irmão (o esquema antigo) deixava de bastar assim que um turno
+// tinha mensagens demais e invadia a linha do próximo. Por isso a posição Y
+// de cada turno agora vem de um cursor por profundidade (depthYCursor, em
+// buildFlowGraph) que avança pela altura real do turno anterior, nunca por
+// uma suposição de tamanho.
+const SIBLING_GAP_Y = 120;
+
+/** Altura vertical que UM nó do editor reserva no layout, pelo seu tipo. */
+function stepHeightFor(nodeType: string, buttonCount = 0): number {
+  return nodeType === "button" ? BASE_STEP_Y + buttonCount * BUTTON_STEP_PER_BUTTON_Y : BASE_STEP_Y;
+}
 
 interface IdGen {
   next(): string;
@@ -64,19 +90,19 @@ function buildTurnChain(
   node: CapturedNodeForFlow,
   ids: IdGen,
   depth: number,
-  siblingIndex: number,
-): { nodes: FlowNode[]; edges: FlowEdge[]; chain: TurnChain } {
+  startY: number,
+): { nodes: FlowNode[]; edges: FlowEdge[]; chain: TurnChain; endY: number } {
   const nodes: FlowNode[] = [];
   const edges: FlowEdge[] = [];
   const buttonNodes: TurnChain["buttonNodes"] = [];
   let prevId: string | null = null;
-  let seqInTurn = 0;
+  let yCursor = startY;
 
-  const position = () => ({ x: depth * NODE_WIDTH_X, y: siblingIndex * SIBLING_HEIGHT_Y + seqInTurn * 40 });
-  const link = (id: string) => {
+  const position = () => ({ x: depth * NODE_WIDTH_X, y: yCursor });
+  const link = (id: string, stepHeight: number) => {
     if (prevId) edges.push({ id: `e_${prevId}_${id}`, source: prevId, target: id });
     prevId = id;
-    seqInTurn++;
+    yCursor += stepHeight;
   };
 
   for (const msg of node.messages) {
@@ -107,19 +133,21 @@ function buildTurnChain(
           position: position(),
         });
       }
-      link(mediaId);
+      link(mediaId, BASE_STEP_Y);
 
       const btnId = ids.next();
-      nodes.push({ id: btnId, type: "button", data: buildButtonNodeData(msg, ""), position: position() });
-      link(btnId);
+      const btnData = buildButtonNodeData(msg, "");
+      nodes.push({ id: btnId, type: "button", data: btnData, position: position() });
+      link(btnId, stepHeightFor("button", btnData.buttons.length));
       buttonNodes.push({ msg, flowNodeId: btnId });
       continue;
     }
 
     if (hasButtons) {
       const btnId = ids.next();
-      nodes.push({ id: btnId, type: "button", data: buildButtonNodeData(msg), position: position() });
-      link(btnId);
+      const btnData = buildButtonNodeData(msg);
+      nodes.push({ id: btnId, type: "button", data: btnData, position: position() });
+      link(btnId, stepHeightFor("button", btnData.buttons.length));
       buttonNodes.push({ msg, flowNodeId: btnId });
       continue;
     }
@@ -135,7 +163,7 @@ function buildTurnChain(
             : { image_url: msg.mediaPublicUrl ?? "", caption: entitiesToHtml(msg.text ?? "", msg.entities) },
         position: position(),
       });
-      link(id);
+      link(id, BASE_STEP_Y);
       continue;
     }
 
@@ -147,14 +175,14 @@ function buildTurnChain(
         data: { kind: "unsupported_media", media_kind: msg.mediaKind, media_public_url: msg.mediaPublicUrl, caption: msg.text ?? "" },
         position: position(),
       });
-      link(id);
+      link(id, BASE_STEP_Y);
       continue;
     }
 
     // Texto puro.
     const id = ids.next();
     nodes.push({ id, type: "text", data: { text: entitiesToHtml(msg.text ?? "", msg.entities) }, position: position() });
-    link(id);
+    link(id, BASE_STEP_Y);
   }
 
   // Turno sem mensagem nenhuma (não deveria acontecer, mas não trava a
@@ -169,6 +197,7 @@ function buildTurnChain(
     nodes,
     edges,
     chain: { capturedNodeId: node.id, entryFlowNodeId: nodes[0].id, buttonNodes },
+    endY: yCursor,
   };
 }
 
@@ -207,15 +236,23 @@ export function buildFlowGraph(nodes: CapturedNodeForFlow[], priceMap?: Map<stri
       }
     }
   }
-  const siblingCounters = new Map<number, number>();
+  // Cursor Y por profundidade (coluna X): cada turno começa onde o anterior
+  // NA MESMA coluna realmente terminou, nunca por um múltiplo fixo de índice
+  // — turnos não têm tamanho previsível (mensagens/botões variam), e um
+  // espaçamento fixo por índice de irmão só vale até o primeiro turno grande
+  // demais pra ele, quando volta a empilhar em cima do próximo. A mesma
+  // coluna também é reaproveitada pelos placeholders da passada 2 abaixo
+  // (nós "não explorado"/"pulado"), então eles nascem sempre abaixo de
+  // qualquer conteúdo real já colocado ali, nunca por cima.
+  const depthYCursor = new Map<number, number>();
   for (const n of explored) {
     const depth = depthOf.get(n.id) ?? 0;
-    const sibling = siblingCounters.get(depth) ?? 0;
-    siblingCounters.set(depth, sibling + 1);
-    const { nodes: turnNodes, edges: turnEdges, chain } = buildTurnChain(n, ids, depth, sibling);
+    const startY = depthYCursor.get(depth) ?? 0;
+    const { nodes: turnNodes, edges: turnEdges, chain, endY } = buildTurnChain(n, ids, depth, startY);
     allNodes.push(...turnNodes);
     allEdges.push(...turnEdges);
     chains.set(n.id, chain);
+    depthYCursor.set(depth, endY + SIBLING_GAP_Y);
   }
 
   // Raiz sintética: todo fluxo do engine espera um nó 'trigger' — mesmo
@@ -256,22 +293,34 @@ export function buildFlowGraph(nodes: CapturedNodeForFlow[], priceMap?: Map<stri
         // Sem filho (nunca clicado — teto de profundidade/nós, erro, ou
         // job terminou antes de chegar aqui): nó unmapped explicando,
         // nunca uma aresta solta ou um botão silenciosamente sem destino.
+        // Posição vem do MESMO cursor por profundidade da passada 1 (nunca
+        // y:0 fixo) — placeholders de turnos-irmãos diferentes na mesma
+        // coluna não ficam mais empilhados uns sobre os outros.
+        const colDepth = (depthOf.get(n.id) ?? 0) + 1;
+        const placeholderY = depthYCursor.get(colDepth) ?? 0;
+        depthYCursor.set(colDepth, placeholderY + BASE_STEP_Y + SIBLING_GAP_Y);
         const unmappedId = ids.next();
         allNodes.push({
           id: unmappedId,
           type: "unmapped",
           data: { kind: "not_explored", original_label: btn.label, skip_reason: "not_explored_by_job_end" },
-          position: { x: (depthOf.get(n.id) ?? 0) * NODE_WIDTH_X + NODE_WIDTH_X, y: 0 },
+          position: { x: colDepth * NODE_WIDTH_X, y: placeholderY },
         });
         allEdges.push({ id: `e_${flowNodeId}_${btn.id}`, source: flowNodeId, target: unmappedId, sourceHandle: btn.id });
       }
       // Botões pulados pelo guard (não-url): se o preço deu pra extrair e um
       // produto já foi criado pro rótulo (priceMap, montado pelo chamador
       // antes de qualquer buildFlowGraph), vira payment_button de verdade;
-      // senão cai no unmapped de sempre, motivo preservado.
+      // senão cai no unmapped de sempre, motivo preservado. Posição por
+      // botão (não mais 1 posição reaproveitada pra todos os botões pulados
+      // da mesma mensagem — isso empilhava 2+ placeholders exatamente no
+      // mesmo x,y quando uma mensagem tinha vários botões pulados).
       for (const btn of msg.buttons) {
         if (btn.kind === "url" || !btn.skip) continue;
-        const position = { x: (depthOf.get(n.id) ?? 0) * NODE_WIDTH_X + NODE_WIDTH_X, y: 0 };
+        const colDepth = (depthOf.get(n.id) ?? 0) + 1;
+        const placeholderY = depthYCursor.get(colDepth) ?? 0;
+        depthYCursor.set(colDepth, placeholderY + BASE_STEP_Y + SIBLING_GAP_Y);
+        const position = { x: colDepth * NODE_WIDTH_X, y: placeholderY };
         const bundleId = priceMap?.get(normalizeLabelForDedupKey(btn.label));
         if (bundleId) {
           const paymentId = ids.next();

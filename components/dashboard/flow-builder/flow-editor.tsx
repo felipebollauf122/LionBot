@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   ReactFlow,
@@ -24,6 +24,7 @@ import "@xyflow/react/dist/style.css";
 import { NodePalette } from "./node-palette";
 import { MobileBlockSheet } from "./mobile-block-sheet";
 import { NodeConfigPanel } from "./node-config-panel";
+import { createDeletableEdge, type EdgeInteractionHandlers } from "./edges/deletable-edge";
 import { TriggerNode } from "./nodes/trigger-node";
 import { TextNode } from "./nodes/text-node";
 import { ImageNode } from "./nodes/image-node";
@@ -35,7 +36,7 @@ import { ActionNode } from "./nodes/action-node";
 import { VideoNode } from "./nodes/video-node";
 import { PaymentButtonNode } from "./nodes/payment-button-node";
 import { UnmappedNode } from "./nodes/unmapped-node";
-import { nodeColor, edgeMetaForHandle, isNodeIncomplete, validSourceHandles } from "./flow-utils";
+import { nodeColor, edgeMetaForHandle, isNodeIncomplete, validSourceHandles, buttonHandleIds, type ButtonLike } from "./flow-utils";
 import { saveFlow } from "@/lib/actions/flow-actions";
 import { LionMark } from "@/components/brand/lion-mark";
 import type { FlowData, FlowNode, NodeType } from "@/lib/types/database";
@@ -372,6 +373,79 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
     [setEdges, takeSnapshot],
   );
 
+  // ===== Aresta: remover ao passar o mouse (estilo n8n) =====
+  // Passar sobre a linha (ou selecioná-la, pra quem não tem hover) revela um
+  // "x" no meio pra apagar a conexão — sem isso a única forma de remover uma
+  // aresta era selecionar + apertar Delete, nada descoberta na UI.
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  // Timeout de saída: o botão flutuante fica numa camada ACIMA do path SVG,
+  // então mover o mouse da linha pro botão dispara onEdgeMouseLeave antes do
+  // clique registrar. Um pequeno atraso (cancelável por qualquer re-entrada,
+  // na linha OU no botão) evita o "x" sumir debaixo do cursor.
+  const edgeHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearEdgeHideTimeout = useCallback(() => {
+    if (edgeHideTimeoutRef.current) {
+      clearTimeout(edgeHideTimeoutRef.current);
+      edgeHideTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Sem isso, sair da tela com o "x" prestes a sumir deixava o timeout vivo:
+  // ele disparava depois do unmount e chamava setHoveredEdgeId numa instância
+  // já desmontada.
+  useEffect(() => clearEdgeHideTimeout, [clearEdgeHideTimeout]);
+
+  const scheduleEdgeHide = useCallback(() => {
+    clearEdgeHideTimeout();
+    edgeHideTimeoutRef.current = setTimeout(() => setHoveredEdgeId(null), 200);
+  }, [clearEdgeHideTimeout]);
+
+  const onEdgeMouseEnter = useCallback(
+    (_event: ReactMouseEvent, edge: Edge) => {
+      clearEdgeHideTimeout();
+      setHoveredEdgeId(edge.id);
+    },
+    [clearEdgeHideTimeout],
+  );
+
+  const onEdgeMouseLeave = useCallback(() => {
+    scheduleEdgeHide();
+  }, [scheduleEdgeHide]);
+
+  const handleDeleteEdge = useCallback(
+    (edgeId: string) => {
+      takeSnapshot();
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+      setHoveredEdgeId(null);
+    },
+    [setEdges, takeSnapshot],
+  );
+
+  // Ref sempre-atual: edgeTypes precisa de referência ESTÁVEL (useMemo com
+  // deps vazias) pro React Flow não recriar handles a cada render, então os
+  // handlers de fato usados pelo botão viajam por aqui em vez de props.
+  const edgeInteractionHandlersRef = useRef<EdgeInteractionHandlers>({
+    onDelete: handleDeleteEdge,
+    onButtonEnter: clearEdgeHideTimeout,
+    onButtonLeave: scheduleEdgeHide,
+  });
+  edgeInteractionHandlersRef.current = {
+    onDelete: handleDeleteEdge,
+    onButtonEnter: clearEdgeHideTimeout,
+    onButtonLeave: scheduleEdgeHide,
+  };
+
+  const edgeTypes = useMemo(() => ({ default: createDeletableEdge(edgeInteractionHandlersRef) }), []);
+
+  // Projeção só de exibição: marca a aresta sob o mouse com `data.hovered`
+  // pro edge customizado revelar o botão. Nunca toca no estado real de
+  // `edges` (o que salva/desfaz continua limpo, sem esse campo efêmero).
+  const displayEdges = useMemo(
+    () => (hoveredEdgeId ? edges.map((e) => (e.id === hoveredEdgeId ? { ...e, data: { ...e.data, hovered: true } } : e)) : edges),
+    [edges, hoveredEdgeId],
+  );
+
   // ===== Seleção derivada (alimenta o painel; funciona por clique E teclado) =====
   const onSelectionChange = useCallback(({ nodes: selected }: OnSelectionChangeParams) => {
     setSelectedNodeId(selected.length === 1 ? selected[0].id : null);
@@ -477,12 +551,54 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
       if (!node) return;
       // Decide poda ANTES dos setState (refs ainda apontam pro estado atual).
       const mergedData = { ...node.data, ...patch };
+
+      // Botões: o handle do canvas deriva de btn.value (ou paid:/not_paid:
+      // pro botão de pagamento — buttonHandleIds em flow-utils.ts, única
+      // fonte de verdade compartilhada com button-node.tsx e
+      // validSourceHandles). Editar "Valor"/"Ir para no" troca esse valor, e
+      // sem isso a aresta já desenhada ficava presa ao handle ANTIGO — a
+      // checagem de poda logo abaixo a via como "handle removido" e apagava
+      // a conexão a cada edição de texto no botão. Renomeia o sourceHandle
+      // da aresta existente em vez de podar: mesma conexão, handle acompanha
+      // o novo valor.
+      let renamedEdges = edgesRef.current;
+      if (node.type === "button") {
+        const oldButtons = Array.isArray(node.data.buttons) ? (node.data.buttons as ButtonLike[]) : [];
+        const newButtons = Array.isArray(mergedData.buttons) ? (mergedData.buttons as ButtonLike[]) : [];
+        const renameMap = new Map<string, string>();
+        oldButtons.forEach((oldBtn, i) => {
+          const newIndex = oldBtn.id ? newButtons.findIndex((b) => b.id === oldBtn.id) : i;
+          const newBtn = newIndex >= 0 ? newButtons[newIndex] : undefined;
+          if (!newBtn) return; // botão removido — a poda abaixo cuida da(s) aresta(s)
+          const oldHandles = buttonHandleIds(oldBtn, i);
+          const newHandles = buttonHandleIds(newBtn, newIndex);
+          // Só renomeia handle-a-handle quando a CONTAGEM bate (mesmo
+          // esquema — ação não mudou): 1-pra-1 (comum) ou 2-pra-2
+          // (pagamento, paid/not_paid na mesma ordem). Ação mudou (virou ou
+          // deixou de ser payment/open_url) → contagem diverge, não tem
+          // correspondência 1:1 sensata; os handles antigos somem de
+          // verdade e a poda (agora precisa, também via buttonHandleIds)
+          // cuida deles.
+          if (oldHandles.length === newHandles.length) {
+            oldHandles.forEach((oldHandle, hi) => {
+              const newHandle = newHandles[hi];
+              if (oldHandle !== newHandle) renameMap.set(oldHandle, newHandle);
+            });
+          }
+        });
+        if (renameMap.size > 0) {
+          renamedEdges = renamedEdges.map((e) =>
+            e.source === nodeId && e.sourceHandle && renameMap.has(e.sourceHandle)
+              ? { ...e, sourceHandle: renameMap.get(e.sourceHandle) }
+              : e,
+          );
+        }
+      }
+
       const valid = validSourceHandles(node.type, mergedData);
       const willPrune =
         valid !== null &&
-        edgesRef.current.some(
-          (e) => e.source === nodeId && e.sourceHandle && !valid.has(e.sourceHandle),
-        );
+        renamedEdges.some((e) => e.source === nodeId && e.sourceHandle && !valid.has(e.sourceHandle));
       const now = Date.now();
       const isNewBurst =
         lastEditRef.current.nodeId !== nodeId || now - lastEditRef.current.time > 500;
@@ -492,12 +608,14 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
       setNodes((nds) =>
         nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)),
       );
-      if (willPrune && valid) {
-        // Handle sumiu (botão removido, sale_type trocado...) → a aresta presa
-        // nele viraria conexão fantasma no funil. Poda já.
-        setEdges((eds) =>
-          eds.filter((e) => e.source !== nodeId || !e.sourceHandle || valid.has(e.sourceHandle)),
-        );
+      // Handle sumiu de vez (botão removido, sale_type trocado...) → a aresta
+      // presa nele viraria conexão fantasma no funil. Poda já.
+      const finalEdges =
+        willPrune && valid
+          ? renamedEdges.filter((e) => e.source !== nodeId || !e.sourceHandle || valid.has(e.sourceHandle))
+          : renamedEdges;
+      if (finalEdges !== edgesRef.current) {
+        setEdges(finalEdges);
       }
     },
     [setNodes, setEdges, takeSnapshot],
@@ -807,7 +925,7 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
 
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={displayEdges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -815,6 +933,8 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
             onReconnect={onReconnect}
             onReconnectStart={onReconnectStart}
             onReconnectEnd={onReconnectEnd}
+            onEdgeMouseEnter={onEdgeMouseEnter}
+            onEdgeMouseLeave={onEdgeMouseLeave}
             onSelectionChange={onSelectionChange}
             onNodeDragStart={onNodeDragStart}
             onNodesDelete={onGraphElementsDelete}
@@ -824,6 +944,7 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
             onDragOver={onDragOver}
             onDrop={onDrop}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             minZoom={0.1}

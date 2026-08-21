@@ -1,6 +1,8 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { invalidateBotCache } from "@/lib/actions/cache-actions";
 import type { Tenant } from "@/lib/types/database";
 
 export async function isAdmin(): Promise<boolean> {
@@ -151,6 +153,8 @@ export interface AdminBot {
   is_active: boolean;
   created_at: string;
   leads_count: number;
+  /** vendas aprovadas — mesma contagem que alimenta AdminUser.transactions_total */
+  transactions_count: number;
   revenue: number;
 }
 
@@ -186,6 +190,7 @@ export async function getAdminUserBots(userId: string): Promise<AdminBot[]> {
       is_active: bot.is_active,
       created_at: bot.created_at,
       leads_count: leadsCount ?? 0,
+      transactions_count: txs?.length ?? 0,
       revenue: (txs ?? []).reduce((sum, tx) => sum + (tx.amount ?? 0), 0),
     });
   }
@@ -221,6 +226,121 @@ export async function updateUserPremium(userId: string, isPremium: boolean): Pro
 
   if (error) throw new Error(error.message);
   return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Transferência de posse de bot
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Sucesso: o que mudou, pra UI mostrar o resumo. */
+export interface TransferBotOwnerOk {
+  ok: true;
+  /** false quando o bot já era do usuário de destino (no-op, não é erro). */
+  changed: boolean;
+  botUsername: string;
+  oldTenantId: string;
+  newTenantId: string;
+  /** linhas movidas por tabela — vira "232 leads, 14 vendas…" na tela. */
+  moved: Record<string, number>;
+  /**
+   * false = o servidor do bot não confirmou a limpeza do cache. Não desfaz a
+   * transferência (o banco já mudou); só significa que o processo do bot pode
+   * seguir com o dono antigo em memória por até o TTL do botCache (10 min).
+   */
+  cacheInvalidated: boolean;
+}
+
+/** Recusa esperada (guarda do banco), com a mensagem pronta pra exibir. */
+export interface TransferBotOwnerFail {
+  ok: false;
+  message: string;
+}
+
+export type TransferBotOwnerResult = TransferBotOwnerOk | TransferBotOwnerFail;
+
+/**
+ * Recusas previstas da função SQL, pelo SQLSTATE que ela levanta. A mensagem
+ * que volta do Postgres já está escrita em português e diz o que fazer
+ * ("desmarque essa opção antes", "conclua ou apague a clonagem"), então é ela
+ * que vai pra tela.
+ */
+const EXPECTED_TRANSFER_ERRORS = new Set([
+  "42501", // insufficient_privilege — não é admin
+  "55006", // object_in_use — bot de login MTProto / clonagem pendente
+  "P0002", // no_data_found — bot ou usuário de destino não existe
+]);
+
+/**
+ * Move um bot inteiro (e leads, vendas, flows, produtos, tracking, remarketing,
+ * mensagens e mídia dele) para outro usuário. A partir daí, tudo desse bot —
+ * inclusive notificação de venda e analytics — cai na conta do novo dono.
+ *
+ * O trabalho pesado é a função public.transfer_bot_owner (migration 067), que
+ * faz os UPDATEs numa transação só. Aqui em cima ficam as duas coisas que o
+ * banco não alcança: derrubar o cache em memória do servidor do bot (que
+ * guarda a linha de bots, tenant_id incluso) e revalidar as páginas do painel.
+ *
+ * Devolve a recusa como DADO, nunca como exceção: em build de produção o Next
+ * apaga a mensagem de qualquer erro lançado numa Server Action e entrega ao
+ * browser um "An error occurred in the Server Components render…" genérico
+ * (react-server-dom-webpack-client.browser.production.js). As guardas do banco
+ * existem justamente pra explicar ao admin o que fazer — se virassem `throw`,
+ * essa explicação sumiria em produção e sobraria um erro em inglês.
+ */
+export async function transferBotOwner(
+  botId: string,
+  newTenantId: string,
+): Promise<TransferBotOwnerResult> {
+  try {
+    // Redundante com o is_admin() de dentro da função SQL — mas pega o caso
+    // "sessão expirou" antes de ir ao banco.
+    await requireAdmin();
+  } catch {
+    return { ok: false, message: "Só um admin pode transferir a posse de um bot." };
+  }
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("transfer_bot_owner", {
+    p_bot_id: botId,
+    p_new_tenant_id: newTenantId,
+  });
+
+  if (error) {
+    if (EXPECTED_TRANSFER_ERRORS.has(error.code ?? "")) {
+      return { ok: false, message: error.message };
+    }
+    // Inesperado: o detalhe vai pro log do servidor, não pra tela.
+    console.error("[transferBotOwner] erro inesperado:", error);
+    return { ok: false, message: "Não foi possível transferir o bot. Tente de novo." };
+  }
+
+  const result = (data ?? {}) as {
+    changed?: boolean;
+    bot_username?: string;
+    old_tenant_id?: string;
+    new_tenant_id?: string;
+    moved?: Record<string, number>;
+  };
+
+  // O servidor do bot cacheia a linha de `bots` por 10 min (server/src/cache.ts).
+  // Sem isso, um lead que chegasse logo depois ainda seria gravado com o
+  // tenant_id antigo. Só faz sentido quando algo mudou de verdade.
+  const cacheInvalidated = result.changed === false ? true : await invalidateBotCache(botId);
+
+  // 'layout' derruba tudo que pende de /dashboard: lista de bots do dono
+  // antigo, do novo, painel admin, vendas e análises — todos leem tenant_id.
+  revalidatePath("/dashboard", "layout");
+
+  return {
+    ok: true,
+    changed: result.changed ?? false,
+    botUsername: result.bot_username ?? "",
+    oldTenantId: result.old_tenant_id ?? "",
+    newTenantId: result.new_tenant_id ?? newTenantId,
+    moved: result.moved ?? {},
+    cacheInvalidated,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

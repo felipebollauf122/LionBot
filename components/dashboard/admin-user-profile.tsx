@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AdminUser, AdminBot } from "@/lib/actions/admin-actions";
+import type { AdminUser, AdminBot, ViewableUser } from "@/lib/actions/admin-actions";
 import { updateUserRole, updateUserPremium } from "@/lib/actions/admin-actions";
+import { TransferBotModal, type TransferSummary } from "@/components/dashboard/transfer-bot-modal";
+import { summarizeMoved } from "@/lib/transfer-summary";
 
 interface AdminUserProfileProps {
   user: AdminUser;
   bots: AdminBot[];
+  /** Destinos possíveis numa transferência de bot (getViewableUsers). */
+  users: ViewableUser[];
 }
 
 function formatCurrency(cents: number): string {
@@ -18,11 +22,43 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfileProps) {
+export function AdminUserProfile({ user: initialUser, bots: initialBots, users }: AdminUserProfileProps) {
   const [user, setUser] = useState(initialUser);
+  const [bots, setBots] = useState(initialBots);
   const [updatingRole, setUpdatingRole] = useState(false);
   const [updatingPremium, setUpdatingPremium] = useState(false);
+  const [transferBot, setTransferBot] = useState<AdminBot | null>(null);
+  const [transferred, setTransferred] = useState<TransferSummary | null>(null);
   const router = useRouter();
+
+  const handleTransferred = (summary: TransferSummary) => {
+    const gone = transferBot;
+    if (!gone) return;
+
+    // O bot deixou de ser deste usuário: tira da tabela na hora em vez de
+    // esperar o refresh, senão o "Gerenciar" da linha abriria uma rota
+    // /users/<dono antigo>/bots/<bot> que o layout já rejeita (o layout filtra
+    // por .eq("tenant_id", userId) e daria 404).
+    setBots((prev) => prev.filter((b) => b.id !== gone.id));
+
+    // Os cards do topo também precisam descontar o bot na mão. `user` nasce de
+    // useState(initialUser), e o initializer NÃO roda de novo quando o
+    // router.refresh() traz props novas — sem isto, os cards ficariam com os
+    // números de antes ("Bots 3/3", "Leads 500") contradizendo o cabeçalho da
+    // tabela logo abaixo ("Bots (2)") até um reload completo da página.
+    setUser((prev) => ({
+      ...prev,
+      bots_total: Math.max(0, prev.bots_total - 1),
+      bots_active: Math.max(0, prev.bots_active - (gone.is_active ? 1 : 0)),
+      leads_total: Math.max(0, prev.leads_total - gone.leads_count),
+      transactions_total: Math.max(0, prev.transactions_total - gone.transactions_count),
+      revenue_total: Math.max(0, prev.revenue_total - gone.revenue),
+    }));
+
+    setTransferBot(null);
+    setTransferred(summary);
+    router.refresh();
+  };
 
   const handleRoleChange = async (newRole: "user" | "admin") => {
     setUpdatingRole(true);
@@ -129,6 +165,35 @@ export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfilePr
         ))}
       </div>
 
+      {/* Resultado da última transferência */}
+      {transferred && (
+        <div
+          className="card p-4 mb-6"
+          // borderColor inline: `.card` mora fora de qualquer @layer no
+          // globals.css e as utilities do Tailwind v4 vêm dentro de
+          // @layer utilities — regra sem layer sempre ganha da com layer,
+          // então um `border-(--accent)/25` aqui não pintaria nada.
+          style={{
+            background: "var(--accent-deep)",
+            borderColor: "color-mix(in srgb, var(--accent) 25%, transparent)",
+          }}
+          role="status"
+        >
+          <p className="text-foreground text-sm font-semibold">
+            @{transferred.botUsername} agora é de {transferred.toName}.
+          </p>
+          <p className="text-(--text-muted) text-xs mt-1">
+            Foram junto: {summarizeMoved(transferred.moved)}.
+          </p>
+          {!transferred.cacheInvalidated && (
+            <p className="text-(--amber) text-xs mt-2">
+              O servidor do bot não confirmou a limpeza do cache — a troca já está no banco, mas o bot
+              pode levar até 10 minutos pra enxergar o novo dono.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Bots */}
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
@@ -168,12 +233,22 @@ export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfilePr
                     <span className="text-(--text-secondary) text-xs">{formatDate(bot.created_at)}</span>
                   </td>
                   <td className="table-cell text-right">
-                    <a
-                      href={`/dashboard/admin/users/${user.id}/bots/${bot.id}/flows`}
-                      className="btn-ghost py-1.5! px-3! text-xs!"
-                    >
-                      Gerenciar
-                    </a>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTransferBot(bot)}
+                        className="btn-ghost py-1.5! px-3! text-xs!"
+                        title="Passar este bot para outro usuário"
+                      >
+                        Transferir
+                      </button>
+                      <a
+                        href={`/dashboard/admin/users/${user.id}/bots/${bot.id}/flows`}
+                        className="btn-ghost py-1.5! px-3! text-xs!"
+                      >
+                        Gerenciar
+                      </a>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -188,6 +263,17 @@ export function AdminUserProfile({ user: initialUser, bots }: AdminUserProfilePr
           </table>
         </div>
       </div>
+
+      {transferBot && (
+        <TransferBotModal
+          botId={transferBot.id}
+          botUsername={transferBot.bot_username}
+          currentOwner={{ id: user.id, name: user.name || user.email, email: user.email }}
+          users={users}
+          onClose={() => setTransferBot(null)}
+          onTransferred={handleTransferred}
+        />
+      )}
     </div>
   );
 }

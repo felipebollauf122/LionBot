@@ -271,10 +271,15 @@ export async function processPaymentCallback(botId: string | null, body: Record<
 
   const typedLead = lead as Lead;
 
-  // Atualiza state: paid = true (mantém o resto)
-  const baseState = { ...typedLead.state, paid: true };
-  await leadService.updateState(typedLead.id, baseState);
-  typedLead.state = baseState;
+  // Atualiza state: paid = true (mantém o resto). updateState agora recebe
+  // só o DELTA — o merge com o resto do state acontece atomicamente no
+  // Postgres (merge_lead_state, migration 064), não aqui em memória, pra
+  // não sobrescrever concorrentemente o que outro writer (ex: fluxo
+  // regular do lead, ou o remarketing-worker) tiver gravado nesse meio
+  // tempo.
+  const paidPatch = { paid: true };
+  await leadService.updateState(typedLead.id, paidPatch);
+  typedLead.state = { ...typedLead.state, ...paidPatch };
 
   // Blacklist: pagamento pode estar approved no DB pra contabilidade,
   // mas NÃO envia "Pagamento confirmado" no Telegram, NÃO retoma flow,
@@ -289,9 +294,9 @@ export async function processPaymentCallback(botId: string | null, body: Record<
     // Modo "pedir email": marca pending_email_tx_id, pede email no Telegram,
     // agenda timeout. Purchase + Utmify só disparam quando o cliente
     // responder (ou após 2h).
-    const stateWithPending = { ...baseState, pending_email_tx_id: transaction.id };
-    await leadService.updateState(typedLead.id, stateWithPending);
-    typedLead.state = stateWithPending;
+    const pendingPatch = { pending_email_tx_id: transaction.id };
+    await leadService.updateState(typedLead.id, pendingPatch);
+    typedLead.state = { ...typedLead.state, ...pendingPatch };
 
     const telegram = new TelegramApi(bot.telegram_token, { protectContent: bot.protect_content });
     // Mensagem customizável pelo owner; cai no padrão se vazia.

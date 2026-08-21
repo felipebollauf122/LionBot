@@ -12,7 +12,7 @@ export default async function AdminBotRemarketingPage({
   const admin = await isAdmin();
   if (!admin) redirect("/dashboard");
 
-  const { botId } = await params;
+  const { userId, botId } = await params;
 
   const config = (await getOrCreateConfig(botId)) as RemarketingConfig;
   const flows = (await listFlows(config.id)) as RemarketingFlow[];
@@ -23,6 +23,7 @@ export default async function AdminBotRemarketingPage({
         botId={botId}
         config={config}
         flows={flows}
+        basePath={`/dashboard/admin/users/${userId}/bots/${botId}`}
       />
     </div>
   );

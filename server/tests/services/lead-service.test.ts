@@ -4,6 +4,7 @@ import { LeadService } from "../../src/services/lead-service.js";
 // Mock supabase
 const mockSupabase = {
   from: vi.fn(),
+  rpc: vi.fn(),
 };
 
 function mockChain(returnData: unknown, returnError: unknown = null) {
@@ -89,11 +90,38 @@ describe("LeadService", () => {
     expect(mockSupabase.from).toHaveBeenCalledWith("leads");
   });
 
-  it("should update lead state", async () => {
-    mockChain({ id: "lead-1", state: { name: "João" } });
+  it("should update lead state via merge_lead_state RPC (atomic merge, not a blind overwrite)", async () => {
+    mockSupabase.rpc.mockResolvedValue({
+      data: { name: "João", email: "j@test.com" },
+      error: null,
+    });
 
-    await service.updateState("lead-1", { name: "João", email: "j@test.com" });
+    const merged = await service.updateState("lead-1", { email: "j@test.com" });
 
-    expect(mockSupabase.from).toHaveBeenCalledWith("leads");
+    expect(mockSupabase.rpc).toHaveBeenCalledWith("merge_lead_state", {
+      p_lead_id: "lead-1",
+      p_patch: { email: "j@test.com" },
+    });
+    // Retorna o state mergeado que veio do banco (fonte da verdade), não um
+    // eco do patch local — quem chamar deve resincronizar lead.state com isso.
+    expect(merged).toEqual({ name: "João", email: "j@test.com" });
+  });
+
+  it("should update lead position + state via merge_lead_state_and_position RPC", async () => {
+    mockSupabase.rpc.mockResolvedValue({
+      data: { step: 2 },
+      error: null,
+    });
+
+    await service.updatePositionAndState("lead-1", "flow-1", "node-3", { step: 2 }, "onboarding");
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith("merge_lead_state_and_position", {
+      p_lead_id: "lead-1",
+      p_patch: { step: 2 },
+      p_flow_id: "flow-1",
+      p_node_id: "node-3",
+      p_active_flow_name: "onboarding",
+      p_set_active_flow_name: true,
+    });
   });
 });

@@ -48,6 +48,12 @@ interface Transaction {
   paid_at?: string | null;
   sent_to_facebook?: boolean | null;
   sent_to_tiktok?: boolean | null;
+  // Atribuição de remarketing (migration 060_remarketing_variant_sends.sql):
+  // populado por payment-button.ts quando o Pix nasceu dentro de uma
+  // execução de remarketing (persistPosition=false) — nesse caso flow_id
+  // fica null porque lead.current_flow_id nunca aponta pra remarketing_flows.
+  remarketing_flow_id?: string | null;
+  remarketing_send_id?: string | null;
 }
 
 /**
@@ -129,10 +135,16 @@ export async function completePurchase(
   // Limpa pending_email_tx_id e marca delivered antes de tudo. Se algo
   // falhar daqui pra frente, marcamos pra evitar reentrada — mas
   // garantimos abaixo que o cliente sempre recebe ALGO.
-  const startState = { ...lead.state, [deliveredKey]: true };
-  if (startState.pending_email_tx_id) delete startState.pending_email_tx_id;
-  await leadService.updateState(lead.id, startState);
-  lead.state = startState;
+  // patch com `pending_email_tx_id: null` REMOVE a chave no merge do banco
+  // (convenção JSON Merge Patch — merge_lead_state, migration 064),
+  // equivalente ao `delete` que era feito aqui localmente antes de
+  // sobrescrever o state inteiro.
+  const hadPendingEmailTx = !!lead.state.pending_email_tx_id;
+  const statePatch: Record<string, unknown> = { [deliveredKey]: true };
+  if (hadPendingEmailTx) statePatch.pending_email_tx_id = null;
+  await leadService.updateState(lead.id, statePatch);
+  lead.state = { ...lead.state, [deliveredKey]: true };
+  if (hadPendingEmailTx) delete (lead.state as Record<string, unknown>).pending_email_tx_id;
 
   // Tracking (fire-and-forget, nunca bloqueia entrega)
   try {
@@ -234,25 +246,63 @@ export async function completePurchase(
   // fallback genérico pra garantir que o cliente recebe a confirmação.
   const paymentNodeId = String(lead.state.pending_payment_node_id ?? "");
 
-  if (!paymentNodeId || !transaction.flow_id) {
-    await sendDeliveryFallback(bot, lead, "sem pending_payment_node_id ou flow_id (provável remarketing)");
+  // Atribuição de remarketing (migration 060_remarketing_variant_sends.sql):
+  // quando o Pix nasceu dentro de uma execução de remarketing
+  // (executeFlow com persistPosition=false), transaction.flow_id fica NULO
+  // — lead.current_flow_id nunca aponta pra remarketing_flows — e a
+  // referência real do flow que gerou o pagamento vem em
+  // transaction.remarketing_flow_id (payment-button.ts, gravado a partir de
+  // ctx.remarketingFlowId). Antes disso não ser lido aqui, TODA compra
+  // originada de remarketing caía direto no fallback genérico abaixo — o
+  // node "paid" configurado no remarketing_flows (entrega, upsell etc.)
+  // nunca executava, mesmo o Pix estando pago.
+  const isRemarketingPurchase = !!transaction.remarketing_flow_id;
+
+  if (!paymentNodeId || (!transaction.flow_id && !transaction.remarketing_flow_id)) {
+    await sendDeliveryFallback(bot, lead, "sem pending_payment_node_id ou flow_id/remarketing_flow_id");
     return;
   }
 
-  let flow: Flow | null = flowByIdCache.get(transaction.flow_id) as unknown as Flow | null;
-  if (!flow) {
-    try {
-      const { data } = await db.from("flows").select("*").eq("id", transaction.flow_id).single();
-      if (!data) {
-        await sendDeliveryFallback(bot, lead, `flow ${transaction.flow_id} não encontrado`);
+  // Construído antes da busca do flow: getRemarketingFlowById (abaixo)
+  // precisa de um FlowProcessor pra resolver `remarketing_flows` do mesmo
+  // jeito que handleCallbackQuery já faz (flow-processor.ts).
+  const telegram = new TelegramApi(bot.telegram_token, { protectContent: bot.protect_content });
+  const { gateway, kind: gatewayKind } = buildGateway(bot);
+  const processor = new FlowProcessor(db, leadService, { addDelayedJob }, {
+    gateway,
+    gatewayKind,
+    baseWebhookUrl: config.baseWebhookUrl,
+  });
+
+  let flow: Flow | null = null;
+  if (isRemarketingPurchase) {
+    // remarketing_flows tem o mesmo shape flow_data:{nodes,edges} de `flows`
+    // — getRemarketingFlowById adapta pro shape `Flow` que executeFlow espera.
+    flow = await processor.getRemarketingFlowById(transaction.remarketing_flow_id as string);
+    if (!flow) {
+      await sendDeliveryFallback(
+        bot,
+        lead,
+        `remarketing_flow ${transaction.remarketing_flow_id} não encontrado`,
+      );
+      return;
+    }
+  } else {
+    flow = flowByIdCache.get(transaction.flow_id) as unknown as Flow | null;
+    if (!flow) {
+      try {
+        const { data } = await db.from("flows").select("*").eq("id", transaction.flow_id).single();
+        if (!data) {
+          await sendDeliveryFallback(bot, lead, `flow ${transaction.flow_id} não encontrado`);
+          return;
+        }
+        flow = data as Flow;
+        flowByIdCache.set(transaction.flow_id, data);
+      } catch (err) {
+        console.error("[purchase-completer] erro ao buscar flow:", err);
+        await sendDeliveryFallback(bot, lead, "erro ao buscar flow no DB");
         return;
       }
-      flow = data as Flow;
-      flowByIdCache.set(transaction.flow_id, data);
-    } catch (err) {
-      console.error("[purchase-completer] erro ao buscar flow:", err);
-      await sendDeliveryFallback(bot, lead, "erro ao buscar flow no DB");
-      return;
     }
   }
 
@@ -269,21 +319,23 @@ export async function completePurchase(
     return;
   }
 
-  console.log(`[purchase-completer] Resuming flow on "paid" edge → node ${paidEdge.target}`);
+  console.log(
+    `[purchase-completer] Resuming flow on "paid" edge → node ${paidEdge.target}${isRemarketingPurchase ? " [REMARKETING]" : ""}`,
+  );
   try {
-    const telegram = new TelegramApi(bot.telegram_token, { protectContent: bot.protect_content });
-    const { gateway, kind: gatewayKind } = buildGateway(bot);
-    const processor = new FlowProcessor(db, leadService, { addDelayedJob }, {
-      gateway,
-      gatewayKind,
-      baseWebhookUrl: config.baseWebhookUrl,
-    });
     await processor.executeFlow(
       flow,
       lead,
       telegram,
       lead.telegram_user_id,
       paidEdge.target,
+      undefined,
+      undefined,
+      // persistPosition=false pro flow de remarketing: seu `id` pertence a
+      // remarketing_flows, não a `flows` — se deixado true, updatePosition
+      // tentaria gravar lead.current_flow_id apontando pra uma linha que não
+      // existe em `flows` (mesmo padrão de remarketing-worker.ts:298-307).
+      !isRemarketingPurchase,
     );
   } catch (err) {
     console.error(`[purchase-completer] executeFlow estourou:`, err);

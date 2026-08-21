@@ -6,12 +6,33 @@ interface TriggerConfigProps {
 }
 
 export function TriggerConfig({ data, onChange }: TriggerConfigProps) {
+  const trigger = String(data.trigger ?? "command");
+
+  // Gatilho de remarketing: ponto de entrada fixo, semeado por
+  // createRemarketingFlow (lib/actions/remarketing-actions.ts) e nunca lido
+  // pela engine (remarketing-worker.ts fixa trigger_type="remarketing" no
+  // Flow sintético, ignorando node.data.trigger). Não faz sentido trocar —
+  // mostrar como somente-leitura em vez de um <select> sem option
+  // correspondente (que ficaria com nenhuma opção visualmente selecionada).
+  if (trigger === "remarketing") {
+    return (
+      <div className="space-y-3">
+        <div>
+          <label className="input-label">Tipo de Gatilho</label>
+          <div className="input flex items-center text-(--text-secondary) cursor-default select-none">
+            Remarketing — ponto de entrada fixo
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div>
         <label className="input-label">Tipo de Gatilho</label>
         <select
-          value={String(data.trigger ?? "command")}
+          value={trigger}
           onChange={(e) => onChange({ ...data, trigger: e.target.value })}
           className="input"
         >
@@ -19,7 +40,7 @@ export function TriggerConfig({ data, onChange }: TriggerConfigProps) {
           <option value="first_contact">Primeiro Contato</option>
         </select>
       </div>
-      {String(data.trigger ?? "command") === "command" && (
+      {trigger === "command" && (
         <div>
           <label className="input-label">Comando</label>
           <input

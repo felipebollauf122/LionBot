@@ -12,7 +12,7 @@ export default async function AdminBotFlowsPage({
   const admin = await isAdmin();
   if (!admin) redirect("/dashboard");
 
-  const { botId } = await params;
+  const { userId, botId } = await params;
   const supabase = await createClient();
 
   const [{ data: flows }, { data: bot }] = await Promise.all([
@@ -40,6 +40,7 @@ export default async function AdminBotFlowsPage({
       blackFlow={blackFlow}
       botId={botId}
       blackEnabled={bot?.black_enabled ?? false}
+      basePath={`/dashboard/admin/users/${userId}/bots/${botId}`}
     />
   );
 }

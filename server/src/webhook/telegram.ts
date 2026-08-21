@@ -415,10 +415,14 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
         const { isValidEmail, completePurchase } = await import("../services/purchase-completer.js");
         if (isValidEmail(text)) {
           const email = text.trim().toLowerCase();
-          const newState = { ...lead.state, email };
-          delete (newState as Record<string, unknown>).pending_email_tx_id;
-          await leadService.updateState(lead.id, newState);
-          lead.state = newState;
+          // patch com `pending_email_tx_id: null` REMOVE a chave no merge
+          // do banco (convenção JSON Merge Patch — merge_lead_state,
+          // migration 064), equivalente ao `delete` que era feito aqui
+          // localmente antes de sobrescrever o state inteiro.
+          const statePatch: Record<string, unknown> = { email, pending_email_tx_id: null };
+          await leadService.updateState(lead.id, statePatch);
+          lead.state = { ...lead.state, email };
+          delete (lead.state as Record<string, unknown>).pending_email_tx_id;
 
           const { data: tx } = await supabase
             .from("transactions")

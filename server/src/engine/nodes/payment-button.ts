@@ -262,7 +262,16 @@ export async function handlePaymentBundleNode(
       // Sempre explícito (mesmo null) — limpa a atribuição de remarketing de
       // uma oferta anterior pra não vazar num pagamento de outra origem
       // (mesma disciplina de pending_payment_button_id no callback abaixo).
+      // As duas chaves viajam sempre JUNTAS: numa execução de remarketing de
+      // verdade (ctx.remarketingFlowId setado), flow-processor.ts sobrescreve
+      // ambas com os valores corretos logo depois que este nó retorna (bloco
+      // `!persistPosition`, nextNodeId==="wait"). Num flow REGULAR esse bloco
+      // não roda, então é esta linha que precisa zerar send_id — sem ela ele
+      // nunca era limpo em lugar nenhum e ficava preso no lead.state, herdado
+      // por um pagamento futuro não relacionado (transactions.remarketing_send_id
+      // não-nulo com remarketing_flow_id nulo — dado incoerente).
       pending_remarketing_flow_id: ctx.remarketingFlowId ?? null,
+      pending_remarketing_send_id: null,
     },
     // bundleId é reportado sempre (randomizado ou fixo) — é um eixo de stats
     // válido de qualquer forma; ver remarketing_variant_sends.

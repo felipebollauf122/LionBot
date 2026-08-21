@@ -89,13 +89,21 @@ export const flowCache = new MemoryCache<Record<string, unknown>[]>(300);
 // Single flow by ID: 5 min TTL
 export const flowByIdCache = new MemoryCache<Record<string, unknown>>(300);
 
+// Single REMARKETING flow by ID: 5 min TTL. Cache separada de flowByIdCache
+// de propósito — remarketing_flows é uma tabela diferente de flows (ids não
+// se cruzam na prática, mas o shape gravado é diferente: aqui é o objeto
+// já adaptado pro formato `Flow` sintético que FlowProcessor consome, ver
+// getRemarketingFlowById). Usada pelo fallback de roteamento de callback
+// de remarketing em handleCallbackQuery.
+export const remarketingFlowByIdCache = new MemoryCache<Record<string, unknown>>(300);
+
 // Blacklist Set por bot (#31): chave = bot_id, valor = Set<telegram_user_id>.
 // 5 min TTL — blacklist muda por ação manual do admin, tolerável.
 export const blacklistCache = new MemoryCache<Set<number>>(300, 2000);
 
 // Sweep periódico de entradas expiradas (#30) — evita acúmulo de chaves
 // mortas que nunca mais são lidas.
-const ALL_CACHES = [botCache, flowCache, flowByIdCache, blacklistCache];
+const ALL_CACHES = [botCache, flowCache, flowByIdCache, remarketingFlowByIdCache, blacklistCache];
 setInterval(() => {
   for (const c of ALL_CACHES) c.cleanup();
 }, 5 * 60 * 1000).unref?.();

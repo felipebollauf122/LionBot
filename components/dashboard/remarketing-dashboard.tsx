@@ -40,9 +40,16 @@ interface Props {
   botId: string;
   config: RemarketingConfig;
   flows: RemarketingFlow[];
+  /** Prefixo de navegação — default `/dashboard/bots/{botId}` (mesmo padrão
+   * de BotShell/BotSidebar). A view admin passa
+   * `/dashboard/admin/users/{userId}/bots/{botId}` pra "Abrir editor do
+   * fluxo" manter o admin dentro do namespace admin em vez de cair no
+   * dashboard normal do usuário impersonado. */
+  basePath?: string;
 }
 
-export function RemarketingDashboard({ botId, config, flows: initialFlows }: Props) {
+export function RemarketingDashboard({ botId, config, flows: initialFlows, basePath }: Props) {
+  const base = basePath ?? `/dashboard/bots/${botId}`;
   const [isActive, setIsActive] = useState(config.is_active);
   const [interval, setInterval] = useState(config.interval_minutes);
   const [flows, setFlows] = useState(initialFlows);
@@ -474,7 +481,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows }: Pro
             </div>
 
             <a
-              href={`/dashboard/bots/${botId}/remarketing/${selected.id}/editor`}
+              href={`${base}/remarketing/${selected.id}/editor`}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all"
               style={{ background: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)", border: "1px solid color-mix(in srgb, var(--amber) 22%, transparent)" }}
             >

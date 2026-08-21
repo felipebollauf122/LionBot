@@ -158,42 +158,69 @@ export class LeadService {
     }
   }
 
-  async updateState(leadId: string, state: Record<string, unknown>): Promise<void> {
-    const { error } = await this.db
-      .from("leads")
-      .update({ state })
-      .eq("id", leadId);
+  /**
+   * Aplica um PATCH (delta) em leads.state via merge atômico no Postgres
+   * (RPC merge_lead_state — migration 064) em vez de reescrever a coluna
+   * inteira com um objeto já calculado em memória. Isso elimina o
+   * lost-update quando dois writers escrevem `state` concorrentemente pro
+   * mesmo lead (ex: remarketing-worker processando um snapshot antigo do
+   * lead — carregado em bloco pra todos os leads do bot — vs webhook do
+   * Telegram processando uma interação nova de fluxo regular): cada writer
+   * só aplica seu delta sobre o state ATUAL do banco, sob lock de linha,
+   * então quem escrever por último não apaga mais o delta de quem escreveu
+   * antes.
+   *
+   * Convenção JSON Merge Patch (RFC 7396): uma chave com valor `null` no
+   * patch REMOVE a chave do state (em vez de gravar `null` literal) —
+   * equivalente ao `delete state.foo` que os callers faziam em memória
+   * antes de montar o objeto completo pra chamar este método.
+   *
+   * Retorna o state MERGEADO de verdade, vindo do banco — quem chamar deve
+   * preferir isso a um spread local otimista quando for guardar o resultado
+   * em `lead.state`, já que outro writer pode ter tocado campos que este
+   * caller não conhece.
+   */
+  async updateState(leadId: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data, error } = await this.db.rpc("merge_lead_state", {
+      p_lead_id: leadId,
+      p_patch: patch,
+    });
 
     if (error) {
       throw new Error(`Failed to update lead state: ${error.message}`);
     }
+    return (data as Record<string, unknown> | null) ?? {};
   }
 
   /**
    * Atualiza posição + state numa única query (#33) — evita 2 roundtrips
    * quando o flow precisa persistir os dois ao mesmo tempo (ex: delay node).
+   * `patch` é um DELTA (mesma convenção de updateState acima), mergeado
+   * atomicamente via RPC merge_lead_state_and_position (migration 064) —
+   * current_flow_id/current_node_id continuam sendo o valor literal
+   * passado (essas colunas só são escritas em persistPosition=true, nunca
+   * pelo remarketing-worker, então não sofrem a mesma race de `state`).
    */
   async updatePositionAndState(
     leadId: string,
     flowId: string | null,
     nodeId: string | null,
-    state: Record<string, unknown>,
+    patch: Record<string, unknown>,
     activeFlowName?: string,
-  ): Promise<void> {
-    const update: Record<string, unknown> = {
-      current_flow_id: flowId,
-      current_node_id: nodeId,
-      state,
-    };
-    if (activeFlowName !== undefined) {
-      update.active_flow_name = activeFlowName;
-    } else if (flowId === null) {
-      update.active_flow_name = null;
-    }
-    const { error } = await this.db.from("leads").update(update).eq("id", leadId);
+  ): Promise<Record<string, unknown>> {
+    const shouldSetActiveFlowName = activeFlowName !== undefined || flowId === null;
+    const { data, error } = await this.db.rpc("merge_lead_state_and_position", {
+      p_lead_id: leadId,
+      p_patch: patch,
+      p_flow_id: flowId,
+      p_node_id: nodeId,
+      p_active_flow_name: activeFlowName ?? null,
+      p_set_active_flow_name: shouldSetActiveFlowName,
+    });
     if (error) {
       throw new Error(`Failed to update lead position+state: ${error.message}`);
     }
+    return (data as Record<string, unknown> | null) ?? {};
   }
 
   async getById(leadId: string): Promise<Lead | null> {

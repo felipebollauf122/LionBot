@@ -6,7 +6,7 @@ import { handleInputResponse } from "./nodes/input.js";
 import type { LeadService } from "../services/lead-service.js";
 import type { ExecuteNodeDeps } from "./node-executor.js";
 import type { PaymentGateway } from "../services/payment-gateway.js";
-import { flowCache, flowByIdCache } from "../cache.js";
+import { flowCache, flowByIdCache, remarketingFlowByIdCache } from "../cache.js";
 import { logEvent } from "../services/lead-messages.js";
 
 const BLACK_DELETE_DELAY_MINUTES = 15;
@@ -78,6 +78,56 @@ export class FlowProcessor {
       return data as Flow;
     }
     return null;
+  }
+
+  /**
+   * Fetch a REMARKETING flow by ID (tabela `remarketing_flows`, separada de
+   * `flows`) e adapta pro shape `Flow` que executeFlow/handleCallbackQuery
+   * já sabem consumir — mesma adaptação que remarketing-worker.ts faz
+   * manualmente em `flowForProcessor` antes de chamar executeFlow.
+   *
+   * Existe pro fallback de roteamento de callback: remarketing nunca seta
+   * lead.current_flow_id (persistPosition=false em executeFlow), então
+   * handleCallbackQuery precisa de outro jeito de achar o flow de origem
+   * quando lead.state tem uma referência pendente de remarketing (ver
+   * pending_remarketing_flow_id, gravado no bloco `!persistPosition` de
+   * executeFlow).
+   *
+   * Público (não mais `private`): purchase-completer.ts também precisa
+   * resolver `remarketing_flows` pra retomar o edge "paid" de uma compra
+   * atribuída a remarketing (transactions.remarketing_flow_id, migration
+   * 060) — mesma necessidade que o fallback de callback abaixo já tinha.
+   */
+  async getRemarketingFlowById(
+    remarketingFlowId: string,
+  ): Promise<(Flow & { deleteAfterMinutes: number | null }) | null> {
+    const cached = remarketingFlowByIdCache.get(remarketingFlowId);
+    if (cached) return cached as unknown as Flow & { deleteAfterMinutes: number | null };
+
+    const { data } = await this.db
+      .from("remarketing_flows")
+      .select("id, tenant_id, bot_id, name, flow_data, is_active, delete_after_minutes, created_at, updated_at")
+      .eq("id", remarketingFlowId)
+      .maybeSingle();
+
+    if (!data) return null;
+
+    const adapted: Flow & { deleteAfterMinutes: number | null } = {
+      id: data.id,
+      tenant_id: data.tenant_id,
+      bot_id: data.bot_id,
+      name: data.name,
+      trigger_type: "remarketing",
+      trigger_value: "",
+      flow_data: data.flow_data,
+      is_active: data.is_active,
+      version: 1,
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      deleteAfterMinutes: (data.delete_after_minutes as number | null) ?? null,
+    };
+    remarketingFlowByIdCache.set(remarketingFlowId, adapted as unknown as Record<string, unknown>);
+    return adapted;
   }
 
   /**
@@ -246,7 +296,7 @@ export class FlowProcessor {
 
       if (result.stateUpdates) {
         lead.state = { ...lead.state, ...result.stateUpdates };
-        await this.leadService.updateState(lead.id, lead.state);
+        await this.leadService.updateState(lead.id, result.stateUpdates);
       }
     } catch (error) {
       console.error(`[${logTag}] Error processing payment:`, error);
@@ -377,8 +427,36 @@ export class FlowProcessor {
             })
             .select("id")
             .single();
-          if (sendRow && result.nextNodeId === "wait") {
-            result.stateUpdates = { ...(result.stateUpdates ?? {}), pending_remarketing_send_id: sendRow.id };
+
+          // Correlação de clique (generaliza pra QUALQUER nó o padrão que
+          // payment-button.ts já usava só pra si mesmo via
+          // ctx.remarketingFlowId, payment-button.ts:265): sem
+          // current_flow_id/current_node_id (nunca setados aqui —
+          // persistPosition=false), handleCallbackQuery não tinha NENHUM
+          // jeito de saber de qual remarketing_flows e de qual nó veio a
+          // mensagem que gerou este clique — todo clique em botão comum
+          // ("Botões", ou botões extras/"Recusar" de um payment_button)
+          // enviado por remarketing morria em silêncio. "wait" grava pra
+          // onde o lead está esperando; "null" (flow acabou sem esperar
+          // nada) limpa pra não deixar uma referência velha respondendo por
+          // um envio que já terminou.
+          if (result.nextNodeId === "wait") {
+            result.stateUpdates = {
+              ...(result.stateUpdates ?? {}),
+              pending_remarketing_flow_id: flow.id,
+              pending_remarketing_wait_node_id: node.id,
+              // sendRow?.id ?? null (em vez de spread condicional): se o
+              // insert em remarketing_variant_sends falhar, zera em vez de
+              // deixar sobreviver o send_id de uma campanha anterior.
+              pending_remarketing_send_id: sendRow?.id ?? null,
+            };
+          } else {
+            result.stateUpdates = {
+              ...(result.stateUpdates ?? {}),
+              pending_remarketing_flow_id: null,
+              pending_remarketing_wait_node_id: null,
+              pending_remarketing_send_id: null,
+            };
           }
         }
       }
@@ -392,7 +470,7 @@ export class FlowProcessor {
       if (result.stateUpdates) {
         lead.state = { ...lead.state, ...result.stateUpdates };
         if (!isDelayPersist) {
-          await this.leadService.updateState(lead.id, lead.state);
+          await this.leadService.updateState(lead.id, result.stateUpdates);
         }
       }
 
@@ -403,7 +481,7 @@ export class FlowProcessor {
               lead.id,
               flow.id,
               result.nextNodeId,
-              lead.state,
+              result.stateUpdates,
             );
           } else {
             await this.leadService.updatePosition(lead.id, flow.id, result.nextNodeId);
@@ -520,7 +598,7 @@ export class FlowProcessor {
 
           if (result.stateUpdates) {
             lead.state = { ...lead.state, ...result.stateUpdates };
-            await this.leadService.updateState(lead.id, lead.state);
+            await this.leadService.updateState(lead.id, result.stateUpdates);
           }
 
           if (result.nextNodeId && result.nextNodeId !== "wait") {
@@ -536,6 +614,66 @@ export class FlowProcessor {
             console.log(`[flow] Lead ${lead.id} is waiting on ${currentNode.type} node, ignoring text message`);
             return;
           }
+        }
+      }
+    }
+
+    // Fallback de remarketing: espelha o fallback já existente em
+    // handleCallbackQuery (pending_remarketing_flow_id/pending_remarketing_wait_node_id,
+    // gravados em executeFlow — bloco `!persistPosition`, sempre que um nó
+    // termina em "wait") — mas pro caminho de TEXTO (nó "input"), que nunca
+    // foi coberto: execuções de remarketing (persistPosition=false em
+    // executeFlow) nunca gravam lead.current_flow_id/current_node_id, então
+    // o bloco acima nunca resolve o nó de espera de um flow de remarketing.
+    // Sem isso, a resposta digitada pelo lead a um nó Input de remarketing
+    // caía direto no trigger-matching abaixo e era descartada silenciosamente
+    // (ou, se current_flow_id/current_node_id estivessem "sujos" de um flow
+    // REGULAR anterior, era roteada pro nó/variável errada).
+    //
+    // Só entra em ação quando o bloco acima não tratou nem retornou (sem
+    // current_flow_id/current_node_id válidos apontando pra um nó de espera
+    // "vivo") — nunca sobrepõe uma resolução de flow regular válida.
+    const pendingRemarketingFlowId = (lead.state.pending_remarketing_flow_id as string | null) ?? null;
+    const pendingRemarketingWaitNodeId = (lead.state.pending_remarketing_wait_node_id as string | null) ?? null;
+    if (pendingRemarketingFlowId && pendingRemarketingWaitNodeId) {
+      const remFlow = await this.getRemarketingFlowById(pendingRemarketingFlowId);
+      const waitNode = remFlow?.flow_data.nodes.find((n) => n.id === pendingRemarketingWaitNodeId);
+
+      if (remFlow && waitNode?.type === "input") {
+        const variable = String(waitNode.data.variable ?? "");
+        const edges = remFlow.flow_data.edges.filter((e) => e.source === waitNode.id);
+        const result = handleInputResponse(waitNode.id, variable, messageText, edges);
+
+        if (result.stateUpdates) {
+          lead.state = { ...lead.state, ...result.stateUpdates };
+          await this.leadService.updateState(lead.id, result.stateUpdates);
+        }
+
+        if (result.nextNodeId && result.nextNodeId !== "wait") {
+          // Continua a execução do flow de remarketing a partir do próximo
+          // nó — executeFlow (bloco `!persistPosition`) já cuida de
+          // regravar/limpar pending_remarketing_flow_id/wait_node_id quando
+          // essa continuação terminar em novo "wait" ou no fim do flow.
+          await this.executeFlow(remFlow, lead, telegram, chatId, result.nextNodeId, false, remFlow.deleteAfterMinutes, false);
+        } else if (!result.nextNodeId) {
+          // Nó Input sem edge de saída configurada: fim de linha — limpa a
+          // referência de espera pra não deixar o lead "preso" respondendo
+          // pra sempre a um nó que não leva a lugar nenhum.
+          const clearPatch = { pending_remarketing_flow_id: null, pending_remarketing_wait_node_id: null };
+          lead.state = { ...lead.state, ...clearPatch };
+          await this.leadService.updateState(lead.id, clearPatch);
+        }
+        return;
+      }
+
+      // Mesma regra do bloco de flow regular acima: se o lead está esperando
+      // clique num nó "button"/"payment_button" de remarketing, texto solto
+      // (que não seja comando) não deve furar pro trigger-matching abaixo —
+      // só o clique (handleCallbackQuery) resolve esse nó.
+      if (remFlow && (waitNode?.type === "button" || waitNode?.type === "payment_button")) {
+        if (!messageText.startsWith("/")) {
+          console.log(`[flow] Lead ${lead.id} is waiting on remarketing ${waitNode.type} node, ignoring text message`);
+          return;
         }
       }
     }
@@ -668,17 +806,63 @@ export class FlowProcessor {
     const targetValue = callbackData.substring(colonIndex + 1);
     if (!sourceNodeId) return;
 
-    if (!lead.current_flow_id) {
-      console.log(`[callback] Lead ${lead.id} has no current_flow_id, ignoring`);
-      return;
+    // Resolução normal: flow "vivo" apontado por lead.current_flow_id
+    // (tabela `flows`) — só setado por executeFlow quando persistPosition=true.
+    let typedFlow: Flow | null = null;
+    if (lead.current_flow_id) {
+      typedFlow = await this.getFlowById(lead.current_flow_id);
+      if (!typedFlow) {
+        console.log(`[callback] Flow ${lead.current_flow_id} not found`);
+      }
     }
 
-    const typedFlow = await this.getFlowById(lead.current_flow_id);
+    // Fallback de remarketing: execuções de remarketing (persistPosition=false
+    // em executeFlow) NUNCA gravam lead.current_flow_id/current_node_id — só
+    // pending_remarketing_send_id existia antes disso, e só servia pra
+    // rastreio de variante, não pra roteamento. Resultado: todo clique em
+    // botão comum ("Botões", ou botão extra/"Recusar" de um payment_button)
+    // enviado por um flow de remarketing morria aqui — current_flow_id nulo
+    // (ignoring acima) ou apontando pra um flow REGULAR antigo sem
+    // sourceNodeId (nenhuma edge encontrada mais abaixo).
+    //
+    // pending_remarketing_flow_id/pending_remarketing_wait_node_id são
+    // gravados no fim de todo envio de remarketing que termina em "wait"
+    // (executeFlow, bloco `!persistPosition`) — generaliza o padrão que
+    // payment-button.ts já usava só pro bundle "pay:". Só entra em ação
+    // quando a resolução normal falhou — nunca sobrepõe um flow regular
+    // válido (item 4: zero mudança de comportamento pra persistPosition=true).
+    let persistPosition = true;
+    let deleteAfterMinutesForContinue: number | null | undefined;
+    // Só preenchido quando a resolução veio do fallback — runPaymentCallback
+    // (botão de pagamento inline abaixo) usa isso pra creditar a compra de
+    // volta ao remarketing certo, mesma atribuição que o bundle "pay:" já
+    // faz (payment-button.ts:265/426).
+    let remarketingFlowIdForPayment: string | null = null;
 
     if (!typedFlow) {
-      console.log(`[callback] Flow ${lead.current_flow_id} not found`);
+      const pendingRemarketingFlowId = (lead.state.pending_remarketing_flow_id as string | null) ?? null;
+      if (pendingRemarketingFlowId) {
+        const remFlow = await this.getRemarketingFlowById(pendingRemarketingFlowId);
+        if (remFlow) {
+          typedFlow = remFlow;
+          persistPosition = false;
+          deleteAfterMinutesForContinue = remFlow.deleteAfterMinutes;
+          remarketingFlowIdForPayment = pendingRemarketingFlowId;
+        } else {
+          console.log(`[callback] pending_remarketing_flow_id ${pendingRemarketingFlowId} not found (flow apagado?)`);
+        }
+      }
+    }
+
+    if (!typedFlow) {
+      console.log(`[callback] Lead ${lead.id}: nenhum flow resolvido (current_flow_id=${lead.current_flow_id ?? "null"}, pending_remarketing_flow_id=${(lead.state.pending_remarketing_flow_id as string | null) ?? "null"}), ignoring`);
       return;
     }
+    // Realiasa pra um `const`: `typedFlow` acima é `let` (reatribuído no
+    // fallback de remarketing), e TS não propaga a checagem de não-nulo pra
+    // dentro de closures (ex: `resolveBotId` abaixo) quando a variável
+    // capturada é mutável. `flow` nunca muda depois daqui.
+    const flow = typedFlow;
 
     // Botão de pagamento inline: dentro de um nó "button" comum, um botão
     // individual pode estar marcado action:"payment" — o clique gera o Pix
@@ -687,7 +871,7 @@ export class FlowProcessor {
     // "pay:" acima (fluxo de bundle, reconstrói um nó sintético a partir do
     // lead.state), aqui usamos o nó vivo do flow_data — pega sale_type/
     // payment_timeout_minutes reais, sem o gap de reconstrução do outro fluxo.
-    const sourceNode = typedFlow.flow_data.nodes.find((n) => n.id === sourceNodeId);
+    const sourceNode = flow.flow_data.nodes.find((n) => n.id === sourceNodeId);
     if (sourceNode?.type === "button") {
       const buttons = (sourceNode.data.buttons ?? []) as Array<{
         id?: string;
@@ -724,19 +908,23 @@ export class FlowProcessor {
           telegram,
           chatId,
           isBlack,
-          resolveBotId: async () => typedFlow.bot_id,
+          resolveBotId: async () => flow.bot_id,
           logTag: "inline payment",
-          // Este caminho só dispara quando lead.current_flow_id está setado
-          // (nó "button" vivo em flow_data) — remarketing nunca seta isso
-          // (persistPosition=false), então nunca é uma origem legítima aqui.
-          remarketingFlowId: null,
-          remarketingSendId: null,
+          // Antes: sempre null (o comentário partia de current_flow_id
+          // nunca ser setado pra remarketing — verdade, mas o fallback
+          // acima agora resolve `flow` mesmo assim via
+          // pending_remarketing_flow_id). Quando a resolução veio do
+          // fallback, credita a compra de volta ao remarketing certo —
+          // mesma atribuição que o bundle "pay:" já faz
+          // (payment-button.ts:265/426).
+          remarketingFlowId: remarketingFlowIdForPayment,
+          remarketingSendId: persistPosition ? null : ((lead.state.pending_remarketing_send_id as string | null) ?? null),
         });
         return;
       }
     }
 
-    const edges = typedFlow.flow_data.edges.filter((e) => e.source === sourceNodeId);
+    const edges = flow.flow_data.edges.filter((e) => e.source === sourceNodeId);
 
     let edge = edges.find(
       (e) => e.sourceHandle === targetValue || e.target === targetValue
@@ -757,10 +945,10 @@ export class FlowProcessor {
     }
 
     if (edge) {
-      console.log(`[callback] Advancing flow from ${sourceNodeId} to ${edge.target}${isBlack ? " [BLACK]" : ""}`);
-      await this.executeFlow(typedFlow, lead, telegram, chatId, edge.target, isBlack);
+      console.log(`[callback] Advancing flow from ${sourceNodeId} to ${edge.target}${isBlack ? " [BLACK]" : ""}${persistPosition ? "" : " [REMARKETING]"}`);
+      await this.executeFlow(flow, lead, telegram, chatId, edge.target, isBlack, deleteAfterMinutesForContinue, persistPosition);
     } else {
-      console.log(`[callback] No edge found for source ${sourceNodeId}, value ${targetValue}`);
+      console.log(`[callback] No edge found for source ${sourceNodeId}, value ${targetValue}${persistPosition ? "" : " [REMARKETING]"}`);
     }
   }
 }

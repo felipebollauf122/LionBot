@@ -51,6 +51,22 @@ interface RemarketingProgress {
   is_completed: boolean;
 }
 
+// Configs cujo processConfig() ainda está em voo de um tick anterior (ex.:
+// fluxo com vários delay nodes encadeados x milhares de leads pode levar
+// horas — inline sleep documentado em flow-processor.ts:494-495). Lock POR
+// CONFIG, não mais um boolean global: se o config X está preso, só ELE é
+// pulado no próximo tick — os configs de outros tenants (ou outros fluxos
+// do mesmo tenant) continuam rodando normalmente. Isso substitui o
+// `remarketingRunning` global que existia em queue.ts, que travava a
+// plataforma inteira enquanto qualquer config estivesse processando.
+const runningConfigIds = new Set<string>();
+
+// Configs de tenants diferentes não têm por que ser serializados: um
+// tenant com fila lenta não pode atrasar o remarketing dos demais.
+// Concorrência limitada em vez de Promise.all irrestrito pra não abrir uma
+// avalanche de queries simultâneas se houver muitos configs ativos.
+const CONFIG_CONCURRENCY = 5;
+
 /**
  * Process remarketing for all active configs.
  * Called on interval from queue.ts.
@@ -64,14 +80,41 @@ export async function processRemarketing(db: SupabaseClient): Promise<void> {
 
   if (!configs || configs.length === 0) return;
 
-  for (const rawConfig of configs) {
-    const cfg = rawConfig as RemarketingConfig;
-    try {
-      await processConfig(db, cfg);
-    } catch (error) {
-      console.error(`[remarketing] Error processing config ${cfg.id}:`, error);
+  const pending = (configs as RemarketingConfig[]).filter((cfg) => {
+    if (runningConfigIds.has(cfg.id)) {
+      console.log(`[remarketing] config ${cfg.id} ainda em execução (tick anterior) — pulando só este config neste tick`);
+      return false;
+    }
+    return true;
+  });
+
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < pending.length) {
+      const cfg = pending[cursor++];
+      runningConfigIds.add(cfg.id);
+      const startedAt = Date.now();
+      try {
+        await processConfig(db, cfg);
+      } catch (error) {
+        console.error(`[remarketing] Error processing config ${cfg.id}:`, error);
+      } finally {
+        runningConfigIds.delete(cfg.id);
+        const elapsedMs = Date.now() - startedAt;
+        if (elapsedMs > 60_000) {
+          // Ainda cabe dentro do próprio lock (o config só se auto-pula),
+          // mas sinaliza que esse config específico já está comendo mais
+          // que os 60s de intervalo entre ticks — candidato a fluxo com
+          // delay nodes demais ou base de leads grande demais.
+          console.warn(`[remarketing] config ${cfg.id} levou ${Math.round(elapsedMs / 1000)}s (> 60s de intervalo entre ticks)`);
+        }
+      }
     }
   }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONFIG_CONCURRENCY, pending.length) }, () => worker()),
+  );
 }
 
 async function processConfig(db: SupabaseClient, cfg: RemarketingConfig): Promise<void> {

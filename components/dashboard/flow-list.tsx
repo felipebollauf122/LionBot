@@ -15,6 +15,12 @@ interface FlowListProps {
   blackFlow: Flow | null;
   botId: string;
   blackEnabled: boolean;
+  /** Prefixo de navegação — default `/dashboard/bots/{botId}` (mesmo padrão
+   * de BotShell/BotSidebar). A view admin passa
+   * `/dashboard/admin/users/{userId}/bots/{botId}` pra "Abrir editor" manter
+   * o admin dentro do namespace admin em vez de cair no dashboard normal do
+   * usuário impersonado. */
+  basePath?: string;
 }
 
 type GroupKind = "principal" | "black" | "outros";
@@ -82,7 +88,8 @@ function FlowGlyph({ color, size = 14 }: { color: string; size?: number }) {
   );
 }
 
-export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: FlowListProps) {
+export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled, basePath }: FlowListProps) {
+  const base = basePath ?? `/dashboard/bots/${botId}`;
   // ── creation / import drawer state ─────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -465,7 +472,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
         actions={
           selected && (
             <a
-              href={`/dashboard/bots/${selected.flow.bot_id}/flows/${selected.flow.id}/editor`}
+              href={`${base}/flows/${selected.flow.id}/editor`}
               className="btn-primary py-1.5! text-xs!"
             >
               Abrir editor
@@ -496,7 +503,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled }: 
             <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Ações</p>
             <div className="flex flex-wrap gap-2">
               <a
-                href={`/dashboard/bots/${selected.flow.bot_id}/flows/${selected.flow.id}/editor`}
+                href={`${base}/flows/${selected.flow.id}/editor`}
                 className="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all bg-(--accent-muted) text-(--accent) hover:bg-(--accent)/15"
               >
                 Abrir editor

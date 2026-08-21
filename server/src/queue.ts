@@ -325,20 +325,22 @@ export function startWorkers(): void {
     console.error("[black-delete] Startup error:", err)
   );
 
-  // Remarketing worker — poll every 60 seconds, com trava in-process
-  // pra evitar execuções sobrepostas (causa de duplicação de mensagens).
-  let remarketingRunning = false;
+  // Remarketing worker — poll every 60 seconds.
+  //
+  // Antes havia um lock global aqui (`remarketingRunning`): se qualquer
+  // config estivesse processando, TODO tick seguinte era pulado por
+  // inteiro — um único tenant com fluxo lento (ex.: vários delay nodes x
+  // milhares de leads, ver flow-processor.ts:494) podia travar
+  // `remarketingRunning=true` por horas e deixar a PLATAFORMA INTEIRA sem
+  // remarketing nesse meio tempo, sem nunca recuperar as janelas puladas.
+  //
+  // O anti-overlap agora é por config, dentro de processRemarketing
+  // (remarketing-worker.ts: runningConfigIds) — cada tick chama
+  // processRemarketing de novo; configs já em voo se auto-pulam (lock
+  // fino), os demais seguem rodando com concorrência limitada entre
+  // tenants.
   setInterval(() => {
-    if (remarketingRunning) {
-      console.log("[remarketing] Skip tick — execução anterior ainda em progresso");
-      return;
-    }
-    remarketingRunning = true;
-    processRemarketing(supabase)
-      .catch((err) => console.error("[remarketing] Error:", err))
-      .finally(() => {
-        remarketingRunning = false;
-      });
+    processRemarketing(supabase).catch((err) => console.error("[remarketing] Error:", err));
   }, 60_000);
 
   // MTProto: auto-sync periódico de dialogs por conta ativa.

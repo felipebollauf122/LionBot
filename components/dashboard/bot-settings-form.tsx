@@ -47,6 +47,70 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ ok: boolean
   return { ok: res.ok, status: res.status, data };
 }
 
+/**
+ * Campo de segredo (token, api key, chave secreta): mascarado por padrão, com
+ * botão de revelar. Segredo em `type="text"` fica legível em screenshot, print
+ * de suporte e em quem olha por cima do ombro — e essa tela costuma ser aberta
+ * junto com outra pessoa.
+ *
+ * Vive fora do BotSettingsForm de propósito: declarado dentro, o React
+ * remontaria o componente a cada render e o input perderia o foco a cada tecla.
+ *
+ * O padding à direita vai inline porque o `.input` do globals.css não está em
+ * @layer — regra sem layer ganha de utility do Tailwind, então um `pr-*` não
+ * abriria espaço pro botão.
+ */
+function SecretInput({
+  value,
+  onChange,
+  placeholder,
+  className = "input",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={revealed ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={className}
+        style={{ paddingRight: 44 }}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {/* Alvo de 32px (o ícone tem 16) porque essa tela é usada no celular e um
+          botão do tamanho do ícone é quase impossível de acertar com o dedo.
+          Cor em --text-muted, não --text-ghost: ghost tem 16% de opacidade e é
+          pra enfeite/desabilitado — controle clicável nesse alfa some no fundo. */}
+      <button
+        type="button"
+        onClick={() => setRevealed((v) => !v)}
+        aria-label={revealed ? "Ocultar valor" : "Revelar valor"}
+        title={revealed ? "Ocultar" : "Revelar"}
+        className="absolute top-1/2 right-1.5 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg text-(--text-muted) hover:text-foreground transition-colors"
+      >
+        {revealed ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 const sections = [
   { key: "info", label: "Informacoes do Bot", desc: "Status e configuracao geral", icon: "M13 2L3 14h9l-1 8 10-12h-9l1-8z", color: "var(--accent)" },
   { key: "facebook", label: "Facebook Ads", desc: "Pixel e Conversions API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--cyan)" },
@@ -453,7 +517,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                 </div>
                 <div>
                   <label className="input-label">Conversions API Token <span className="text-(--text-ghost) font-normal">(principal)</span></label>
-                  <input type="text" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="EAAx..." className="input" />
+                  <SecretInput value={accessToken} onChange={setAccessToken} placeholder="EAAx..." />
                 </div>
 
                 {/* ── Pixel reserva (aquecimento) ───────────────────── */}
@@ -489,7 +553,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       </div>
                       <div>
                         <label className="input-label">Conversions API Token <span className="text-(--cyan) font-normal">(reserva)</span></label>
-                        <input type="text" value={accessTokenBackup} onChange={(e) => setAccessTokenBackup(e.target.value)} placeholder="EAAx..." className="input" />
+                        <SecretInput value={accessTokenBackup} onChange={setAccessTokenBackup} placeholder="EAAx..." />
                       </div>
                     </div>
                   )}
@@ -510,8 +574,13 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                 </div>
                 <div>
                   <label className="input-label">Events API Access Token</label>
-                  <input type="text" value={tiktokAccessToken} onChange={(e) => setTiktokAccessToken(e.target.value)} placeholder="token do Events Manager" className="input" />
+                  <SecretInput value={tiktokAccessToken} onChange={setTiktokAccessToken} placeholder="token do Events Manager" />
                 </div>
+                <p className="text-(--text-muted) text-xs leading-relaxed">
+                  Os dois saem do <b>TikTok Events Manager</b>: abra o seu pixel — o <b>Pixel ID</b> aparece
+                  logo no topo — e em <b>Settings</b> clique em <b>Generate Access Token</b> pra gerar o token
+                  da Events API. Copie o token na hora: o TikTok não mostra ele de novo depois.
+                </p>
               </div>
             </div>
           )}
@@ -523,7 +592,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
               <SectionHeader sKey="utmify" />
               <div>
                 <label className="input-label">API Key</label>
-                <input type="text" value={utmifyKey} onChange={(e) => setUtmifyKey(e.target.value)} placeholder="utm_..." className="input" />
+                <SecretInput value={utmifyKey} onChange={setUtmifyKey} placeholder="utm_..." />
               </div>
             </div>
           )}
@@ -554,7 +623,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                     </div>
                     <div>
                       <label className="input-label">Chave Secreta</label>
-                      <input type="text" value={sigiloSecretKey} onChange={(e) => setSigiloSecretKey(e.target.value)} placeholder="sec_..." className="input" />
+                      <SecretInput value={sigiloSecretKey} onChange={setSigiloSecretKey} placeholder="sec_..." />
                     </div>
                   </>
                 )}
@@ -563,7 +632,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                   <>
                     <div>
                       <label className="input-label">API Key (X-API-Key)</label>
-                      <input type="text" value={evpayApiKey} onChange={(e) => setEvpayApiKey(e.target.value)} placeholder="fp_sk_..." className="input" />
+                      <SecretInput value={evpayApiKey} onChange={setEvpayApiKey} placeholder="fp_sk_..." />
                     </div>
                     <div>
                       <label className="input-label">Project ID</label>
@@ -850,11 +919,13 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
 
                   <div className="mb-3">
                     <label className="input-label">Token novo (BotFather)</label>
-                    <input
-                      type="text"
+                    {/* Mascarado como os outros segredos: token do Telegram é o
+                        que dá controle total do bot, e ele fica na tela depois
+                        de colado até o usuário salvar. */}
+                    <SecretInput
                       value={newToken}
-                      onChange={(e) => {
-                        setNewToken(e.target.value);
+                      onChange={(v) => {
+                        setNewToken(v);
                         if (tokenMessage) setTokenMessage(null);
                       }}
                       placeholder="123456789:ABCdefGhIjKlmNoPqRsTuVwXyZ"

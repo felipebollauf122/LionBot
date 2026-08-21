@@ -132,6 +132,12 @@ export function TrackingStats({
       cell: (e) => (e.sent_to_facebook ? <span className="text-(--accent) text-xs font-bold">OK</span> : <span className="text-(--text-ghost) text-xs">—</span>),
     },
     {
+      key: "tiktok",
+      header: "TikTok",
+      align: "center",
+      cell: (e) => (e.sent_to_tiktok ? <span className="text-(--accent) text-xs font-bold">OK</span> : <span className="text-(--text-ghost) text-xs">—</span>),
+    },
+    {
       key: "utmify",
       header: "Utmify",
       align: "center",
@@ -264,6 +270,12 @@ export function TrackingStats({
             <div className="flex items-center justify-between gap-4">
               <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Facebook</span>
               {selectedEvent.sent_to_facebook
+                ? <span className="badge badge-active">Enviado</span>
+                : <span className="badge badge-inactive">Pendente</span>}
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">TikTok</span>
+              {selectedEvent.sent_to_tiktok
                 ? <span className="badge badge-active">Enviado</span>
                 : <span className="badge badge-inactive">Pendente</span>}
             </div>

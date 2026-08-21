@@ -246,4 +246,114 @@ describe("TrackingService", () => {
     // TikTok não tem gate de "contexto forte" — dispara mesmo sem fbp/fbc/IP/UA.
     expect(mockTiktokEvents.sendContactEvent).toHaveBeenCalled();
   });
+
+  // #M2: contents[] tem shape DIFERENTE por rede — id/item_price (Facebook)
+  // vs content_id/price (TikTok). Regressão do bug em que o mesmo array do
+  // Facebook era reusado pro TikTok, que descartava tudo exceto quantity.
+  it("should build network-specific contents[] shapes for Purchase/CompletePayment", async () => {
+    mockChain({ savedEventId: "evt-8" });
+
+    await service.trackPurchase({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      transactionId: "tx-shape",
+      amount: 9700, // cents
+      currency: "BRL",
+      lead: makeLead(),
+      productId: "prod-1",
+      productName: "Oferta",
+    });
+
+    expect(mockFacebookCapi.sendPurchaseEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents: [{ id: "prod-1", quantity: 1, item_price: 97 }],
+      }),
+    );
+    expect(mockTiktokEvents.sendCompletePaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents: [{ content_id: "prod-1", content_type: "product", content_name: "Oferta", price: 97, quantity: 1 }],
+      }),
+    );
+  });
+
+  // #B6: sem transactionId no event_id, um 2º Pix do mesmo lead+produto
+  // (timeout de 15min é comum) reusa o event_id do 1º e é deduplicado como
+  // duplicata pela TikTok/Meta.
+  it("should key the checkout event_id by transactionId when provided", async () => {
+    mockChain({ savedEventId: "evt-9" });
+
+    await service.trackCheckout({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      amount: 9700,
+      currency: "BRL",
+      lead: makeLead(),
+      productId: "prod-1",
+      productName: "Oferta",
+      transactionId: "tx-checkout-1",
+    });
+
+    expect(mockTiktokEvents.sendInitiateCheckoutEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "checkout_tx-checkout-1" }),
+    );
+  });
+
+  it("should fall back to leadId_productId for the checkout event_id when transactionId is missing", async () => {
+    mockChain({ savedEventId: "evt-10" });
+
+    await service.trackCheckout({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      amount: 9700,
+      currency: "BRL",
+      lead: makeLead(),
+      productId: "prod-1",
+      productName: "Oferta",
+    });
+
+    expect(mockTiktokEvents.sendInitiateCheckoutEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "checkout_lead-1_prod-1" }),
+    );
+  });
+
+  // #M3: viewcontent_${leadId} sozinho colide entre oferta principal/upsell/
+  // downsell/remarketing do MESMO lead — a janela de dedup de 48h da TikTok/
+  // Meta descarta as ofertas seguintes como duplicata da primeira.
+  it("should key the ViewContent event_id by the saved event's db id, not just leadId", async () => {
+    mockChain({ savedEventId: "evt-view-42" });
+
+    await service.trackViewOffer({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      lead: makeLead(),
+      contentName: "Oferta principal",
+    });
+
+    expect(mockTiktokEvents.sendViewContentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "viewcontent_evt-view-42" }),
+    );
+  });
+
+  it("should fall back to viewcontent_leadId when saveEvent didn't return a db id", async () => {
+    // saveError → saveEvent() cai no branch de erro e devolve null (o
+    // helper mockChain trata savedEventId:null como "usa o default evt-1",
+    // não como "sem id" — saveError é o jeito real de simular isso).
+    mockChain({ saveError: new Error("db down") });
+
+    await service.trackViewOffer({
+      tenantId: "t-1",
+      leadId: "lead-1",
+      botId: "bot-1",
+      lead: makeLead(),
+      contentName: "Oferta principal",
+    });
+
+    expect(mockTiktokEvents.sendViewContentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "viewcontent_lead-1" }),
+    );
+  });
 });

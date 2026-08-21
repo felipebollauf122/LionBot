@@ -5,6 +5,7 @@ export interface TrafficSignals {
   userAgent: string | null;
   referer: string | null;
   fbclid: string | null;
+  ttclid: string | null;    // click id do TikTok Ads (equivalente ao fbclid)
   asn: string | null;       // ex: "AS15169"
   isHosting: boolean;       // datacenter/proxy segundo ip-api
 }
@@ -97,6 +98,53 @@ export function isLikelyRealFbclid(fbclid: string | null, referer: string | null
   return false;
 }
 
+/** Domínios que aparecem no referer de um clique real vindo do TikTok. */
+const TIKTOK_REFERERS = ["tiktok.com", "ttwid", "bytedance", "musical.ly"];
+
+/**
+ * Piso de comprimento quando o ttclid vem SOZINHO (sem referer do TikTok).
+ * O ttclid real de campanha é gigante (~250-400 chars, prefixado `E.C.P.` /
+ * `E_C_P_`), então 50 é folgadíssimo — ~5x menor que o menor valor real que
+ * aparece em campanha, logo não corre risco de barrar comprador. Ao mesmo
+ * tempo mata o bypass trivial que o fbclid tem: lá o `length >= 20` deixa um
+ * espião colar `?fbclid=<20 chars aleatórios>` e entrar. Aqui não entra.
+ */
+const TTCLID_MIN_LENGTH = 50;
+
+/**
+ * Piso quando o referer JÁ confirma que veio do TikTok. Aí o referer é a
+ * corroboração e o formato só precisa não ser lixo tipo "teste"/"1".
+ */
+const TTCLID_MIN_LENGTH_WITH_REFERER = 16;
+
+/**
+ * Espelha isLikelyRealFbclid para o clique pago do TikTok (?ttclid=...), mas
+ * SEM herdar a fraqueza dela (o piso de 20 chars, forjável em 2 segundos).
+ *
+ * O referer é BÔNUS, nunca requisito: o webview in-app do TikTok abre a landing
+ * frequentemente sem referer nenhum — se dependesse dele, o comprador real
+ * cairia na landing de venda. Por isso o formato sozinho basta, desde que
+ * tenha o comprimento real do ttclid.
+ */
+export function isLikelyRealTtclid(ttclid: string | null, referer: string | null): boolean {
+  if (!ttclid) return false;
+  const id = ttclid.trim();
+  if (!id) return false;
+
+  // Charset do ttclid real: base64-url MAIS o ponto — os prefixos conhecidos
+  // (`E.C.P.…`) usam '.' como separador. Qualquer outro caractere não é ttclid.
+  if (!/^[A-Za-z0-9._-]+$/.test(id)) return false;
+
+  // Sinal 1: referer do TikTok → o clique veio mesmo de lá.
+  if (referer) {
+    const ref = referer.toLowerCase();
+    if (TIKTOK_REFERERS.some((d) => ref.includes(d)) && id.length >= TTCLID_MIN_LENGTH_WITH_REFERER) return true;
+  }
+
+  // Sinal 2: formato plausível sozinho (caso do webview sem referer).
+  return id.length >= TTCLID_MIN_LENGTH;
+}
+
 /**
  * Categorias do filtro (botões liga/desliga na UI). Cada flag liga/desliga um
  * pedaço do "default por sinal". Default = comportamento clássico.
@@ -144,7 +192,10 @@ export function evaluateRules(
   // Clique real de anúncio passa. Agora exige um fbclid PLAUSÍVEL (formato real
   // ou referer do FB) — um `?fbclid=teste` forjado não basta mais e cai nos
   // checks de espião abaixo. Permissivo de propósito: nunca barra clique real.
-  if (isLikelyRealFbclid(s.fbclid, s.referer)) return "allow";
+  // O ttclid entra no MESMO ponto: um clique do TikTok Ads chega só com
+  // ?ttclid= (sem fbclid) e antes caía direto no blockSpies — comprador pago
+  // via a landing de venda e nenhum page_view/tid nascia.
+  if (isLikelyRealFbclid(s.fbclid, s.referer) || isLikelyRealTtclid(s.ttclid, s.referer)) return "allow";
 
   // Default por sinal — cada categoria pode ser desligada pelo usuário:
   if (categories.blockDatacenter && s.isHosting) return "block";

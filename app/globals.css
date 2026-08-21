@@ -556,6 +556,13 @@ body {
   background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
+/* O Edge desenha o próprio olho de "revelar senha" dentro do campo, bem em cima
+   do botão de revelar do SecretInput — ficavam dois olhos sobrepostos. */
+.input[type="password"]::-ms-reveal,
+.input[type="password"]::-ms-clear {
+  display: none;
+}
+
 select.input {
   appearance: none;
   -webkit-appearance: none;

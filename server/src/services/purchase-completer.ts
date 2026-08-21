@@ -168,15 +168,29 @@ export async function completePurchase(
     const tiktokAlreadySent = flagRow?.sent_to_tiktok === true;
     const paidAtIso = flagRow?.paid_at ?? transaction.paid_at ?? undefined;
 
-    if (facebookAlreadySent && tiktokAlreadySent) {
-      console.log(`[purchase-completer] tx ${transaction.id} já enviada ao Facebook e ao TikTok — pulando CAPI (entrega segue normal)`);
+    // "TikTok pendente" = CONFIGURADO e ainda não confirmado — não apenas
+    // "ainda não enviado". Um bot sem tiktok_pixel_id/access_token nunca vai
+    // marcar sent_to_tiktok=true (TiktokEvents.isConfigured() sempre devolve
+    // false pra ele), então o guard antigo (`facebookAlreadySent &&
+    // tiktokAlreadySent`) nunca fechava pra esse bot: TODO reenvio
+    // ("Reenviar acesso" do painel, retry de worker, webhook duplicado)
+    // reentrava no else abaixo e inseria mais uma linha "purchase" em
+    // tracking_events (saveEvent faz INSERT incondicional) mesmo sem nada
+    // pendente de fato pra nenhuma rede — inflava o funil "Compra". (#B7)
+    const tiktokConfigured = Boolean(bot.tiktok_pixel_id && bot.tiktok_access_token);
+    const tiktokPending = tiktokConfigured && !tiktokAlreadySent;
+
+    if (facebookAlreadySent && !tiktokPending) {
+      console.log(
+        `[purchase-completer] tx ${transaction.id} sem CAPI pendente (Facebook enviado, TikTok ${tiktokConfigured ? "enviado" : "não configurado"}) — pulando (entrega segue normal)`,
+      );
     } else {
       const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "", {
         pixelId: bot.facebook_pixel_id_backup,
         accessToken: bot.facebook_access_token_backup,
         enabled: bot.facebook_backup_enabled,
       });
-      const tiktokEvents = new TiktokEvents(bot.tiktok_pixel_id ?? "", bot.tiktok_access_token ?? "");
+      const tiktokEvents = new TiktokEvents(bot.tiktok_pixel_id ?? "", bot.tiktok_access_token ?? "", bot.id);
       const utmify = new UtmifyService(bot.utmify_api_key ?? "");
       const trackingService = new TrackingService(db, facebookCapi, utmify, tiktokEvents);
       const { data: product } = await db

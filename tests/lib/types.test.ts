@@ -395,6 +395,7 @@ describe("Database Types", () => {
         },
         event_data: { value: 99.99, currency: "USD" },
         sent_to_facebook: true,
+        sent_to_tiktok: true,
         sent_to_utmify: true,
         created_at: "2026-04-01T10:30:00Z",
       };
@@ -420,6 +421,7 @@ describe("Database Types", () => {
           utm_params: {},
           event_data: {},
           sent_to_facebook: false,
+          sent_to_tiktok: false,
           sent_to_utmify: false,
           created_at: "2026-04-01T10:00:00Z",
         };
@@ -440,6 +442,7 @@ describe("Database Types", () => {
         utm_params: {},
         event_data: {},
         sent_to_facebook: false,
+        sent_to_tiktok: false,
         sent_to_utmify: false,
         created_at: "2026-04-01T10:00:00Z",
       };
@@ -465,6 +468,7 @@ describe("Database Types", () => {
         },
         event_data: { bot_version: "2.1" },
         sent_to_facebook: false,
+        sent_to_tiktok: true,
         sent_to_utmify: true,
         created_at: "2026-04-01T10:00:00Z",
       };

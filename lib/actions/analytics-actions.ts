@@ -844,7 +844,7 @@ export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFle
   // já são restringidas via .in("bot_id", ids), então herdam o recorte.
   let botsQuery = supabase
     .from("bots")
-    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,sigilopay_public_key,evpay_api_key,payment_gateway,utmify_api_key,slug_gate_enabled,slug_plain,created_at")
+    .select("id,bot_username,redirect_display_name,avatar_url,is_active,facebook_pixel_id,facebook_access_token,tiktok_pixel_id,tiktok_access_token,sigilopay_public_key,evpay_api_key,payment_gateway,utmify_api_key,slug_gate_enabled,slug_plain,created_at")
     .order("created_at", { ascending: false });
   if (viewTenantId) botsQuery = botsQuery.eq("tenant_id", viewTenantId);
   const { data: bots } = await botsQuery;
@@ -892,13 +892,17 @@ export async function getBotsFleet(viewTenantId?: string | null): Promise<BotFle
   return list.map((b) => {
     const r = rev.get(b.id as string) ?? { revenue: 0, sales: 0 };
     const hasPayment = !!(b.sigilopay_public_key || b.evpay_api_key);
+    // Tracking = pixel + token de QUALQUER plataforma. Antes olhava só o pixel
+    // do Facebook, então bot só-TikTok (ou FB com pixel mas sem token, que não
+    // envia nada) aparecia com o selo errado na frota.
+    const hasTracking = !!((b.facebook_pixel_id && b.facebook_access_token) || (b.tiktok_pixel_id && b.tiktok_access_token));
     return {
       id: b.id as string,
       bot_username: (b.bot_username as string) ?? null,
       redirect_display_name: (b.redirect_display_name as string) ?? null,
       avatar_url: (b.avatar_url as string) ?? null,
       is_active: !!b.is_active,
-      has_tracking: !!b.facebook_pixel_id,
+      has_tracking: hasTracking,
       has_payment: hasPayment,
       has_utmify: !!b.utmify_api_key,
       slug_gate_enabled: !!b.slug_gate_enabled,

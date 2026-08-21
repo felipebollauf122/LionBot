@@ -29,6 +29,16 @@ interface BotSettings {
   tracking_page_intro: string;
 }
 
+/**
+ * Credencial só conta se tiver conteúdo de verdade. String só de espaços é
+ * truthy, passava batido pelo `|| null` e virava credencial "configurada": o
+ * isConfigured() do servidor devolvia true e disparava chamada de API com lixo
+ * (no EvPay chegava a registrar webhook). Trim antes de decidir o null.
+ */
+function cleanCredential(value: string | null | undefined): string | null {
+  return value?.trim() || null;
+}
+
 async function registerEvpayWebhookOnServer(botId: string): Promise<void> {
   const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(/\/+$/, "");
   try {
@@ -53,28 +63,37 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
   const { data: bot } = await botQuery.single();
   if (!bot) throw new Error("Bot not found");
 
+  // Guardadas fora do update porque o registro do webhook lá embaixo precisa
+  // decidir em cima do valor já limpo, não do que veio do form.
+  const evpayApiKey = cleanCredential(settings.evpay_api_key);
+  const evpayProjectId = cleanCredential(settings.evpay_project_id);
+
   const { error } = await supabase
     .from("bots")
     .update({
-      facebook_pixel_id: settings.facebook_pixel_id || null,
-      facebook_access_token: settings.facebook_access_token || null,
-      facebook_pixel_id_backup: settings.facebook_pixel_id_backup || null,
-      facebook_access_token_backup: settings.facebook_access_token_backup || null,
+      facebook_pixel_id: cleanCredential(settings.facebook_pixel_id),
+      facebook_access_token: cleanCredential(settings.facebook_access_token),
+      facebook_pixel_id_backup: cleanCredential(settings.facebook_pixel_id_backup),
+      facebook_access_token_backup: cleanCredential(settings.facebook_access_token_backup),
       facebook_backup_enabled: settings.facebook_backup_enabled,
-      tiktok_pixel_id: settings.tiktok_pixel_id || null,
-      tiktok_access_token: settings.tiktok_access_token || null,
-      utmify_api_key: settings.utmify_api_key || null,
+      tiktok_pixel_id: cleanCredential(settings.tiktok_pixel_id),
+      tiktok_access_token: cleanCredential(settings.tiktok_access_token),
+      utmify_api_key: cleanCredential(settings.utmify_api_key),
       payment_gateway: settings.payment_gateway,
-      sigilopay_public_key: settings.sigilopay_public_key || null,
-      sigilopay_secret_key: settings.sigilopay_secret_key || null,
-      evpay_api_key: settings.evpay_api_key || null,
-      evpay_project_id: settings.evpay_project_id || null,
+      sigilopay_public_key: cleanCredential(settings.sigilopay_public_key),
+      sigilopay_secret_key: cleanCredential(settings.sigilopay_secret_key),
+      evpay_api_key: evpayApiKey,
+      evpay_project_id: evpayProjectId,
       collect_email_after_payment: settings.collect_email_after_payment,
       email_request_message: settings.email_request_message || null,
       tracking_mode: settings.tracking_mode,
       prelander_headline: settings.prelander_headline || null,
       prelander_description: settings.prelander_description || null,
-      prelander_image_url: settings.prelander_image_url || null,
+      // .trim() (não só || null): "   " é truthy e sobrevivia como src="   " —
+      // o browser resolve isso pra URL da própria página e baixa o HTML como
+      // se fosse imagem. Os outros campos de texto livre aqui são só exibição,
+      // sem esse efeito colateral (#credential-hygiene).
+      prelander_image_url: settings.prelander_image_url?.trim() || null,
       prelander_cta_text: settings.prelander_cta_text || null,
       redirect_display_name: settings.redirect_display_name || null,
       tracking_page_intro: settings.tracking_page_intro || null,
@@ -84,12 +103,10 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
   if (error) throw new Error(`Failed to save settings: ${error.message}`);
   invalidateBotCache(botId);
 
-  // Se o gateway é EvPay e tem credenciais, manda o server registrar o webhook
-  if (
-    settings.payment_gateway === "evpay" &&
-    settings.evpay_api_key &&
-    settings.evpay_project_id
-  ) {
+  // Se o gateway é EvPay e tem credenciais, manda o server registrar o webhook.
+  // Checa os valores limpos: com o form cru, credencial só de espaço era truthy
+  // e mandava o server registrar webhook com credencial vazia no banco.
+  if (settings.payment_gateway === "evpay" && evpayApiKey && evpayProjectId) {
     await registerEvpayWebhookOnServer(botId);
   }
 

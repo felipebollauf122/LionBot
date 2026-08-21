@@ -49,6 +49,11 @@ interface TrackCheckoutParams {
   lead: LeadInfo;
   productId?: string;
   productName?: string;
+  /** id da transaction recém-criada (payment-button.ts) — usado no event_id
+   *  pra não colidir entre Pix repetidos do mesmo lead/produto (ex: timeout
+   *  de 15min é comum). Opcional só como defesa pro caso raro do insert de
+   *  transaction ter falhado antes desta chamada. */
+  transactionId?: string;
 }
 
 interface TrackLeadParams {
@@ -94,7 +99,7 @@ interface ClickContext {
   acceptLanguage?: string;
   referer?: string;
   country?: string;
-  /** tt_clid capturado na tracking page (query param), se existir (#TikTok) */
+  /** ttclid capturado na tracking page (query param), se existir (#TikTok) */
   ttclid?: string;
   /** cookie _ttp capturado na tracking page, se existir (#TikTok) */
   ttp?: string;
@@ -262,9 +267,16 @@ export class TrackingService {
     // original page_view
     const clickCtx = await loadClickContext(this.db, lead.tid);
 
-    // Build structured contents array — Meta e TikTok preferem isso a content_ids plano
-    const contents = params.productId
+    // Build structured contents array — Meta e TikTok preferem isso a
+    // content_ids plano. ATENÇÃO: shapes DIFERENTES por rede (id/item_price
+    // no Facebook vs content_id/price na TikTok) — nunca reusar o mesmo
+    // array pras duas (era o bug: o array do Facebook ia inteiro pro
+    // TikTok, que descartava tudo exceto quantity).
+    const fbContents = params.productId
       ? [{ id: params.productId, quantity: 1, item_price: amountInCurrency }]
+      : undefined;
+    const ttContents = params.productId
+      ? [{ content_id: params.productId, content_type: "product", content_name: params.productName, price: amountInCurrency, quantity: 1 }]
       : undefined;
 
     // Facebook CAPI — Purchase event (with full user data for max EMQ).
@@ -292,7 +304,7 @@ export class TrackingService {
           currency: params.currency,
           contentIds: params.productId ? [params.productId] : undefined,
           contentName: params.productName,
-          contents,
+          contents: fbContents,
           numItems: 1,
           sourceUrl: clickCtx.sourceUrl,
           orderId: params.transactionId,
@@ -311,7 +323,7 @@ export class TrackingService {
           currency: params.currency,
           contentIds: params.productId ? [params.productId] : undefined,
           contentName: params.productName,
-          contents,
+          contents: ttContents,
           sourceUrl: clickCtx.sourceUrl,
           orderId: params.transactionId,
         });
@@ -446,12 +458,21 @@ export class TrackingService {
 
     const ctx = await loadClickContext(this.db, lead.tid);
 
+    // transactionId no event_id (#B6): sem ele, um 2º Pix do mesmo
+    // lead+produto (comum — timeout padrão é 15min) reusa o MESMO event_id
+    // do 1º, e tanto Meta quanto TikTok deduplicam e descartam o InitiateCheckout
+    // legítimo do reenvio. Fallback pro formato antigo só se a transaction
+    // não tiver sido gravada (defesa, não deveria acontecer no fluxo normal).
+    const checkoutEventId = params.transactionId
+      ? `checkout_${params.transactionId}`
+      : `checkout_${params.leadId}_${params.productId ?? "x"}`;
+
     let fbSent = false;
     if (TrackingService.FUNNEL_CAPI_ENABLED && this.hasStrongContext(ctx)) {
       fbSent = await this.facebookCapi
         .sendInitiateCheckoutEvent({
           eventTime: Math.floor(Date.now() / 1000),
-          eventId: `checkout_${params.leadId}_${params.productId ?? "x"}`,
+          eventId: checkoutEventId,
           userData: buildFbUserData(lead, ctx),
           value: params.amount / 100,
           currency: params.currency,
@@ -466,7 +487,7 @@ export class TrackingService {
 
     const tiktokSent = await this.tiktokEvents.sendInitiateCheckoutEvent({
       eventTime: Math.floor(Date.now() / 1000),
-      eventId: `checkout_${params.leadId}_${params.productId ?? "x"}`,
+      eventId: checkoutEventId,
       userData: buildTiktokUserData(lead, ctx),
       value: params.amount / 100,
       currency: params.currency,
@@ -557,12 +578,22 @@ export class TrackingService {
 
     const ctx = await loadClickContext(this.db, lead.tid);
 
+    // dbEventId no event_id (#M3): trackViewOffer roda em TODA execução de
+    // nó de pagamento (oferta principal, upsell, downsell, cada disparo de
+    // remarketing) pro MESMO lead. Sem um componente único por ocorrência,
+    // `viewcontent_${leadId}` colide entre elas — a janela de dedup de 48h
+    // da TikTok/Meta descarta as ofertas seguintes como duplicata do
+    // ViewContent da primeira. O id do próprio evento salvo em
+    // tracking_events já é único por ocorrência E estável entre reenvios
+    // (útil se essa chamada for retriada).
+    const viewContentEventId = dbEventId ? `viewcontent_${dbEventId}` : `viewcontent_${params.leadId}`;
+
     let fbSent = false;
     if (TrackingService.FUNNEL_CAPI_ENABLED && this.hasStrongContext(ctx)) {
       fbSent = await this.facebookCapi
         .sendViewContentEvent({
           eventTime: Math.floor(Date.now() / 1000),
-          eventId: `viewcontent_${params.leadId}`,
+          eventId: viewContentEventId,
           userData: buildFbUserData(lead, ctx),
           contentName: params.contentName,
         })
@@ -574,7 +605,7 @@ export class TrackingService {
 
     const tiktokSent = await this.tiktokEvents.sendViewContentEvent({
       eventTime: Math.floor(Date.now() / 1000),
-      eventId: `viewcontent_${params.leadId}`,
+      eventId: viewContentEventId,
       userData: buildTiktokUserData(lead, ctx),
       contentName: params.contentName,
       sourceUrl: ctx.sourceUrl,

@@ -59,6 +59,33 @@ function buildFbc(fbclid: string, clickTimeMs: number): string {
   return `fb.1.${clickTimeMs}.${fbclid}`;
 }
 
+/**
+ * searchParams devolve string[] quando o param aparece DUPLICADO na URL
+ * (?fbclid=a&fbclid=b) — e `String([...])` vira "a,b". No fbclid isso é o pior
+ * caso: gera um _fbc malformado `fb.1.<ts>.a,b` que a Meta descarta, envenenando
+ * a atribuição. Pega sempre o PRIMEIRO valor (o que o anúncio anexou).
+ */
+function first(v: string | string[] | undefined): string {
+  if (Array.isArray(v)) return v[0] ?? "";
+  return v ?? "";
+}
+
+/**
+ * Serializa uma string pra DENTRO do <script> inline do rodapé. O fbclid chega
+ * cru da URL e é interpolado num literal JS entre aspas simples: sem escapar,
+ * um `?fbclid=';alert(document.cookie);//` executa JS na página (XSS refletido,
+ * e o atacante só precisa mandar o link /t pro alvo). JSON.stringify fecha o
+ * literal; o escape de `<`/`>` impede que um `</script>` no valor feche a tag
+ * antes da hora, e o de U+2028/U+2029 evita quebra de linha em engine antigo.
+ */
+function jsLiteral(v: string): string {
+  return JSON.stringify(v)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 function extractClientIp(hdrs: Headers): string | null {
   const candidates = [
     hdrs.get("cf-connecting-ip"),
@@ -74,7 +101,7 @@ function extractClientIp(hdrs: Headers): string | null {
 
 export default async function TrackingPage({ searchParams }: TrackingPageProps) {
   const search = await searchParams;
-  const botId = String(search.bot ?? "");
+  const botId = first(search.bot);
 
   // Sem ?bot= (ex: o Facebook revisa o link base lionbot.online/t porque os
   // params do bot ficam no campo "Parâmetros" do anúncio): em vez da tela vazia
@@ -110,11 +137,22 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   // de tráfego: é a camada mais forte. Slug certo NÃO dá passe livre — o
   // visitante ainda passa pelos outros filtros abaixo.
   if (typedBot.slug_gate_enabled) {
-    const slugFromUrl = String(search.s ?? "") || null;
+    // first() aqui também: com ?s=a&s=b o String() virava "a,b" e o portão
+    // barrava um cliente legítimo cujo link chegou com o param duplicado.
+    const slugFromUrl = first(search.s) || null;
     if (evaluateSlugGate(true, typedBot.slug_hash, slugFromUrl) === "block") {
       return <LionBotSalesPage />;
     }
   }
+
+  // Click ids extraídos ANTES do filtro de tráfego: o veredito depende deles
+  // (clique pago do FB traz fbclid, o do TikTok traz só ttclid).
+  const fbclid = first(search.fbclid);
+  // TikTok Ads acrescenta ?ttclid=... no link do anúncio (equivalente ao
+  // fbclid do Meta). O cookie _ttp (TikTok Pixel) é setado pelo browser
+  // quando o pixel do TikTok já rodou nesse domínio antes — raramente
+  // presente numa página de redirect pura, mas capturamos se existir.
+  const ttclid = first(search.ttclid);
 
   // ── Filtro de tráfego (allowlist/blocklist) ──────────────────────────────
   // Só roda se o bot ativou. Veredito "block" → espião vê a landing de venda
@@ -127,7 +165,8 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
       ip: extractClientIp(hdrsForFilter),
       userAgent: hdrsForFilter.get("user-agent") ?? null,
       referer: hdrsForFilter.get("referer") ?? hdrsForFilter.get("referrer") ?? null,
-      fbclid: String(search.fbclid ?? "") || null,
+      fbclid: fbclid || null,
+      ttclid: ttclid || null,
       categories: {
         blockSpies: typedBot.tf_block_spies ?? true,
         blockDatacenter: typedBot.tf_block_datacenter ?? true,
@@ -140,17 +179,11 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
     }
   }
 
-  const fbclid = String(search.fbclid ?? "");
-  // TikTok Ads acrescenta ?ttclid=... no link do anúncio (equivalente ao
-  // fbclid do Meta). O cookie _ttp (TikTok Pixel) é setado pelo browser
-  // quando o pixel do TikTok já rodou nesse domínio antes — raramente
-  // presente numa página de redirect pura, mas capturamos se existir.
-  const ttclid = String(search.ttclid ?? "");
-  const utmSource = String(search.utm_source ?? "");
-  const utmMedium = String(search.utm_medium ?? "");
-  const utmCampaign = String(search.utm_campaign ?? "");
-  const utmContent = String(search.utm_content ?? "");
-  const utmTerm = String(search.utm_term ?? "");
+  const utmSource = first(search.utm_source);
+  const utmMedium = first(search.utm_medium);
+  const utmCampaign = first(search.utm_campaign);
+  const utmContent = first(search.utm_content);
+  const utmTerm = first(search.utm_term);
 
   const cookieStore = await cookies();
   const existingFbp = cookieStore.get("_fbp")?.value;
@@ -175,7 +208,13 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
   const queryString = new URLSearchParams();
   for (const [k, v] of Object.entries(search)) {
-    if (typeof v === "string" && v.length > 0) queryString.set(k, v);
+    // Param duplicado chega como array: achata (append) em vez de descartar o
+    // param inteiro — o source_url precisa refletir a URL que o cliente abriu.
+    if (Array.isArray(v)) {
+      for (const item of v) if (item.length > 0) queryString.append(k, item);
+    } else if (typeof v === "string" && v.length > 0) {
+      queryString.set(k, v);
+    }
   }
   const sourceUrl = host ? `${proto}://${host}/t${queryString.toString() ? "?" + queryString.toString() : ""}` : null;
 
@@ -364,8 +403,8 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
         dangerouslySetInnerHTML={{
           __html: `try{
 var e=document.cookie.split('; ').find(function(c){return c.indexOf('_fbp=')===0});
-if(!e){document.cookie='_fbp=${fbp}; path=/; max-age=7776000; SameSite=Lax';}
-${fbcCookie ? `var f=document.cookie.split('; ').find(function(c){return c.indexOf('_fbc=')===0});if(!f){document.cookie='_fbc=${fbcCookie}; path=/; max-age=7776000; SameSite=Lax';}` : ""}
+if(!e){document.cookie='_fbp='+${jsLiteral(fbp)}+'; path=/; max-age=7776000; SameSite=Lax';}
+${fbcCookie ? `var f=document.cookie.split('; ').find(function(c){return c.indexOf('_fbc=')===0});if(!f){document.cookie='_fbc='+${jsLiteral(fbcCookie)}+'; path=/; max-age=7776000; SameSite=Lax';}` : ""}
 }catch(e){}`,
         }}
       />

@@ -30,6 +30,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (iPhone) Safari",
       referer: "https://l.facebook.com/",
       fbclid: "IwAR_real_click_123",
+      ttclid: null,
       asn: "AS28573",
       isHosting: false,
     };
@@ -42,6 +43,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS32934", // Facebook
       isHosting: true,
     };
@@ -56,6 +58,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/124",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS27699",
       isHosting: false,
     };
@@ -68,6 +71,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (Macintosh) Chrome/124",
       referer: "https://www.facebook.com/ads/library/?id=99999",
       fbclid: null,
+      ttclid: null,
       asn: "AS27699",
       isHosting: false,
     };
@@ -80,6 +84,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (X11; Linux) HeadlessChrome/124",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS16509", // Amazon
       isHosting: true,
     };
@@ -92,6 +97,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/124",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS27699",
       isHosting: false,
     };
@@ -112,6 +118,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (X11; Linux) HeadlessChrome/124",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS16509",
       isHosting: true,
     };
@@ -131,6 +138,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS32934",
       isHosting: true,
     };
@@ -160,6 +168,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS32934",
       isHosting: true,
     };
@@ -179,6 +188,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/124",
       referer: null,            // não veio do facebook
       fbclid: "teste",          // forjado, formato implausível
+      ttclid: null,
       asn: "AS27699",
       isHosting: false,
     };
@@ -193,6 +203,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       userAgent: "Mozilla/5.0 (iPhone) Safari",
       referer: null,
       fbclid: null,
+      ttclid: null,
       asn: "AS28573",
       isHosting: false,
     };

@@ -225,7 +225,7 @@ export async function handlePaymentBundleNode(
       accessToken: botForTracking.facebook_access_token_backup,
       enabled: botForTracking.facebook_backup_enabled,
     });
-    const tiktokEvents = new TiktokEvents(botForTracking.tiktok_pixel_id ?? "", botForTracking.tiktok_access_token ?? "");
+    const tiktokEvents = new TiktokEvents(botForTracking.tiktok_pixel_id ?? "", botForTracking.tiktok_access_token ?? "", ctx.lead.bot_id);
     const utmSvc = new UtmifyService(botForTracking.utmify_api_key ?? "");
     const trackingSvc = new TrackingService(db, fbCapi, utmSvc, tiktokEvents);
     trackingSvc.trackViewOffer({
@@ -243,6 +243,11 @@ export async function handlePaymentBundleNode(
         utmCampaign: ctx.lead.utm_campaign ?? undefined,
         utmContent: ctx.lead.utm_content ?? undefined,
         utmTerm: ctx.lead.utm_term ?? undefined,
+        // (#B5) sem isso, buildExternalIds só tem lead.id pra montar
+        // external_id do TikTok ViewContent — perde os vetores extra que
+        // trackPurchase/trackCheckout já mandam.
+        telegramUserId: ctx.lead.telegram_user_id,
+        botId: ctx.lead.bot_id,
       },
       // Bundle external label: ghost OU "Offer N" hash do id. NUNCA o nome real.
       contentName:
@@ -551,7 +556,7 @@ export async function handleProductPaymentCallback(
       accessToken: botConfig.facebook_access_token_backup,
       enabled: botConfig.facebook_backup_enabled,
     });
-    const tiktokEvents = new TiktokEvents(botConfig.tiktok_pixel_id ?? "", botConfig.tiktok_access_token ?? "");
+    const tiktokEvents = new TiktokEvents(botConfig.tiktok_pixel_id ?? "", botConfig.tiktok_access_token ?? "", ctx.lead.bot_id);
     const utmSvc = new UtmifyService(botConfig.utmify_api_key ?? "");
     const trackingSvc = new TrackingService(db, fbCapi, utmSvc, tiktokEvents);
 
@@ -583,6 +588,10 @@ export async function handleProductPaymentCallback(
       lead: leadInfo,
       productId: typedProduct.id,
       productName: gatewayName,
+      // (#B6) sem isso, um 2º Pix do mesmo lead+produto (timeout padrão de
+      // 15min é comum) reusa o mesmo event_id do 1º e é deduplicado como
+      // duplicata pela TikTok/Meta.
+      transactionId: txRecord?.id,
     }).catch((e) => console.error("[tracking] Failed to track checkout:", e));
 
     // Utmify waiting_payment — também ghost

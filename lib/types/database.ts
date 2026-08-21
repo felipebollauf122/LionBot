@@ -272,6 +272,7 @@ export interface TrackingEvent {
   utm_params: Record<string, string>;
   event_data: Record<string, unknown>;
   sent_to_facebook: boolean;
+  sent_to_tiktok: boolean;
   sent_to_utmify: boolean;
   created_at: string;
 }

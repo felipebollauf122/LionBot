@@ -12,15 +12,15 @@ function rule(p: Partial<TrafficFilterRule>): TrafficFilterRule {
 
 const realClick: TrafficSignals = {
   ip: "189.1.2.3", userAgent: "Mozilla/5.0 Chrome", referer: "https://l.facebook.com/",
-  fbclid: "IwAR123", asn: "AS28573", isHosting: false,
+  fbclid: "IwAR123", ttclid: null, asn: "AS28573", isHosting: false,
 };
 const fbCrawler: TrafficSignals = {
   ip: "66.220.149.1", userAgent: "facebookexternalhit/1.1", referer: null,
-  fbclid: null, asn: "AS32934", isHosting: true,
+  fbclid: null, ttclid: null, asn: "AS32934", isHosting: true,
 };
 const spyNoFbclid: TrafficSignals = {
   ip: "203.0.113.9", userAgent: "Mozilla/5.0 Safari", referer: null,
-  fbclid: null, asn: "AS15169", isHosting: false,
+  fbclid: null, ttclid: null, asn: "AS15169", isHosting: false,
 };
 
 describe("evaluateRules — precedência", () => {

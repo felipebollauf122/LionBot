@@ -384,7 +384,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
             enabled: typedBot.facebook_backup_enabled,
           },
         );
-        const tiktokEvents = new TiktokEvents(typedBot.tiktok_pixel_id ?? "", typedBot.tiktok_access_token ?? "");
+        const tiktokEvents = new TiktokEvents(typedBot.tiktok_pixel_id ?? "", typedBot.tiktok_access_token ?? "", typedBot.id);
         const utmify = new UtmifyService(typedBot.utmify_api_key ?? "");
         const trackingService = new TrackingService(supabase, facebookCapi, utmify, tiktokEvents);
 
@@ -403,6 +403,11 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
             utmCampaign: lead.utm_campaign ?? undefined,
             utmContent: lead.utm_content ?? undefined,
             utmTerm: lead.utm_term ?? undefined,
+            // (#B5) sem isso, buildExternalIds só tem lead.id pra montar
+            // external_id do TikTok Contact — perde os 2 vetores extra
+            // (tg_<id>_<bot>, tg_<id>) que os outros 3 eventos do funil já mandam.
+            telegramUserId: lead.telegram_user_id,
+            botId: lead.bot_id,
           },
         }).catch((err) => console.error("[tracking] trackLead error:", err));
       }

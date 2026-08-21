@@ -10,6 +10,8 @@ export interface DecideTrafficInput {
   userAgent: string | null;
   referer: string | null;
   fbclid: string | null;
+  /** click id do TikTok Ads — clique pago do TikTok chega só com ele */
+  ttclid: string | null;
   /** categorias liga/desliga do bot; se omitido, usa o default (tudo ligado) */
   categories?: TrafficCategories;
 }
@@ -33,6 +35,7 @@ export async function decideTraffic(input: DecideTrafficInput): Promise<"allow" 
       userAgent: input.userAgent,
       referer: input.referer,
       fbclid: input.fbclid,
+      ttclid: input.ttclid,
       asn: asn.asn ?? null,
       isHosting: !!asn.isHosting || !!asn.isProxy,
     };

@@ -584,8 +584,16 @@ export class TrackingService {
     // `viewcontent_${leadId}` colide entre elas — a janela de dedup de 48h
     // da TikTok/Meta descarta as ofertas seguintes como duplicata do
     // ViewContent da primeira. O id do próprio evento salvo em
-    // tracking_events já é único por ocorrência E estável entre reenvios
-    // (útil se essa chamada for retriada).
+    // tracking_events já é único por ocorrência.
+    //
+    // NÃO é estável entre RETRIES da mesma ocorrência: dbEventId vem de um
+    // INSERT incondicional feito nesta mesma chamada (saveEvent, sem
+    // constraint única além da PK), então uma reexecução exata do mesmo nó
+    // (ex: redelivery de update do Telegram — não há guard de update_id em
+    // webhook/telegram.ts) gera um dbEventId novo e, com ele, um event_id
+    // novo — a TikTok/Meta não têm como reconhecer como duplicata. Corrigir
+    // isso de verdade exigiria uma chave de idempotência upstream (ex:
+    // update_id do Telegram) que este código não tem hoje.
     const viewContentEventId = dbEventId ? `viewcontent_${dbEventId}` : `viewcontent_${params.leadId}`;
 
     let fbSent = false;

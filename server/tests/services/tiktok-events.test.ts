@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "crypto";
 import { TiktokEvents } from "../../src/services/tiktok-events.js";
 
@@ -258,34 +258,156 @@ describe("TiktokEvents", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  // #B15: sem test_event_code não tem como validar o payload no TikTok
-  // Events Manager → Test Events (ver cabeçalho do arquivo de origem).
-  describe("test_event_code (TIKTOK_TEST_EVENT_CODE)", () => {
-    const ORIGINAL = process.env.TIKTOK_TEST_EVENT_CODE;
-
-    afterEach(() => {
-      if (ORIGINAL === undefined) delete process.env.TIKTOK_TEST_EVENT_CODE;
-      else process.env.TIKTOK_TEST_EVENT_CODE = ORIGINAL;
-    });
-
-    it("should include test_event_code in the body when the env var is set", async () => {
-      process.env.TIKTOK_TEST_EVENT_CODE = "TEST12345";
+  // #B15/#tiktok-test-event-per-bot: test_event_code agora é por INSTÂNCIA
+  // (constructor), não process.env global — uma auditoria de 2026-08-21
+  // encontrou que a env var global desviava a produção de TODOS os bots do
+  // mesmo processo ao validar o pixel de só um deles.
+  describe("test event code (per-instance, via constructor)", () => {
+    it("should include test_event_code in the body when passed to the constructor", async () => {
+      const testEvents = new TiktokEvents("pixel_123", "access_token_abc", "bot-1", "TEST12345");
       mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
 
-      await events.sendContactEvent({ eventTime: 1700000000, userData: {}, eventId: "evt_test_code" });
+      await testEvents.sendContactEvent({ eventTime: 1700000000, userData: {}, eventId: "evt_test_code" });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.test_event_code).toBe("TEST12345");
     });
 
-    it("should omit test_event_code when the env var is unset", async () => {
-      delete process.env.TIKTOK_TEST_EVENT_CODE;
+    it("should omit test_event_code when not passed to the constructor", async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
 
       await events.sendContactEvent({ eventTime: 1700000000, userData: {}, eventId: "evt_no_test_code" });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.test_event_code).toBeUndefined();
+    });
+
+    it("should NOT be affected by a leftover TIKTOK_TEST_EVENT_CODE env var (killed the global-env mechanism)", async () => {
+      process.env.TIKTOK_TEST_EVENT_CODE = "LEFTOVER_ENV_VALUE";
+      try {
+        mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+        await events.sendContactEvent({ eventTime: 1700000000, userData: {}, eventId: "evt_env_ignored" });
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.test_event_code).toBeUndefined();
+      } finally {
+        delete process.env.TIKTOK_TEST_EVENT_CODE;
+      }
+    });
+  });
+
+  // sendViewContentEvent nunca era testado apesar de, segundo o comentário
+  // em tracking-service.ts, ser o evento de maior volume do funil (dispara
+  // "sempre" a cada visualização de oferta).
+  describe("sendViewContentEvent", () => {
+    it("should send a ViewContent event with contentName in properties (incl. quantity)", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+
+      const ok = await events.sendViewContentEvent({
+        eventTime: 1700000000,
+        userData: { ttclid: "ttclid_abc" },
+        eventId: "evt_view",
+        contentName: "Oferta principal",
+        sourceUrl: "https://offer.example/page",
+      });
+
+      expect(ok).toBe(true);
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.data[0].event).toBe("ViewContent");
+      expect(body.data[0].event_id).toBe("evt_view");
+      expect(body.data[0].properties).toEqual({
+        content_type: "product",
+        description: "Oferta principal",
+        quantity: 1,
+      });
+      expect(body.data[0].page).toEqual({ url: "https://offer.example/page" });
+    });
+
+    it("should omit properties entirely when no contentName is given", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+
+      await events.sendViewContentEvent({
+        eventTime: 1700000000,
+        userData: {},
+        eventId: "evt_view_no_name",
+      });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.data[0].properties).toBeUndefined();
+      expect(body.data[0].page).toBeUndefined();
+    });
+  });
+
+  // sendInitiateCheckoutEvent só tinha teste do guard de valor inválido —
+  // nenhuma asserção cobria o payload de sucesso.
+  describe("sendInitiateCheckoutEvent (success payload)", () => {
+    it("should send properties.value/currency/quantity + content_id/content_ids + page.url", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+
+      const ok = await events.sendInitiateCheckoutEvent({
+        eventTime: 1700000000,
+        userData: {},
+        value: 47.5,
+        currency: "brl",
+        eventId: "evt_checkout_ok",
+        contentIds: ["prod-2"],
+        contentName: "Upsell",
+        sourceUrl: "https://offer.example/checkout",
+      });
+
+      expect(ok).toBe(true);
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.data[0].event).toBe("InitiateCheckout");
+      const properties = body.data[0].properties;
+      expect(properties.value).toBe(47.5);
+      expect(properties.currency).toBe("BRL");
+      expect(properties.quantity).toBe(1);
+      expect(properties.content_id).toBe("prod-2");
+      expect(properties.content_ids).toEqual(["prod-2"]);
+      expect(properties.description).toBe("Upsell");
+      expect(body.data[0].page).toEqual({ url: "https://offer.example/checkout" });
+    });
+  });
+
+  // properties.quantity também vale pro Purchase (#quantity-param) — a
+  // TikTok documenta como recomendado ao lado de value/currency.
+  it("should include properties.quantity=1 on Purchase", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+
+    await events.sendCompletePaymentEvent({
+      eventTime: 1700000000,
+      userData: {},
+      value: 97.0,
+      currency: "BRL",
+      eventId: "evt_qty",
+    });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.data[0].properties.quantity).toBe(1);
+  });
+
+  // validatePhoneE164 tem 3 branches de rejeição sem cobertura — só o
+  // caminho feliz era testado.
+  describe("validatePhoneE164 rejection branches", () => {
+    it("should reject and omit phone when digits are too short for E.164", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+      await events.sendContactEvent({
+        eventTime: 1700000000,
+        userData: { phone: "123" },
+        eventId: "evt_phone_short",
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.data[0].user.phone).toBeUndefined();
+    });
+
+    it("should reject and omit phone that looks like a placeholder (repeated digit / fake 9-block)", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, message: "OK" }) });
+      await events.sendContactEvent({
+        eventTime: 1700000000,
+        userData: { phone: "11999999999" },
+        eventId: "evt_phone_placeholder",
+      });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.data[0].user.phone).toBeUndefined();
     });
   });
 });

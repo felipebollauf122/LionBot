@@ -378,6 +378,71 @@ app.post("/api/bots/:botId/setup-evpay-webhook", async (req, res) => {
   }
 });
 
+/**
+ * Envia UM evento de teste (Contact) direto pro pixel/token/test_event_code
+ * DESSE bot — chamada isolada, nunca passa pelo funil real (tracking-service,
+ * traffic filter, Telegram). Existe pra resolver o pré-requisito da TikTok de
+ * ver pelo menos um evento antes de liberar o pixel numa campanha, sem exigir
+ * setar env var no servidor (afetava TODOS os bots do processo) nem navegar
+ * manualmente pelo funil todo (o filtro de tráfego podia barrar esse clique
+ * de validação, já que nesse estágio ainda não existe ttclid real).
+ */
+app.post("/api/bots/:botId/tiktok-test-event", async (req, res) => {
+  try {
+    const { botId } = req.params;
+
+    const { data: bot } = await supabase
+      .from("bots")
+      .select("id, tiktok_pixel_id, tiktok_access_token, tiktok_test_event_code")
+      .eq("id", botId)
+      .single();
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+
+    const typedBot = bot as {
+      id: string;
+      tiktok_pixel_id: string | null;
+      tiktok_access_token: string | null;
+      tiktok_test_event_code: string | null;
+    };
+
+    if (!typedBot.tiktok_pixel_id || !typedBot.tiktok_access_token) {
+      res.status(400).json({ error: "Configure Pixel ID e Access Token do TikTok antes de testar." });
+      return;
+    }
+    if (!typedBot.tiktok_test_event_code) {
+      res.status(400).json({ error: "Cole o Test Event Code (Events Manager → seu pixel → Test Events) e salve antes de testar." });
+      return;
+    }
+
+    const { TiktokEvents } = await import("./services/tiktok-events.js");
+    const tiktokEvents = new TiktokEvents(
+      typedBot.tiktok_pixel_id,
+      typedBot.tiktok_access_token,
+      typedBot.id,
+      typedBot.tiktok_test_event_code,
+    );
+
+    const ok = await tiktokEvents.sendContactEvent({
+      eventTime: Math.floor(Date.now() / 1000),
+      eventId: `test_${botId}_${Date.now()}`,
+      userData: { externalIds: [`tiktok_test_${botId}`] },
+    });
+
+    if (ok) {
+      res.json({ success: true, message: "Evento de teste enviado — confira o TikTok Events Manager → Test Events." });
+    } else {
+      res.status(502).json({ error: "A TikTok recusou o evento. Confira o Test Event Code e os logs do servidor." });
+    }
+  } catch (error) {
+    console.error("Failed to send TikTok test event:", error);
+    const msg = error instanceof Error ? error.message : "unknown";
+    res.status(500).json({ error: `test event failed: ${msg}` });
+  }
+});
+
 // MTProto inbox (Telegram oficial 777000) — abre/heartbeat/fecha sessão
 app.post("/api/mtproto/inbox/open", async (req, res) => {
   try {

@@ -12,6 +12,7 @@ interface BotSettings {
   facebook_backup_enabled: boolean;
   tiktok_pixel_id: string;
   tiktok_access_token: string;
+  tiktok_test_event_code: string;
   utmify_api_key: string;
   payment_gateway: "sigilopay" | "evpay";
   sigilopay_public_key: string;
@@ -68,6 +69,18 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
   const evpayApiKey = cleanCredential(settings.evpay_api_key);
   const evpayProjectId = cleanCredential(settings.evpay_project_id);
 
+  // Configuração PARCIAL do TikTok (só pixel OU só token) sempre foi erro de
+  // operador (colou errado, apagou um campo) — mas ficava muda pra sempre: o
+  // isConfigured() do servidor só dava console.warn, inacessível pra quem
+  // está no dashboard. Barra aqui, com uma mensagem que o form já sabe exibir.
+  const tiktokPixelId = cleanCredential(settings.tiktok_pixel_id);
+  const tiktokAccessToken = cleanCredential(settings.tiktok_access_token);
+  if (Boolean(tiktokPixelId) !== Boolean(tiktokAccessToken)) {
+    throw new Error(
+      "TikTok: preencha Pixel ID e Access Token juntos, ou deixe os dois vazios — configuração parcial não envia eventos.",
+    );
+  }
+
   const { error } = await supabase
     .from("bots")
     .update({
@@ -76,8 +89,9 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
       facebook_pixel_id_backup: cleanCredential(settings.facebook_pixel_id_backup),
       facebook_access_token_backup: cleanCredential(settings.facebook_access_token_backup),
       facebook_backup_enabled: settings.facebook_backup_enabled,
-      tiktok_pixel_id: cleanCredential(settings.tiktok_pixel_id),
-      tiktok_access_token: cleanCredential(settings.tiktok_access_token),
+      tiktok_pixel_id: tiktokPixelId,
+      tiktok_access_token: tiktokAccessToken,
+      tiktok_test_event_code: cleanCredential(settings.tiktok_test_event_code),
       utmify_api_key: cleanCredential(settings.utmify_api_key),
       payment_gateway: settings.payment_gateway,
       sigilopay_public_key: cleanCredential(settings.sigilopay_public_key),

@@ -148,108 +148,137 @@ export async function completePurchase(
 
   // Tracking (fire-and-forget, nunca bloqueia entrega)
   try {
-    // Dedup (#6): se essa transação já foi enviada ao Facebook e/ou ao
-    // TikTok, não dispara de novo pra rede que já confirmou (evita Purchase/
-    // CompletePayment duplicado que derruba EMQ). Lê os flags frescos do DB
-    // pra cobrir reentradas (webhook duplicado, retry de worker, "Reenviar
-    // acesso" do painel). As duas redes são independentes — uma pode ter
-    // confirmado enquanto a outra falhou (ou nunca esteve configurada), daí
-    // cada uma ter seu próprio flag em vez de travar as duas juntas no
-    // sucesso de uma só.
-    const { data: txFlag } = await db
+    // Mutex otimista (#race-tracking-lock): completePurchase é chamado de
+    // pelo menos 4 pontos que podem colidir na MESMA transação (webhook de
+    // pagamento, resposta de e-mail do lead, worker de timeout de 2h,
+    // "Reenviar acesso" manual). O guard antigo fazia SELECT dos flags →
+    // disparava o envio de rede (retry com backoff, pode levar >10s) → só
+    // regravava os flags DEPOIS — sem lock nenhum nessa janela, então duas
+    // chamadas próximas o bastante liam sent_to_facebook/sent_to_tiktok=false
+    // ANTES de qualquer uma escrever, e ambas disparavam Purchase/
+    // CompletePayment real pra mesma compra.
+    //
+    // Reclama o mutex com um UPDATE atômico (só avança se tracking_lock_at
+    // estiver livre — NULL ou "stale" há mais de 2min, o que cobre um crash
+    // do processo no meio do envio sem travar retries futuros pra sempre) e
+    // SEMPRE libera (volta a NULL) no fim, sucesso ou falha — inclusive no
+    // caminho onde não havia nada pendente pra nenhuma rede.
+    const staleCutoffIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data: claimedRows } = await db
       .from("transactions")
-      .select("sent_to_facebook, sent_to_tiktok, paid_at")
+      .update({ tracking_lock_at: new Date().toISOString() })
       .eq("id", transaction.id)
-      .maybeSingle();
-    const flagRow = txFlag as
+      .or(`tracking_lock_at.is.null,tracking_lock_at.lt.${staleCutoffIso}`)
+      .select("sent_to_facebook, sent_to_tiktok, paid_at");
+    const flagRow = (claimedRows?.[0] ?? null) as
       | { sent_to_facebook?: boolean; sent_to_tiktok?: boolean; paid_at?: string | null }
       | null;
-    const facebookAlreadySent = flagRow?.sent_to_facebook === true;
-    const tiktokAlreadySent = flagRow?.sent_to_tiktok === true;
-    const paidAtIso = flagRow?.paid_at ?? transaction.paid_at ?? undefined;
 
-    // "TikTok pendente" = CONFIGURADO e ainda não confirmado — não apenas
-    // "ainda não enviado". Um bot sem tiktok_pixel_id/access_token nunca vai
-    // marcar sent_to_tiktok=true (TiktokEvents.isConfigured() sempre devolve
-    // false pra ele), então o guard antigo (`facebookAlreadySent &&
-    // tiktokAlreadySent`) nunca fechava pra esse bot: TODO reenvio
-    // ("Reenviar acesso" do painel, retry de worker, webhook duplicado)
-    // reentrava no else abaixo e inseria mais uma linha "purchase" em
-    // tracking_events (saveEvent faz INSERT incondicional) mesmo sem nada
-    // pendente de fato pra nenhuma rede — inflava o funil "Compra". (#B7)
-    const tiktokConfigured = Boolean(bot.tiktok_pixel_id && bot.tiktok_access_token);
-    const tiktokPending = tiktokConfigured && !tiktokAlreadySent;
-
-    if (facebookAlreadySent && !tiktokPending) {
+    if (!flagRow) {
       console.log(
-        `[purchase-completer] tx ${transaction.id} sem CAPI pendente (Facebook enviado, TikTok ${tiktokConfigured ? "enviado" : "não configurado"}) — pulando (entrega segue normal)`,
+        `[purchase-completer] tx ${transaction.id} tracking já em andamento em outra chamada concorrente — pulando pra não duplicar Purchase/CompletePayment (entrega segue normal)`,
       );
     } else {
-      const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "", {
-        pixelId: bot.facebook_pixel_id_backup,
-        accessToken: bot.facebook_access_token_backup,
-        enabled: bot.facebook_backup_enabled,
-      });
-      const tiktokEvents = new TiktokEvents(bot.tiktok_pixel_id ?? "", bot.tiktok_access_token ?? "", bot.id);
-      const utmify = new UtmifyService(bot.utmify_api_key ?? "");
-      const trackingService = new TrackingService(db, facebookCapi, utmify, tiktokEvents);
-      const { data: product } = await db
-        .from("products")
-        .select("id, name, ghost_name")
-        .eq("id", transaction.product_id)
-        .single();
-      trackingService
-        .trackPurchase({
-          skipFacebook: facebookAlreadySent,
-          skipTiktok: tiktokAlreadySent,
-          tenantId: transaction.tenant_id,
-          leadId: transaction.lead_id,
-          botId: transaction.bot_id,
-          transactionId: transaction.id,
-          amount: transaction.amount,
-          currency: transaction.currency,
-          paidAtIso,
-          lead: {
-            id: lead.id,
-            tid: lead.tid,
-            fbclid: lead.fbclid,
-            firstName: lead.first_name,
-            lastName: lead.last_name ?? undefined,
-            email: String(lead.state.email ?? ""),
-            phone: String(lead.state.phone ?? ""),
-            document: String(lead.state.document ?? ""),
-            utmSource: lead.utm_source ?? undefined,
-            utmMedium: lead.utm_medium ?? undefined,
-            utmCampaign: lead.utm_campaign ?? undefined,
-            utmContent: lead.utm_content ?? undefined,
-            utmTerm: lead.utm_term ?? undefined,
-            telegramUserId: lead.telegram_user_id,
-            botId: lead.bot_id,
-          },
-          customerDocument: String(lead.state.document ?? ""),
-          productId: product?.id ?? transaction.product_id,
-          // NUNCA expor nome real pra fora — ghost se houver, senão "Product N"
-          productName: productLabelForExternal({
-            id: product?.id ?? transaction.product_id,
-            ghost_name: (product as { ghost_name?: string | null } | null)?.ghost_name ?? null,
-          }),
-        })
-        .then(async (res) => {
-          // Marca cada flag independentemente, só quando essa rede
-          // confirmou recebimento nessa chamada (#6, #tiktok-dedup). Uma
-          // rede já pulada (skipFacebook/skipTiktok) reporta sent=false e
-          // não regrava — o flag já estava true no DB.
-          const updates: Record<string, boolean> = {};
-          if (!facebookAlreadySent && res?.fbSent) updates.sent_to_facebook = true;
-          if (!tiktokAlreadySent && res?.tiktokSent) updates.sent_to_tiktok = true;
-          if (Object.keys(updates).length > 0) {
-            await db
-              .from("transactions")
-              .update(updates)
-              .eq("id", transaction.id);
-          }
-        })
-        .catch((e) => console.error("[purchase-completer] Tracking error:", e));
+      // Dedup (#6): se essa transação já foi enviada ao Facebook e/ou ao
+      // TikTok, não dispara de novo pra rede que já confirmou (evita Purchase/
+      // CompletePayment duplicado que derruba EMQ). As duas redes são
+      // independentes — uma pode ter confirmado enquanto a outra falhou (ou
+      // nunca esteve configurada), daí cada uma ter seu próprio flag em vez
+      // de travar as duas juntas no sucesso de uma só.
+      const facebookAlreadySent = flagRow.sent_to_facebook === true;
+      const tiktokAlreadySent = flagRow.sent_to_tiktok === true;
+      const paidAtIso = flagRow.paid_at ?? transaction.paid_at ?? undefined;
+
+      // "TikTok pendente" = CONFIGURADO e ainda não confirmado — não apenas
+      // "ainda não enviado". Um bot sem tiktok_pixel_id/access_token nunca vai
+      // marcar sent_to_tiktok=true (TiktokEvents.isConfigured() sempre devolve
+      // false pra ele), então o guard antigo (`facebookAlreadySent &&
+      // tiktokAlreadySent`) nunca fechava pra esse bot: TODO reenvio
+      // ("Reenviar acesso" do painel, retry de worker, webhook duplicado)
+      // reentrava no else abaixo e inseria mais uma linha "purchase" em
+      // tracking_events (saveEvent faz INSERT incondicional) mesmo sem nada
+      // pendente de fato pra nenhuma rede — inflava o funil "Compra". (#B7)
+      const tiktokConfigured = Boolean(bot.tiktok_pixel_id && bot.tiktok_access_token);
+      const tiktokPending = tiktokConfigured && !tiktokAlreadySent;
+
+      if (facebookAlreadySent && !tiktokPending) {
+        console.log(
+          `[purchase-completer] tx ${transaction.id} sem CAPI pendente (Facebook enviado, TikTok ${tiktokConfigured ? "enviado" : "não configurado"}) — pulando (entrega segue normal)`,
+        );
+        await db.from("transactions").update({ tracking_lock_at: null }).eq("id", transaction.id);
+      } else {
+        const facebookCapi = new FacebookCapi(bot.facebook_pixel_id ?? "", bot.facebook_access_token ?? "", {
+          pixelId: bot.facebook_pixel_id_backup,
+          accessToken: bot.facebook_access_token_backup,
+          enabled: bot.facebook_backup_enabled,
+        });
+        const tiktokEvents = new TiktokEvents(bot.tiktok_pixel_id ?? "", bot.tiktok_access_token ?? "", bot.id);
+        const utmify = new UtmifyService(bot.utmify_api_key ?? "");
+        const trackingService = new TrackingService(db, facebookCapi, utmify, tiktokEvents);
+        const { data: product } = await db
+          .from("products")
+          .select("id, name, ghost_name")
+          .eq("id", transaction.product_id)
+          .single();
+        trackingService
+          .trackPurchase({
+            skipFacebook: facebookAlreadySent,
+            skipTiktok: tiktokAlreadySent,
+            tenantId: transaction.tenant_id,
+            leadId: transaction.lead_id,
+            botId: transaction.bot_id,
+            transactionId: transaction.id,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            paidAtIso,
+            lead: {
+              id: lead.id,
+              tid: lead.tid,
+              fbclid: lead.fbclid,
+              firstName: lead.first_name,
+              lastName: lead.last_name ?? undefined,
+              email: String(lead.state.email ?? ""),
+              phone: String(lead.state.phone ?? ""),
+              document: String(lead.state.document ?? ""),
+              utmSource: lead.utm_source ?? undefined,
+              utmMedium: lead.utm_medium ?? undefined,
+              utmCampaign: lead.utm_campaign ?? undefined,
+              utmContent: lead.utm_content ?? undefined,
+              utmTerm: lead.utm_term ?? undefined,
+              telegramUserId: lead.telegram_user_id,
+              botId: lead.bot_id,
+            },
+            customerDocument: String(lead.state.document ?? ""),
+            productId: product?.id ?? transaction.product_id,
+            // NUNCA expor nome real pra fora — ghost se houver, senão "Product N"
+            productName: productLabelForExternal({
+              id: product?.id ?? transaction.product_id,
+              ghost_name: (product as { ghost_name?: string | null } | null)?.ghost_name ?? null,
+            }),
+          })
+          .then(async (res) => {
+            // Marca cada flag independentemente, só quando essa rede
+            // confirmou recebimento nessa chamada (#6, #tiktok-dedup). Uma
+            // rede já pulada (skipFacebook/skipTiktok) reporta sent=false e
+            // não regrava — o flag já estava true no DB. Libera o lock
+            // sempre, junto (mesmo update).
+            const updates: Record<string, unknown> = { tracking_lock_at: null };
+            if (!facebookAlreadySent && res?.fbSent) updates.sent_to_facebook = true;
+            if (!tiktokAlreadySent && res?.tiktokSent) updates.sent_to_tiktok = true;
+            await db.from("transactions").update(updates).eq("id", transaction.id);
+          })
+          .catch(async (e) => {
+            console.error("[purchase-completer] Tracking error:", e);
+            // Libera o lock mesmo em falha — senão um erro de rede trava
+            // qualquer retry futuro (inclusive "Reenviar acesso" manual) até
+            // o timeout de 2min do stale-lock.
+            try {
+              await db.from("transactions").update({ tracking_lock_at: null }).eq("id", transaction.id);
+            } catch {
+              /* ignore — stale-lock timeout (2min) ainda cobre esse caso */
+            }
+          });
+      }
     }
   } catch (err) {
     console.error("[purchase-completer] tracking setup falhou (segue entrega):", err);

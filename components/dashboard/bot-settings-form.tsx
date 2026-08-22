@@ -127,6 +127,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [activeSection, setActiveSection] = useState<SectionKey>("info");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -154,6 +155,9 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [accessTokenBackup, setAccessTokenBackup] = useState(bot.facebook_access_token_backup ?? "");
   const [tiktokPixelId, setTiktokPixelId] = useState(bot.tiktok_pixel_id ?? "");
   const [tiktokAccessToken, setTiktokAccessToken] = useState(bot.tiktok_access_token ?? "");
+  const [tiktokTestEventCode, setTiktokTestEventCode] = useState(bot.tiktok_test_event_code ?? "");
+  const [sendingTiktokTest, setSendingTiktokTest] = useState(false);
+  const [tiktokTestMsg, setTiktokTestMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [utmifyKey, setUtmifyKey] = useState(bot.utmify_api_key ?? "");
   const [paymentGateway, setPaymentGateway] = useState<"sigilopay" | "evpay">(
     (bot.payment_gateway === "evpay" ? "evpay" : "sigilopay"),
@@ -175,6 +179,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
+    setSaveError(null);
     try {
       await saveBotSettings(bot.id, {
         facebook_pixel_id: pixelId,
@@ -184,6 +189,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
         facebook_backup_enabled: backupEnabled,
         tiktok_pixel_id: tiktokPixelId,
         tiktok_access_token: tiktokAccessToken,
+        tiktok_test_event_code: tiktokTestEventCode,
         utmify_api_key: utmifyKey,
         payment_gateway: paymentGateway,
         sigilopay_public_key: sigiloPublicKey,
@@ -202,8 +208,14 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // Sem isso, bot.tiktok_test_event_code (usado só pra habilitar o botão
+      // "Enviar evento de teste" logo abaixo) ficava com o valor antigo do
+      // server component até a próxima navegação — o operador salvava o
+      // código, via "Salvo com sucesso!", e o botão continuava desabilitado.
+      router.refresh();
     } catch (e) {
       console.error(e);
+      setSaveError(e instanceof Error ? e.message : "Erro ao salvar configurações.");
     } finally {
       setSaving(false);
     }
@@ -581,6 +593,60 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                   logo no topo — e em <b>Settings</b> clique em <b>Generate Access Token</b> pra gerar o token
                   da Events API. Copie o token na hora: o TikTok não mostra ele de novo depois.
                 </p>
+
+                {/* ── Evento de teste (pré-requisito da TikTok pra liberar o pixel numa campanha) ── */}
+                <div className="pt-4 mt-2 border-t border-(--border-subtle)">
+                  <div className="text-foreground text-sm font-medium mb-1">Evento de teste</div>
+                  <p className="text-(--text-muted) text-xs mb-3 leading-relaxed">
+                    A TikTok só libera um evento (ex: Purchase) pra otimização de campanha depois de ver
+                    esse evento pelo menos uma vez. Cole o <b>Test Event Code</b> (Events Manager → seu
+                    pixel → aba <b>Test Events</b>) e salve as configurações — só então o botão abaixo
+                    envia um evento de teste isolado, sem tocar no funil real de nenhum bot.
+                  </p>
+                  <div className="mb-3">
+                    <label className="input-label">Test Event Code</label>
+                    <input
+                      type="text"
+                      value={tiktokTestEventCode}
+                      onChange={(e) => setTiktokTestEventCode(e.target.value)}
+                      placeholder="TEST12345"
+                      className="input font-mono text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={sendingTiktokTest || !bot.tiktok_test_event_code}
+                    onClick={async () => {
+                      setSendingTiktokTest(true);
+                      setTiktokTestMsg(null);
+                      try {
+                        const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
+                        const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/tiktok-test-event`, { method: "POST" });
+                        setTiktokTestMsg({
+                          kind: ok ? "ok" : "err",
+                          text: ok ? String(data.message ?? "Evento de teste enviado.") : String(data.error ?? "Erro ao enviar."),
+                        });
+                      } catch (e) {
+                        setTiktokTestMsg({ kind: "err", text: e instanceof Error ? e.message : "Erro inesperado" });
+                      } finally {
+                        setSendingTiktokTest(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {sendingTiktokTest ? "Enviando..." : "Enviar evento de teste"}
+                  </button>
+                  {!bot.tiktok_test_event_code && (
+                    <p className="text-(--text-ghost) text-[10px] mt-2">
+                      Cole o Test Event Code acima e clique em <b>Salvar Configurações</b> antes de testar.
+                    </p>
+                  )}
+                  {tiktokTestMsg && (
+                    <p className={`text-xs mt-2 ${tiktokTestMsg.kind === "ok" ? "text-(--accent)" : "text-red-400"}`}>
+                      {tiktokTestMsg.text}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1037,6 +1103,9 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                   Salvo com sucesso!
                 </span>
+              )}
+              {saveError && (
+                <span className="text-(--red) text-sm font-medium animate-in">{saveError}</span>
               )}
             </div>
           )}

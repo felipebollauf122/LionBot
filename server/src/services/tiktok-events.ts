@@ -11,10 +11,23 @@ import { createHash } from "crypto";
  * de 2026-08-21 que corrigiu user.phone (era phone_number), o "+" no E.164,
  * o shape de contents[] (era o do Facebook) e o rename CompletePayment→
  * Purchase. Essas fontes convergem e citam a doc de rate-limits oficial
- * (code=40100), mas SEM um teste real via test_event_code (suportado desde
- * essa auditoria — ver TIKTOK_TEST_EVENT_CODE em sendEvent) nada aqui está
+ * (code=40100), mas SEM um teste real via test_event_code nada aqui está
  * 100% confirmado. Validar no TikTok Events Manager → Test Events antes de
- * confiar cegamente em produção.
+ * confiar cegamente em produção — o botão "Enviar evento de teste" na seção
+ * TikTok Ads do dashboard (bot-settings-form.tsx) existe exatamente pra isso.
+ *
+ * test_event_code é passado no CONSTRUTOR (por instância, portanto por bot),
+ * nunca lido de process.env: uma auditoria de 2026-08-21 encontrou que a
+ * versão anterior lia TIKTOK_TEST_EVENT_CODE direto de process.env dentro de
+ * sendEvent() — como essa classe é instanciada com credenciais por-bot mas
+ * roda num único processo Express compartilhado por TODOS os bots/tenants,
+ * setar aquela env var pra validar o pixel de UM bot desviava
+ * SIMULTANEAMENTE os eventos reais de produção de TODOS os outros bots ativos
+ * pra aba Test Events dos pixels deles, sem log nenhum distinguindo teste de
+ * envio real. Passando por parâmetro, só a chamada explícita de teste
+ * (server/src/index.ts, rota /tiktok-test-event) carrega um test_event_code —
+ * o funil real (telegram.ts, purchase-completer.ts, payment-button.ts,
+ * button.ts) nunca passa esse argumento e nunca é afetado.
  *
  * Mirrors a estrutura de facebook-capi.ts (isConfigured gate, hash SHA-256,
  * buildUserData, retry com backoff em 5xx/429/rate-limit), mas sem o
@@ -98,6 +111,10 @@ export class TiktokEvents {
     private pixelId: string,
     private accessToken: string,
     botId?: string,
+    /** Test Event Code do TikTok Events Manager, POR BOT — só setado pela
+     *  chamada explícita de teste (nunca pelo funil real). Ver cabeçalho
+     *  do arquivo (#tiktok-test-event-per-bot). */
+    private testEventCode?: string,
   ) {
     this.tag = botId ? `[tiktok-events:${botId}]` : "[tiktok-events]";
   }
@@ -213,6 +230,10 @@ export class TiktokEvents {
       content_type: "product",
       currency: params.currency.toUpperCase(),
       value,
+      // Recomendado pela TikTok em properties (nível do evento) pra
+      // Purchase/InitiateCheckout/ViewContent, ao lado de value/currency —
+      // todo produto vendido aqui é sempre 1 unidade por transação.
+      quantity: 1,
       ...this.buildContentProperties(params.contentIds, params.contentName),
     };
     if (params.contents?.length) properties.contents = params.contents;
@@ -249,6 +270,7 @@ export class TiktokEvents {
       content_type: "product",
       currency: params.currency.toUpperCase(),
       value,
+      quantity: 1,
       ...this.buildContentProperties(params.contentIds, params.contentName),
     };
 
@@ -284,7 +306,7 @@ export class TiktokEvents {
       user: this.buildUserData(params.userData),
     };
     if (params.contentName) {
-      eventData.properties = { content_type: "product", description: params.contentName };
+      eventData.properties = { content_type: "product", description: params.contentName, quantity: 1 };
     }
     if (params.sourceUrl) eventData.page = { url: params.sourceUrl };
 
@@ -296,12 +318,9 @@ export class TiktokEvents {
     const eventName = String(eventData.event);
     const apiUrl = "https://business-api.tiktok.com/open_api/v1.3/event/track/";
     const tag = this.tag;
-    // Permite testar no TikTok Events Manager → Test Events sem sujar
-    // dados de produção. Setar TIKTOK_TEST_EVENT_CODE (formato TEST12345,
-    // gerado no próprio Events Manager) durante a validação e remover
-    // depois — sem isso não tem como confirmar o shape do payload contra
-    // um evento real (ver cabeçalho do arquivo).
-    const testEventCode = process.env.TIKTOK_TEST_EVENT_CODE?.trim();
+    // Por instância (por bot), nunca por process.env global — ver cabeçalho
+    // do arquivo (#tiktok-test-event-per-bot).
+    const testEventCode = this.testEventCode?.trim();
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {

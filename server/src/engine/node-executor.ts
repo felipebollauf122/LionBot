@@ -17,7 +17,6 @@ const handlers: Record<string, (ctx: NodeContext) => Promise<NodeResult>> = {
   trigger: handleTriggerNode,
   text: handleTextNode,
   image: handleImageNode,
-  button: handleButtonNode,
   delay: handleDelayNode,
   condition: handleConditionNode,
   input: handleInputNode,
@@ -45,6 +44,12 @@ export async function executeNode(ctx: NodeContext, deps?: ExecuteNodeDeps): Pro
         return { nextNodeId: null };
       }
       return await handlePaymentBundleNode(ctx, deps.db, deps.gateway, deps.baseWebhookUrl);
+    }
+
+    // "button" precisa de db só pra tracking (ViewContent quando tem botão
+    // action:"payment") — nunca bloqueia o envio da mensagem se faltar.
+    if (ctx.node.type === "button") {
+      return await handleButtonNode(ctx, deps?.db);
     }
 
     const handler = handlers[ctx.node.type];

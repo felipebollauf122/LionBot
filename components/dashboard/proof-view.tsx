@@ -86,6 +86,7 @@ function fmtCurrency(amount: number, currency: string): string {
 function gatewayLabel(g: string): string {
   if (g === "evpay") return "Yvepay";
   if (g === "sigilopay") return "Poseidon Pay";
+  if (g === "nowpayments") return "NOWPayments";
   return g;
 }
 
@@ -151,7 +152,7 @@ export function ProofView({
   }
   timeline.push({
     time: transaction.created_at,
-    label: "PIX gerado",
+    label: transaction.gateway === "nowpayments" ? "Cobrança cripto gerada" : "PIX gerado",
     detail: `${gatewayLabel(transaction.gateway)} · ${fmtCurrency(transaction.amount, transaction.currency)}`,
   });
   if (transaction.paid_at) {
@@ -278,8 +279,8 @@ export function ProofView({
         <Section title="Detalhes do pagamento">
           <div className="grid grid-cols-2 gap-x-6">
             <Field label="Processadora" value={gatewayLabel(transaction.gateway)} />
-            <Field label="Método" value="PIX" />
-            <Field label="PIX gerado em" value={fmtDateTime(transaction.created_at)} />
+            <Field label="Método" value={transaction.gateway === "nowpayments" ? "Criptomoeda" : "PIX"} />
+            <Field label={transaction.gateway === "nowpayments" ? "Cobrança gerada em" : "PIX gerado em"} value={fmtDateTime(transaction.created_at)} />
             <Field label="Pagamento confirmado em" value={fmtDateTime(transaction.paid_at)} />
             <Field label="ID da transação (gateway)" value={transaction.external_id} />
           </div>

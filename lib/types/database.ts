@@ -61,6 +61,9 @@ export interface Bot {
   payment_gateway: string | null;
   evpay_api_key: string | null;
   evpay_project_id: string | null;
+  nowpayments_api_key: string | null;
+  nowpayments_ipn_secret_key: string | null;
+  nowpayments_pay_currency: string | null;
   collect_email_after_payment: boolean;
   email_request_message: string | null;
   tracking_mode: TrackingMode;

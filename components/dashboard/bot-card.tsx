@@ -35,7 +35,7 @@ export function BotCard({ bot }: BotCardProps) {
   }
 
   const hasTracking = !!bot.facebook_pixel_id;
-  const hasPayment = !!bot.sigilopay_public_key;
+  const hasPayment = !!(bot.sigilopay_public_key || bot.evpay_api_key || bot.nowpayments_api_key);
 
   return (
     <a

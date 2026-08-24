@@ -14,11 +14,14 @@ interface BotSettings {
   tiktok_access_token: string;
   tiktok_test_event_code: string;
   utmify_api_key: string;
-  payment_gateway: "sigilopay" | "evpay";
+  payment_gateway: "sigilopay" | "evpay" | "nowpayments";
   sigilopay_public_key: string;
   sigilopay_secret_key: string;
   evpay_api_key: string;
   evpay_project_id: string;
+  nowpayments_api_key: string;
+  nowpayments_ipn_secret_key: string;
+  nowpayments_pay_currency: string;
   collect_email_after_payment: boolean;
   email_request_message: string;
   tracking_mode: "redirect" | "prelander";
@@ -81,6 +84,15 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
     );
   }
 
+  // Mesma lista que o <select> do form oferece — barra aqui pra não mandar um
+  // pay_currency inválido pra API da NOWPayments (o form já restringe, mas
+  // uma chamada direta ou dado legado poderia burlar isso).
+  const NOWPAYMENTS_CURRENCIES = ["usdttrc20", "usdtbep20", "trx", "btc", "eth", "ltc"];
+  const nowpaymentsPayCurrency = settings.nowpayments_pay_currency || "usdttrc20";
+  if (!NOWPAYMENTS_CURRENCIES.includes(nowpaymentsPayCurrency)) {
+    throw new Error(`NOWPayments: moeda "${nowpaymentsPayCurrency}" não suportada.`);
+  }
+
   const { error } = await supabase
     .from("bots")
     .update({
@@ -98,6 +110,9 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
       sigilopay_secret_key: cleanCredential(settings.sigilopay_secret_key),
       evpay_api_key: evpayApiKey,
       evpay_project_id: evpayProjectId,
+      nowpayments_api_key: cleanCredential(settings.nowpayments_api_key),
+      nowpayments_ipn_secret_key: cleanCredential(settings.nowpayments_ipn_secret_key),
+      nowpayments_pay_currency: nowpaymentsPayCurrency,
       collect_email_after_payment: settings.collect_email_after_payment,
       email_request_message: settings.email_request_message || null,
       tracking_mode: settings.tracking_mode,

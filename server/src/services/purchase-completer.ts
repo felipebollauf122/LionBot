@@ -54,6 +54,7 @@ interface Transaction {
   // fica null porque lead.current_flow_id nunca aponta pra remarketing_flows.
   remarketing_flow_id?: string | null;
   remarketing_send_id?: string | null;
+  gateway?: string | null;
 }
 
 /**
@@ -231,6 +232,7 @@ export async function completePurchase(
             amount: transaction.amount,
             currency: transaction.currency,
             paidAtIso,
+            paymentMethod: transaction.gateway === "nowpayments" ? "crypto" : "pix",
             lead: {
               id: lead.id,
               tid: lead.tid,

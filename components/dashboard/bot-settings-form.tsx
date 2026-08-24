@@ -116,7 +116,7 @@ const sections = [
   { key: "facebook", label: "Facebook Ads", desc: "Pixel e Conversions API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--cyan)" },
   { key: "tiktok", label: "TikTok Ads", desc: "Pixel e Events API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--amber)" },
   { key: "utmify", label: "Utmify", desc: "Integracao de tracking", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--purple)" },
-  { key: "gateway", label: "Gateway de pagamento", desc: "Poseidon Pay ou EvPay", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--accent)" },
+  { key: "gateway", label: "Gateway de pagamento", desc: "Poseidon Pay, EvPay ou cripto", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--accent)" },
   { key: "tracking", label: "Pagina de Tracking", desc: "Configuracao da pagina de redirecionamento", icon: "M21 12a9 9 0 11-6.219-8.56", color: "var(--amber)" },
   { key: "advanced", label: "Avancado", desc: "Protecao, fluxo black e token", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z", color: "var(--purple)" },
   { key: "danger", label: "Zona de perigo", desc: "Excluir bot permanentemente", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01", color: "var(--red)" },
@@ -159,13 +159,20 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [sendingTiktokTest, setSendingTiktokTest] = useState(false);
   const [tiktokTestMsg, setTiktokTestMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [utmifyKey, setUtmifyKey] = useState(bot.utmify_api_key ?? "");
-  const [paymentGateway, setPaymentGateway] = useState<"sigilopay" | "evpay">(
-    (bot.payment_gateway === "evpay" ? "evpay" : "sigilopay"),
+  const [paymentGateway, setPaymentGateway] = useState<"sigilopay" | "evpay" | "nowpayments">(
+    bot.payment_gateway === "evpay"
+      ? "evpay"
+      : bot.payment_gateway === "nowpayments"
+        ? "nowpayments"
+        : "sigilopay",
   );
   const [sigiloPublicKey, setSigiloPublicKey] = useState(bot.sigilopay_public_key ?? "");
   const [sigiloSecretKey, setSigiloSecretKey] = useState(bot.sigilopay_secret_key ?? "");
   const [evpayApiKey, setEvpayApiKey] = useState(bot.evpay_api_key ?? "");
   const [evpayProjectId, setEvpayProjectId] = useState(bot.evpay_project_id ?? "");
+  const [nowpaymentsApiKey, setNowpaymentsApiKey] = useState(bot.nowpayments_api_key ?? "");
+  const [nowpaymentsIpnSecretKey, setNowpaymentsIpnSecretKey] = useState(bot.nowpayments_ipn_secret_key ?? "");
+  const [nowpaymentsPayCurrency, setNowpaymentsPayCurrency] = useState(bot.nowpayments_pay_currency ?? "usdttrc20");
   const [collectEmail, setCollectEmail] = useState(bot.collect_email_after_payment ?? false);
   const [emailRequestMessage, setEmailRequestMessage] = useState(bot.email_request_message ?? "");
   const [trackingMode, setTrackingMode] = useState<"redirect" | "prelander">(bot.tracking_mode ?? "redirect");
@@ -196,6 +203,9 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
         sigilopay_secret_key: sigiloSecretKey,
         evpay_api_key: evpayApiKey,
         evpay_project_id: evpayProjectId,
+        nowpayments_api_key: nowpaymentsApiKey,
+        nowpayments_ipn_secret_key: nowpaymentsIpnSecretKey,
+        nowpayments_pay_currency: nowpaymentsPayCurrency,
         collect_email_after_payment: collectEmail,
         email_request_message: emailRequestMessage,
         tracking_mode: trackingMode,
@@ -673,11 +683,12 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                   <label className="input-label">Gateway</label>
                   <select
                     value={paymentGateway}
-                    onChange={(e) => setPaymentGateway(e.target.value as "sigilopay" | "evpay")}
+                    onChange={(e) => setPaymentGateway(e.target.value as "sigilopay" | "evpay" | "nowpayments")}
                     className="input"
                   >
                     <option value="sigilopay">Poseidon Pay</option>
                     <option value="evpay">EvPay</option>
+                    <option value="nowpayments">Cripto (NOWPayments)</option>
                   </select>
                 </div>
 
@@ -740,6 +751,41 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       Salvar registra o webhook automaticamente. Use os botões acima
                       pra re-registrar ou conferir se o Yvepay tem nosso URL cadastrado.
                       Evento monitorado: <code>pix.in.confirmation</code>.
+                    </p>
+                  </>
+                )}
+
+                {paymentGateway === "nowpayments" && (
+                  <>
+                    <div>
+                      <label className="input-label">API Key</label>
+                      <SecretInput value={nowpaymentsApiKey} onChange={setNowpaymentsApiKey} placeholder="..." />
+                    </div>
+                    <div>
+                      <label className="input-label">IPN Secret Key</label>
+                      <SecretInput value={nowpaymentsIpnSecretKey} onChange={setNowpaymentsIpnSecretKey} placeholder="..." />
+                    </div>
+                    <div>
+                      <label className="input-label">Moeda para receber</label>
+                      <select
+                        value={nowpaymentsPayCurrency}
+                        onChange={(e) => setNowpaymentsPayCurrency(e.target.value)}
+                        className="input"
+                      >
+                        <option value="usdttrc20">USDT (rede TRC20 — Tron)</option>
+                        <option value="usdtbep20">USDT (rede BEP20 — BNB Chain)</option>
+                        <option value="trx">TRX (Tron)</option>
+                        <option value="btc">BTC (Bitcoin)</option>
+                        <option value="eth">ETH (Ethereum)</option>
+                        <option value="ltc">LTC (Litecoin)</option>
+                      </select>
+                    </div>
+                    <p className="text-xs text-white/40">
+                      Chaves geradas em nowpayments.io → Configurações da conta → API Keys /
+                      IPN. A conversão de R$ pra cripto é feita automaticamente pela
+                      NOWPayments no valor de cada cobrança. Prefira USDT/TRX pra produtos
+                      de ticket baixo — moedas como BTC têm valor mínimo de rede que pode
+                      superar o preço do produto.
                     </p>
                   </>
                 )}

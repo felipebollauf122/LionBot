@@ -14,6 +14,7 @@ import { processRemarketing } from "./workers/remarketing-worker.js";
 import { pollEvpayPendingTransactions } from "./workers/evpay-poller.js";
 import { pollPoseidonPendingTransactions } from "./workers/poseidonpay-poller.js";
 import { pollZuckpayPendingTransactions } from "./workers/zuckpay-poller.js";
+import { pollNowPaymentsPendingTransactions } from "./workers/nowpayments-poller.js";
 import { pollChannelMonitors } from "./workers/channel-monitor-poller.js";
 
 interface Bot {
@@ -547,6 +548,20 @@ export function startWorkers(): void {
       });
   }, 5_000);
 
+  // NOWPayments status poller — mesma estratégia do EvPay/ZuckPay (IPN é o
+  // principal, isto é o fallback). Trava anti-sobreposição pra não empilhar
+  // fetches lentos.
+  let nowpaymentsPollerRunning = false;
+  setInterval(() => {
+    if (nowpaymentsPollerRunning) return;
+    nowpaymentsPollerRunning = true;
+    pollNowPaymentsPendingTransactions(supabase)
+      .catch((err) => console.error("[nowpayments-poller] Error:", err))
+      .finally(() => {
+        nowpaymentsPollerRunning = false;
+      });
+  }, 5_000);
+
   // Poseidon Pay status poller — DESLIGADO por enquanto.
   // A Poseidon não tem endpoint público de consulta de status (todos
   // os GETs que tentamos retornaram 403 pelo Cloudflare). Manter o
@@ -600,5 +615,5 @@ export function startWorkers(): void {
   setInterval(() => tickBotCloneWatchdogSafe(), 10 * 60 * 1000);
   setTimeout(() => tickBotCloneWatchdogSafe(), 90_000); // 90s após boot
 
-  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + channel-monitor + botclone-watchdog started");
+  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + zuckpay-poller + nowpayments-poller + channel-monitor + botclone-watchdog started");
 }

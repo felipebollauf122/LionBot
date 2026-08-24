@@ -1,7 +1,7 @@
 import express from "express";
 import { config } from "./config.js";
 import { handleTelegramWebhook } from "./webhook/telegram.js";
-import { handlePaymentWebhookGlobal, handlePaymentWebhook, handleEvPayWebhook, handleZuckPayWebhook } from "./webhook/payment.js";
+import { handlePaymentWebhookGlobal, handlePaymentWebhook, handleEvPayWebhook, handleZuckPayWebhook, handleNowPaymentsWebhook } from "./webhook/payment.js";
 import { startWorkers } from "./queue.js";
 import { startMtprotoWorker } from "./workers/mtproto-worker.js";
 import { enqueueMtproto, type MtprotoJobData } from "./queue-mtproto.js";
@@ -78,6 +78,9 @@ app.post("/webhook/evpay", handleEvPayWebhook);
 // ZuckPay payment webhook — global, valida HMAC (X-ZuckPay-Signature) por bot.
 // DEVE vir antes do catch-all /webhook/:botId (senão o Telegram handler engole).
 app.post("/webhook/zuckpay", handleZuckPayWebhook);
+// NOWPayments payment webhook (IPN) — global, valida HMAC (x-nowpayments-sig) por bot.
+// DEVE vir antes do catch-all /webhook/:botId.
+app.post("/webhook/nowpayments", handleNowPaymentsWebhook);
 
 // Telegram webhook endpoint
 app.post("/webhook/:botId", handleTelegramWebhook);

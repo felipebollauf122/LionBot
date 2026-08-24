@@ -28,8 +28,14 @@ export async function ensureBotPaymentKeys<T extends BotPaymentShape>(
   bot: T,
 ): Promise<T> {
   // Gateway explicitamente outro → chaves da Poseidon são irrelevantes.
-  // (getGatewayKind trata qualquer valor != evpay/zuckpay como sigilopay.)
-  if (bot.payment_gateway === "evpay" || bot.payment_gateway === "zuckpay") return bot;
+  // (getGatewayKind trata qualquer valor != evpay/zuckpay/nowpayments como sigilopay.)
+  if (
+    bot.payment_gateway === "evpay" ||
+    bot.payment_gateway === "zuckpay" ||
+    bot.payment_gateway === "nowpayments"
+  ) {
+    return bot;
+  }
 
   const hasPub = Boolean(bot.sigilopay_public_key && bot.sigilopay_public_key.trim());
   const hasSec = Boolean(bot.sigilopay_secret_key && bot.sigilopay_secret_key.trim());

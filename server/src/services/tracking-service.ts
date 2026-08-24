@@ -38,6 +38,8 @@ interface TrackPurchaseParams {
   skipFacebook?: boolean;
   /** Já enviado ao TikTok antes (dedup no caller) — não reenvia CompletePayment. */
   skipTiktok?: boolean;
+  /** Reportado à Utmify. "pix" por padrão — caller passa "crypto" pra transações NOWPayments. */
+  paymentMethod?: string;
 }
 
 interface TrackCheckoutParams {
@@ -334,7 +336,7 @@ export class TrackingService {
       orderId: params.transactionId,
       status: "paid",
       platform: "eaglebot",
-      paymentMethod: "pix",
+      paymentMethod: params.paymentMethod ?? "pix",
       paidAt: now,
       approvedDate: now,
       customer: {

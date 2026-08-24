@@ -27,6 +27,13 @@ export const config = {
   // em assinatura inválida e processa; 'true' rejeita. Suba pra 'true' quando
   // confirmar que o X-ZuckPay-Signature bate com o webhook_secret salvo.
   zuckpayRequireSignature: envOptional("ZUCKPAY_REQUIRE_SIGNATURE", "false") === "true",
+  // NOWPayments: mesmo esquema tolerante do EvPay/ZuckPay. 'false' (padrão)
+  // só loga warning em assinatura inválida e processa; 'true' rejeita. O
+  // esquema de assinatura da NOWPayments (HMAC sobre o JSON re-serializado
+  // com chaves ordenadas, não o buffer bruto) tem risco de mismatch por
+  // diferenças de formatação — só suba pra 'true' depois de confirmar contra
+  // um IPN real de sandbox.
+  nowpaymentsRequireSignature: envOptional("NOWPAYMENTS_REQUIRE_SIGNATURE", "false") === "true",
   // Web Push (VAPID) — push de venda nos dispositivos do tenant.
   // Se as chaves não estiverem setadas, o push é silenciosamente desativado.
   vapidPublicKey: envOptional("VAPID_PUBLIC_KEY", ""),

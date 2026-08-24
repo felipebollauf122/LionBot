@@ -176,7 +176,17 @@ export async function processPaymentCallback(botId: string | null, body: Record<
     newStatus = "refused";
   } else if (["CANCELED", "REFUNDED", "CANCELLED", "REVERSAL", "REVERSED", "CHARGEBACK"].includes(normalizedStatus)) {
     newStatus = "refunded";
-  } else if (["PENDING", "PROCESSING", "WAITING", "CREATED", "PROCESSING_PAYMENT"].includes(normalizedStatus)) {
+  } else if (
+    [
+      "PENDING", "PROCESSING", "WAITING", "CREATED", "PROCESSING_PAYMENT",
+      // NOWPayments: estados intermediários de confirmação na blockchain —
+      // NÃO entregar produto ainda (vendor recomenda explicitamente esperar
+      // "finished"). PARTIALLY_PAID também fica pending: cobrança é de valor
+      // fixo (não é crédito de saldo), então um pagamento parcial só conta
+      // se depois resolver pra finished — o poller continua checando.
+      "CONFIRMING", "CONFIRMED", "SENDING", "PARTIALLY_PAID",
+    ].includes(normalizedStatus)
+  ) {
     console.log(`[payment-webhook] Status is ${status}, no action needed`);
     return;
   } else {
@@ -569,6 +579,86 @@ export async function handleZuckPayWebhook(
     await processPaymentCallback(tx.bot_id, { transactionId, status });
   } catch (error) {
     console.error(`[zuckpay-webhook] Error:`, error);
+  }
+}
+
+/**
+ * Express handler for /webhook/nowpayments (NOWPayments gateway — cripto).
+ * Valida a assinatura HMAC-SHA512 (header x-nowpayments-sig) usando o
+ * nowpayments_ipn_secret_key salvo no bot que originou o pagamento.
+ *
+ * Esquema de assinatura DIFERENTE do EvPay/ZuckPay: a NOWPayments assina o
+ * JSON com as chaves ordenadas alfabeticamente (inclusive aninhadas), não o
+ * buffer bruto — por isso usamos req.body (já parseado) em vez de rawBody.
+ *
+ * Payload NOWPayments: { payment_id, payment_status, pay_address,
+ *   price_amount, price_currency, pay_amount, pay_currency, order_id, ... }
+ */
+export async function handleNowPaymentsWebhook(req: Request, res: Response): Promise<void> {
+  res.status(200).json({ ok: true });
+
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const signature = String(req.header("x-nowpayments-sig") ?? "");
+
+    console.log(`[nowpayments-webhook] Received (sig=${signature ? "present" : "MISSING"}):`, JSON.stringify(body));
+
+    const transactionId = String(body.payment_id ?? body.paymentId ?? "");
+    if (!transactionId) {
+      console.error(`[nowpayments-webhook] Missing payment_id in payload`);
+      return;
+    }
+
+    const { data: tx } = await supabase
+      .from("transactions")
+      .select("bot_id")
+      .eq("external_id", transactionId)
+      .maybeSingle();
+    if (!tx) {
+      console.error(`[nowpayments-webhook] Transaction not found for external_id=${transactionId}`);
+      return;
+    }
+
+    const { data: botRow } = await supabase
+      .from("bots")
+      .select("nowpayments_ipn_secret_key")
+      .eq("id", tx.bot_id)
+      .single();
+    const secret = String(
+      (botRow as { nowpayments_ipn_secret_key?: string } | null)?.nowpayments_ipn_secret_key ?? "",
+    );
+
+    const { NowPayments } = await import("../services/nowpayments.js");
+    let signatureValid = false;
+    if (secret && signature) {
+      signatureValid = NowPayments.verifySignature(body, signature, secret);
+    }
+
+    if (!signatureValid) {
+      const reason = !secret
+        ? "no secret saved for bot"
+        : !signature
+          ? "header x-nowpayments-sig missing"
+          : "HMAC mismatch";
+      if (config.nowpaymentsRequireSignature) {
+        console.error(`[nowpayments-webhook] Signature INVALID (${reason}) — REJECTING tx ${transactionId}`);
+        return;
+      }
+      console.warn(`[nowpayments-webhook] Signature INVALID (${reason}) — processing anyway (NOWPAYMENTS_REQUIRE_SIGNATURE=false)`);
+    } else {
+      console.log(`[nowpayments-webhook] Signature OK for tx ${transactionId}`);
+    }
+
+    // Traduz payment_status pro vocabulário que processPaymentCallback entende
+    // (mesma tradução usada pelo poller de fallback, NowPayments.mapPaymentStatus
+    // — evita as duas rotas divergirem se a NOWPayments mudar/adicionar status).
+    const rawStatus = String(body.payment_status ?? body.paymentStatus ?? "");
+    const status = NowPayments.mapPaymentStatus(rawStatus);
+
+    console.log(`[nowpayments-webhook] payment_status=${rawStatus} txn=${transactionId} → status=${status}`);
+    await processPaymentCallback(tx.bot_id, { transactionId, status });
+  } catch (error) {
+    console.error(`[nowpayments-webhook] Error:`, error);
   }
 }
 

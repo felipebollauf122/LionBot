@@ -291,7 +291,7 @@ export async function handleProductPaymentCallback(
   gateway: PaymentGateway,
   baseWebhookUrl: string,
   productId: string,
-  gatewayKind: "sigilopay" | "evpay" | "zuckpay" = "sigilopay",
+  gatewayKind: "sigilopay" | "evpay" | "zuckpay" | "nowpayments" = "sigilopay",
   paymentButtonId?: string,
   remarketingFlowId?: string | null,
   remarketingSendId?: string | null,
@@ -336,12 +336,15 @@ export async function handleProductPaymentCallback(
   //  - sigilopay: manda no body da request → /webhook/payment
   //  - evpay: webhook pré-registrado no projeto (ignora callbackUrl)  → /webhook/evpay
   //  - zuckpay: manda no body (urlnoty) e assina HMAC → /webhook/zuckpay
+  //  - nowpayments: manda em ipn_callback_url e assina HMAC (x-nowpayments-sig) → /webhook/nowpayments
   const callbackUrl =
     gatewayKind === "evpay"
       ? `${baseWebhookUrl}/webhook/evpay`
       : gatewayKind === "zuckpay"
         ? `${baseWebhookUrl}/webhook/zuckpay`
-        : `${baseWebhookUrl}/webhook/payment`;
+        : gatewayKind === "nowpayments"
+          ? `${baseWebhookUrl}/webhook/nowpayments`
+          : `${baseWebhookUrl}/webhook/payment`;
 
   // Instant feedback — dispara JÁ, sem await: a chamada ao gateway começa
   // no mesmo tick. Antes isso era awaited, serializando um round-trip do
@@ -449,7 +452,10 @@ export async function handleProductPaymentCallback(
     sale_type: String(ctx.node.data.sale_type ?? "main"),
   }).select("id").single());
 
-  // Marco na timeline do chat (aba Clientes): PIX gerado. Fire-and-forget.
+  // Marco na timeline do chat (aba Clientes): cobrança gerada. Fire-and-forget.
+  // Reaproveita a chave de evento "pix_generated" (tem CHECK constraint no
+  // banco, ver 038_lead_messages.sql — criar um valor novo pediria migration
+  // própria) mesmo pra cripto; só o texto muda.
   logEvent(
     {
       leadId: ctx.lead.id,
@@ -457,7 +463,9 @@ export async function handleProductPaymentCallback(
       tenantId: ctx.lead.tenant_id,
     },
     "pix_generated",
-    `PIX gerado: ${typedProduct.name}`,
+    gatewayKind === "nowpayments"
+      ? `Cobrança cripto gerada: ${typedProduct.name}`
+      : `PIX gerado: ${typedProduct.name}`,
     { amount: typedProduct.price, product_name: typedProduct.name },
   );
 
@@ -486,6 +494,35 @@ export async function handleProductPaymentCallback(
   // pelo código que chegou a aparecer nunca é creditado pelo webhook.
   let txRecord: { id: string } | null = null;
   let paymentMsg: Awaited<ReturnType<typeof ctx.telegram.sendMessage>> = null;
+  // Cripto (NOWPayments) mostra endereço + valor exato na moeda escolhida,
+  // em vez do código Pix copia-e-cola — a mecânica de copiar/QR é a mesma,
+  // só reaproveitando pixCode=endereço e o mesmo fallback de QR acima.
+  const isCrypto = gatewayKind === "nowpayments";
+  const cryptoCurrency = (payment.payCurrency ?? "").toUpperCase();
+  const cryptoAmountLine = payment.payAmount
+    ? `${payment.payAmount}${cryptoCurrency ? ` ${cryptoCurrency}` : ""}`
+    : cryptoCurrency || "valor exato exibido no gateway";
+  // Só a seção de instrução de pagamento e a linha de fechamento variam por
+  // gateway — o resto da mensagem (cabeçalho/plano/valor) é compartilhado,
+  // pra não ter dois templates quase-idênticos divergindo com o tempo.
+  const paymentInstructionLines = isCrypto
+    ? [
+        `💠 Envie exatamente <b>${cryptoAmountLine}</b>${payment.network ? ` (rede ${payment.network})` : ""} para o endereço abaixo:`,
+        ``,
+        `<code>${payment.pixCode}</code>`,
+        ``,
+        `👆 Toque no endereço acima para copiá-lo`,
+      ]
+    : [
+        `💠 Pague via Pix Copia e Cola:`,
+        ``,
+        `<code>${payment.pixCode}</code>`,
+        ``,
+        `👆 Toque no código acima para copiá-lo`,
+      ];
+  const closingLine = isCrypto
+    ? `⏳ A confirmação na blockchain pode levar alguns minutos. Após confirmado, seu acesso será liberado automaticamente.`
+    : `‼️ Após o pagamento seu acesso será liberado automaticamente.`;
   try {
     paymentMsg = await ctx.telegram.sendMessage({
     chatId: ctx.chatId,
@@ -497,17 +534,13 @@ export async function handleProductPaymentCallback(
       ``,
       `💳 Total: ${priceFormatted}`,
       ``,
-      `💠 Pague via Pix Copia e Cola:`,
+      ...paymentInstructionLines,
       ``,
-      `<code>${payment.pixCode}</code>`,
-      ``,
-      `👆 Toque no código acima para copiá-lo`,
-      ``,
-      `‼️ Após o pagamento seu acesso será liberado automaticamente.`,
+      closingLine,
     ].join("\n"),
     replyMarkup: {
       inline_keyboard: [
-        [{ text: "📋 Copiar código Pix", copy_text: { text: payment.pixCode } }],
+        [{ text: isCrypto ? "📋 Copiar endereço" : "📋 Copiar código Pix", copy_text: { text: payment.pixCode } }],
         [{ text: "📱 Ver QR Code", callback_data: `qrcode:${ctx.node.id}` }],
       ],
     },
@@ -600,7 +633,7 @@ export async function handleProductPaymentCallback(
         orderId: txRecord?.id ?? payment.transactionId,
         status: "waiting_payment",
         platform: "eaglebot",
-        paymentMethod: "pix",
+        paymentMethod: isCrypto ? "crypto" : "pix",
         customer: {
           name: ctx.lead.first_name,
           email: clientEmail,

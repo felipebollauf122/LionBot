@@ -48,7 +48,7 @@ export class FlowProcessor {
     private delayQueue: DelayQueue,
     deps?: {
       gateway?: PaymentGateway;
-      gatewayKind?: "sigilopay" | "evpay" | "zuckpay";
+      gatewayKind?: "sigilopay" | "evpay" | "zuckpay" | "nowpayments";
       baseWebhookUrl?: string;
     },
   ) {
@@ -730,10 +730,15 @@ export class FlowProcessor {
     if (callbackData.startsWith("qrcode:")) {
       const pixImage = String(lead.state.pending_pix_image ?? "");
       if (pixImage) {
+        // Gateway é global por bot (não por transação) — this.executeDeps.gatewayKind
+        // reflete o gateway atual do bot, mesma fonte usada pra gerar a cobrança.
+        const isCryptoQr = this.executeDeps.gatewayKind === "nowpayments";
         const msg = await telegram.sendPhoto({
           chatId,
           photo: pixImage,
-          caption: "📱 QR Code Pix — escaneie com o app do seu banco",
+          caption: isCryptoQr
+            ? "📱 QR Code — escaneie com sua carteira cripto"
+            : "📱 QR Code Pix — escaneie com o app do seu banco",
         });
         if (isBlack && msg) {
           await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, [msg.message_id], BLACK_DELETE_DELAY_MINUTES);

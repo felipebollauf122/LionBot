@@ -22,6 +22,12 @@ export interface PixPaymentResult {
   pixCode: string;
   pixImage: string | null;
   orderId: string;
+  // Só preenchidos por gateways de criptomoeda (ex: NOWPayments) — o valor
+  // exato a enviar na moeda cripto escolhida, e a rede (quando relevante,
+  // ex: USDT tem várias redes). Gateways PIX deixam undefined.
+  payAmount?: string;
+  payCurrency?: string;
+  network?: string;
 }
 
 export interface PaymentGateway {

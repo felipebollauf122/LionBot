@@ -28,7 +28,7 @@ const handlers: Record<string, (ctx: NodeContext) => Promise<NodeResult>> = {
 export interface ExecuteNodeDeps {
   db?: SupabaseClient;
   gateway?: PaymentGateway;
-  gatewayKind?: "sigilopay" | "evpay" | "zuckpay";
+  gatewayKind?: "sigilopay" | "evpay" | "zuckpay" | "nowpayments";
   baseWebhookUrl?: string;
 }
 

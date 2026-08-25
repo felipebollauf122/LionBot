@@ -12,6 +12,7 @@ import { ConditionConfig } from "./config-forms/condition-config";
 import { InputConfig } from "./config-forms/input-config";
 import { ActionConfig } from "./config-forms/action-config";
 import { VideoConfig } from "./config-forms/video-config";
+import { AudioConfig } from "./config-forms/audio-config";
 import { PaymentButtonConfig } from "./config-forms/payment-button-config";
 import { UnmappedConfig } from "./config-forms/unmapped-config";
 import type { BundleOption, ProductOption, MediaAssetOption } from "./flow-editor";
@@ -108,6 +109,7 @@ export function NodeConfigPanel({
     input: <InputConfig key={node.id} data={node.data} onChange={handleChange} />,
     action: <ActionConfig key={node.id} data={node.data} onChange={handleChange} />,
     video: <VideoConfig key={node.id} data={node.data} onChange={handleChange} mediaAssets={mediaAssets} canRandomize={canRandomize} />,
+    audio: <AudioConfig key={node.id} data={node.data} onChange={handleChange} />,
     payment_button: <PaymentButtonConfig key={node.id} data={node.data} onChange={handleChange} bundles={bundles} canRandomize={canRandomize} />,
     unmapped: <UnmappedConfig key={node.id} data={node.data} onChange={handleChange} />,
   };

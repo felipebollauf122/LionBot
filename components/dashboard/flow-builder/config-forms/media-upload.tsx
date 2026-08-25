@@ -15,6 +15,9 @@ interface MediaUploadProps {
 const ALLOWED_TYPES = [
   "image/jpeg", "image/png", "image/gif", "image/webp",
   "video/mp4", "video/webm", "video/quicktime",
+  // Áudio (nó de voz): formatos que a Bot API aceita em sendVoice. audio/mp4 e
+  // audio/x-m4a são o mesmo .m4a rotulado diferente por navegador/SO.
+  "audio/mpeg", "audio/mp3", "audio/ogg", "audio/opus", "audio/mp4", "audio/x-m4a", "audio/m4a",
 ];
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
 

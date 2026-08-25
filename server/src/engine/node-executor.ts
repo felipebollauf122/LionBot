@@ -8,6 +8,7 @@ import { handleConditionNode } from "./nodes/condition.js";
 import { handleInputNode } from "./nodes/input.js";
 import { handleActionNode } from "./nodes/action.js";
 import { handleVideoNode } from "./nodes/video.js";
+import { handleAudioNode } from "./nodes/audio.js";
 import { handlePaymentBundleNode } from "./nodes/payment-button.js";
 import { handleUnmappedNode } from "./nodes/unmapped.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -22,6 +23,7 @@ const handlers: Record<string, (ctx: NodeContext) => Promise<NodeResult>> = {
   input: handleInputNode,
   action: handleActionNode,
   video: handleVideoNode,
+  audio: handleAudioNode,
   unmapped: handleUnmappedNode,
 };
 

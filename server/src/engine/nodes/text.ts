@@ -1,7 +1,9 @@
 import type { NodeContext, NodeResult } from "../types.js";
 import { pickRandomIndex } from "./variant-pick.js";
 
-function interpolate(template: string, lead: NodeContext["lead"]): string {
+/** Troca {{campo}} pelo valor no lead ou no state dele. Compartilhado com os
+ *  outros nós que mandam texto configurável (input). */
+export function interpolate(template: string, lead: NodeContext["lead"]): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     if (key in lead) {
       return String((lead as unknown as Record<string, unknown>)[key] ?? "");

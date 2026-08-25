@@ -8,6 +8,7 @@ const NODE_TYPES = new Set([
   "text",
   "image",
   "video",
+  "audio",
   "button",
   "payment_button",
   "delay",

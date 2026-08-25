@@ -18,6 +18,18 @@ export interface SendVideoParams {
   replyMarkup?: InlineKeyboardMarkup;
 }
 
+export interface SendVoiceParams {
+  chatId: number;
+  voice: string; // URL or file_id
+  caption?: string;
+  /** Duração em segundos — o Telegram exibe na bolha antes mesmo do download. */
+  duration?: number;
+  replyMarkup?: InlineKeyboardMarkup;
+}
+
+/** Ações de chat suportadas (as que fazem sentido no engine). */
+export type ChatAction = "typing" | "record_voice" | "upload_voice" | "upload_photo" | "upload_video";
+
 export type InlineKeyboardButtonStyle = "danger" | "success" | "primary";
 
 export interface InlineKeyboardButton {
@@ -159,6 +171,89 @@ export class TelegramApi {
 
     const result = await this.requestMultipart("sendVideo", form);
     return result as TelegramMessage | null;
+  }
+
+  /**
+   * Envia áudio como MENSAGEM DE VOZ (bolha com waveform e play inline), e não
+   * como arquivo/documento. Requisito da Bot API: o arquivo precisa ser .OGG
+   * (OPUS), .MP3 ou .M4A — qualquer outro formato o Telegram degrada pra
+   * "audio"/"document" e a bolha de voz vira um anexo comum.
+   */
+  async sendVoice(params: SendVoiceParams): Promise<TelegramMessage | null> {
+    if (!params.voice?.trim()) {
+      console.warn("[telegram] Skipping sendVoice: empty voice URL");
+      return null;
+    }
+    const body: Record<string, unknown> = {
+      chat_id: params.chatId,
+      voice: params.voice,
+      parse_mode: "HTML",
+    };
+    if (params.caption) {
+      body.caption = params.caption;
+    }
+    if (params.duration && params.duration > 0) {
+      body.duration = Math.round(params.duration);
+    }
+    if (params.replyMarkup) {
+      body.reply_markup = params.replyMarkup;
+    }
+    if (this.protectContent) {
+      body.protect_content = true;
+    }
+    try {
+      const result = await this.request("sendVoice", body);
+      return result as TelegramMessage | null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // Mesma armadilha do sendVideo: o fetcher da Telegram às vezes não
+      // reconhece o Content-Type do CDN de origem e recusa o conteúdo. Aí
+      // baixamos aqui e reenviamos como upload multipart.
+      if (/wrong type of the web page content|failed to get http url content/i.test(msg)) {
+        console.warn(`[telegram] sendVoice por URL falhou (${msg}), tentando upload direto`);
+        return await this.sendVoiceAsUpload(params, body);
+      }
+      throw error;
+    }
+  }
+
+  private async sendVoiceAsUpload(
+    params: SendVoiceParams,
+    body: Record<string, unknown>,
+  ): Promise<TelegramMessage | null> {
+    const fileResponse = await fetch(params.voice, { signal: AbortSignal.timeout(30_000) });
+    if (!fileResponse.ok) {
+      throw new Error(
+        `Telegram API error (sendVoice): falha ao baixar áudio da origem (HTTP ${fileResponse.status})`,
+      );
+    }
+    const blob = await fileResponse.blob();
+
+    const form = new FormData();
+    for (const [key, value] of Object.entries(body)) {
+      if (key === "voice") continue;
+      form.append(key, typeof value === "string" ? value : JSON.stringify(value));
+    }
+    // A extensão do nome importa: é por ela que o Telegram decide se aceita o
+    // arquivo como voz. Preservar a da origem evita um .mp3 legítimo ser
+    // rejeitado por chegar rotulado de "voice.ogg".
+    form.append("voice", blob, voiceFileName(params.voice));
+
+    const result = await this.requestMultipart("sendVoice", form);
+    return result as TelegramMessage | null;
+  }
+
+  /**
+   * "gravando áudio…" / "digitando…" no topo do chat. Some sozinho em ~5s (ou
+   * quando chega a próxima mensagem), então quem quer um indicador mais longo
+   * precisa re-emitir. Nunca lança: é enfeite, não pode derrubar o envio.
+   */
+  async sendChatAction(chatId: number, action: ChatAction): Promise<void> {
+    try {
+      await this.request("sendChatAction", { chat_id: chatId, action });
+    } catch (error) {
+      console.warn(`[telegram] sendChatAction(${action}) falhou:`, error instanceof Error ? error.message : error);
+    }
   }
 
   async deleteMessage(chatId: number, messageId: number): Promise<boolean> {
@@ -306,4 +401,11 @@ export class TelegramApi {
     }
     return data.result;
   }
+}
+
+/** Nome de arquivo para upload multipart de voz, preservando a extensão da
+ *  origem quando ela é uma das aceitas pela Bot API. */
+function voiceFileName(url: string): string {
+  const ext = url.split("?")[0].split("#")[0].split(".").pop()?.toLowerCase() ?? "";
+  return ["ogg", "oga", "mp3", "m4a"].includes(ext) ? `voice.${ext}` : "voice.ogg";
 }

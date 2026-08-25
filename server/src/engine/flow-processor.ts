@@ -589,12 +589,32 @@ export class FlowProcessor {
           (n) => n.id === lead.current_node_id
         );
 
-        if (currentNode?.type === "input") {
-          const variable = String(currentNode.data.variable ?? "");
+        // Comando (/algo) enquanto o lead está parado numa pergunta NÃO é
+        // resposta — é ele tentando sair pra outro fluxo. Mesma regra que
+        // button/payment_button já aplicavam logo abaixo; sem ela, qualquer
+        // comando que não resolvesse fluxo nomeado (tudo menos /start) virava
+        // silenciosamente o valor da variável da pergunta.
+        if (currentNode?.type === "input" && !messageText.startsWith("/")) {
           const edges = flow.flow_data.edges.filter(
             (e) => e.source === currentNode.id
           );
-          const result = handleInputResponse(currentNode.id, variable, messageText, edges);
+          const result = handleInputResponse(currentNode, messageText, edges);
+
+          // Resposta reprovada na validação: reprompt e o lead continua parado
+          // no mesmo nó (current_node_id não muda), esperando de novo.
+          if (result.retryMessage) {
+            const sent = await telegram.sendMessage({ chatId, text: result.retryMessage });
+            if (isBlack && sent) {
+              await this.queueMessageDeletion(
+                bot.id,
+                telegram.botToken,
+                chatId,
+                [sent.message_id],
+                BLACK_DELETE_DELAY_MINUTES,
+              );
+            }
+            return;
+          }
 
           if (result.stateUpdates) {
             lead.state = { ...lead.state, ...result.stateUpdates };
@@ -603,6 +623,12 @@ export class FlowProcessor {
 
           if (result.nextNodeId && result.nextNodeId !== "wait") {
             await this.executeFlow(flow, lead, telegram, chatId, result.nextNodeId, isBlack);
+          } else if (!result.nextNodeId) {
+            // Pergunta respondida mas sem aresta de saída: fim de linha. Solta
+            // a posição (mesmo que executeFlow faz ao chegar em nextNodeId
+            // null) — senão o lead fica preso neste nó pra sempre, regravando
+            // a variável a cada mensagem que mandar.
+            await this.leadService.updatePosition(lead.id, null, null);
           }
           return;
         }
@@ -639,10 +665,17 @@ export class FlowProcessor {
       const remFlow = await this.getRemarketingFlowById(pendingRemarketingFlowId);
       const waitNode = remFlow?.flow_data.nodes.find((n) => n.id === pendingRemarketingWaitNodeId);
 
-      if (remFlow && waitNode?.type === "input") {
-        const variable = String(waitNode.data.variable ?? "");
+      if (remFlow && waitNode?.type === "input" && !messageText.startsWith("/")) {
         const edges = remFlow.flow_data.edges.filter((e) => e.source === waitNode.id);
-        const result = handleInputResponse(waitNode.id, variable, messageText, edges);
+        const result = handleInputResponse(waitNode, messageText, edges);
+
+        // Igual ao caminho de flow regular: validação reprovada só reprompta,
+        // sem avançar nem limpar o pending_remarketing_* (o lead segue
+        // esperando exatamente neste nó).
+        if (result.retryMessage) {
+          await telegram.sendMessage({ chatId, text: result.retryMessage });
+          return;
+        }
 
         if (result.stateUpdates) {
           lead.state = { ...lead.state, ...result.stateUpdates };

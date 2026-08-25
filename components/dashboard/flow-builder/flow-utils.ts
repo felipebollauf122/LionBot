@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
  * Fonte única de identidade visual e regras dos blocos do editor de fluxo.
  * Regra de cor: 1 cor = 1 significado.
  *   - Início (trigger) ............ --accent
- *   - Mensagens (text/image/video/button/input) ... --cyan
+ *   - Mensagens (text/image/video/audio/button/input) ... --cyan
  *   - Lógica e Ações (delay/condition/action) ..... --purple
  *   - Pagamento (payment_button) .. --amber (exclusivo: dinheiro)
  *   - Não mapeado (unmapped) ...... --red (alerta: revisar antes de ativar)
@@ -46,6 +46,15 @@ export const NODE_META: Record<string, NodeMeta> = {
     category: "Mensagens",
     description: "Envia um vídeo com legenda opcional",
   },
+  audio: {
+    label: "Audio",
+    // Microfone: o bloco manda mensagem de VOZ (bolha com waveform), não um
+    // arquivo de música anexado — o ícone precisa dizer isso de cara.
+    icon: "M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8",
+    color: "var(--cyan)",
+    category: "Mensagens",
+    description: "Envia um áudio como mensagem de voz",
+  },
   button: {
     label: "Botoes",
     icon: "M4 9h16M4 15h16M10 3L8 21M16 3l-2 18",
@@ -54,11 +63,11 @@ export const NODE_META: Record<string, NodeMeta> = {
     description: "Mensagem com botões de escolha",
   },
   input: {
-    label: "Input",
-    icon: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
+    label: "Pergunta",
+    icon: "M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01M12 22a10 10 0 100-20 10 10 0 000 20z",
     color: "var(--cyan)",
     category: "Mensagens",
-    description: "Faz uma pergunta e guarda a resposta",
+    description: "Pergunta e espera a resposta do lead pra continuar",
   },
   delay: {
     label: "Delay",
@@ -170,12 +179,16 @@ export function isNodeIncomplete(
       return !str(data.image_url) && arr(data.media_asset_ids).length === 0 ? "Sem imagem" : null;
     case "video":
       return !str(data.video_url) && arr(data.media_asset_ids).length === 0 ? "Sem vídeo" : null;
+    case "audio":
+      return !str(data.audio_url) ? "Sem áudio" : null;
     case "button":
       return arr(data.buttons).length === 0 ? "Sem botões" : null;
     case "condition":
       return !str(data.field) ? "Campo da condição vazio" : null;
     case "input":
-      return !str(data.variable) ? "Variável de destino vazia" : null;
+      // Variável é opcional (pergunta pode ser só um gate de "responda pra
+      // continuar"); o que não pode faltar é a pergunta em si.
+      return !str(data.prompt) ? "Pergunta vazia" : null;
     case "action":
       return str(data.action_type ?? "set_variable") === "set_variable" && !str(data.variable)
         ? "Variável vazia"

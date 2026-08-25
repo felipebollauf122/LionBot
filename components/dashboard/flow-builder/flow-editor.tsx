@@ -34,6 +34,7 @@ import { ConditionNode } from "./nodes/condition-node";
 import { InputNode } from "./nodes/input-node";
 import { ActionNode } from "./nodes/action-node";
 import { VideoNode } from "./nodes/video-node";
+import { AudioNode } from "./nodes/audio-node";
 import { PaymentButtonNode } from "./nodes/payment-button-node";
 import { UnmappedNode } from "./nodes/unmapped-node";
 import { nodeColor, edgeMetaForHandle, isNodeIncomplete, validSourceHandles, buttonHandleIds, type ButtonLike } from "./flow-utils";
@@ -85,6 +86,7 @@ const nodeTypeComponents = {
   input: InputNode,
   action: ActionNode,
   video: VideoNode,
+  audio: AudioNode,
   payment_button: PaymentButtonNode,
   unmapped: UnmappedNode,
 };
@@ -96,9 +98,10 @@ const defaultNodeData: Record<string, Record<string, unknown>> = {
   button: { text: "Escolha uma opção:", buttons: [] },
   delay: { amount: 5, unit: "seconds" },
   condition: { field: "", operator: "equals", value: "" },
-  input: { prompt: "Qual seu email?", variable: "email" },
+  input: { prompt: "Qual seu email?", variable: "email", validation: "email" },
   action: { action_type: "set_variable", variable: "", value: "" },
   video: { video_url: "", caption: "" },
+  audio: { audio_url: "", caption: "", simulate_recording: true, recording_seconds: 2 },
   payment_button: { bundle_id: "", payment_timeout_minutes: 15, sale_type: "main" },
   unmapped: { kind: "unmapped" },
 };

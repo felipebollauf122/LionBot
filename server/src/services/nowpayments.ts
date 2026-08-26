@@ -82,6 +82,27 @@ export class NowPayments implements PaymentGateway {
         response.statusText ??
         "erro desconhecido";
       console.error(`[nowpayments] createPixPayment failed (${response.status}):`, msg);
+
+      // "Crypto amount X is less than minimal" — a NOWPayments impõe um
+      // mínimo por moeda/rede (varia com congestionamento) e não temos como
+      // checar antes com certeza sem depender de um endpoint cujo formato de
+      // resposta não validamos ao vivo. Quando estoura, o erro cru em inglês
+      // ("Crypto amount 3.860356 is less than minimal") ia direto pro chat do
+      // CLIENTE — que não tem como fazer nada com essa informação. O dono do
+      // bot é quem precisa agir (subir o preço do produto ou trocar a moeda
+      // nas Configurações), então: log operacional bem explícito pro dono
+      // encontrar, e uma mensagem genérica em português pro cliente.
+      if (/less than minimal/i.test(String(msg))) {
+        console.error(
+          `[nowpayments] ⚠️ Preço do produto abaixo do mínimo aceito pela NOWPayments para pay_currency="${this.payCurrency}" ` +
+          `(price_amount=${params.amount} BRL, produto="${description}"). Ação: aumente o preço deste produto, ou troque a ` +
+          `moeda de recebimento nas Configurações do bot (USDT/TRX têm mínimo mais baixo que BTC/ETH).`,
+        );
+        throw new Error(
+          `No momento não é possível gerar essa cobrança em cripto para este valor. Tente novamente mais tarde ou fale com o suporte.`,
+        );
+      }
+
       throw new Error(`NOWPayments erro (${response.status}): ${msg}`);
     }
 

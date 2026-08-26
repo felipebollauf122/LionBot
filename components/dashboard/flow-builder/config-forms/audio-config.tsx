@@ -142,7 +142,8 @@ export function AudioConfig({ data, onChange }: AudioConfigProps) {
         }}
       >
         Chega como <strong>mensagem de voz</strong> (bolha com onda e play), não como arquivo
-        anexado. Formatos aceitos pelo Telegram: MP3, M4A e OGG/OPUS. Máximo 50MB.
+        anexado: o servidor converte o áudio pro formato de voz do Telegram (OGG/OPUS) antes de
+        enviar. Pode subir MP3, M4A ou OGG — máximo 50MB.
       </div>
     </div>
   );

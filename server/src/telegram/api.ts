@@ -1,3 +1,10 @@
+import {
+  cacheVoiceFileId,
+  forgetVoiceFileId,
+  getCachedVoiceFileId,
+  toOpusVoice,
+} from "./voice-opus.js";
+
 export interface SendMessageParams {
   chatId: number;
   text: string;
@@ -175,18 +182,27 @@ export class TelegramApi {
 
   /**
    * Envia áudio como MENSAGEM DE VOZ (bolha com waveform e play inline), e não
-   * como arquivo/documento. Requisito da Bot API: o arquivo precisa ser .OGG
-   * (OPUS), .MP3 ou .M4A — qualquer outro formato o Telegram degrada pra
-   * "audio"/"document" e a bolha de voz vira um anexo comum.
+   * como arquivo/documento.
+   *
+   * A Bot API aceita MP3/M4A aqui, mas o cliente do Telegram só desenha a
+   * bolha de voz quando o arquivo é OGG/OPUS — nos outros formatos ele cai pro
+   * player de arquivo com nome e tamanho. Por isso o caminho normal é:
+   * converter pra OPUS (voice-opus.ts) e subir multipart. O file_id devolvido
+   * fica em cache, então só o primeiro lead de cada áudio paga o download +
+   * conversão; os seguintes recebem por referência.
+   *
+   * Sem ffmpeg na máquina nada disso quebra: cai no envio do arquivo original,
+   * que chega como anexo — feio, mas chega.
    */
   async sendVoice(params: SendVoiceParams): Promise<TelegramMessage | null> {
     if (!params.voice?.trim()) {
       console.warn("[telegram] Skipping sendVoice: empty voice URL");
       return null;
     }
+    const source = params.voice.trim();
     const body: Record<string, unknown> = {
       chat_id: params.chatId,
-      voice: params.voice,
+      voice: source,
       parse_mode: "HTML",
     };
     if (params.caption) {
@@ -201,14 +217,43 @@ export class TelegramApi {
     if (this.protectContent) {
       body.protect_content = true;
     }
+
+    // file_id: o áudio já está nos servidores do Telegram (e já no formato em
+    // que foi guardado) — manda por referência, sem baixar nada.
+    if (!/^https?:\/\//i.test(source)) {
+      return (await this.request("sendVoice", body)) as TelegramMessage | null;
+    }
+
+    // Do segundo envio em diante: reusa o OPUS que já subiu.
+    const cachedFileId = getCachedVoiceFileId(this.token, source);
+    if (cachedFileId) {
+      try {
+        return (await this.request("sendVoice", { ...body, voice: cachedFileId })) as TelegramMessage | null;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        // Só file_id inválido justifica reconverter; 429/rede/chat bloqueado
+        // têm que subir como sempre.
+        if (!/file identifier|file_id|file is temporarily unavailable/i.test(msg)) throw error;
+        console.warn(`[telegram] file_id de voz em cache recusado (${msg}); reconvertendo.`);
+        forgetVoiceFileId(this.token, source);
+      }
+    }
+
+    const opus = await toOpusVoice(source);
+    if (opus) {
+      const sent = await this.uploadOpusVoice(body, opus);
+      const fileId = (sent as { voice?: { file_id?: string } } | null)?.voice?.file_id;
+      if (fileId) cacheVoiceFileId(this.token, source, fileId);
+      return sent;
+    }
+
+    // Sem conversão possível: caminho antigo — URL direta e, se o fetcher da
+    // Telegram recusar o Content-Type do CDN, upload do arquivo cru.
     try {
       const result = await this.request("sendVoice", body);
       return result as TelegramMessage | null;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      // Mesma armadilha do sendVideo: o fetcher da Telegram às vezes não
-      // reconhece o Content-Type do CDN de origem e recusa o conteúdo. Aí
-      // baixamos aqui e reenviamos como upload multipart.
       if (/wrong type of the web page content|failed to get http url content/i.test(msg)) {
         console.warn(`[telegram] sendVoice por URL falhou (${msg}), tentando upload direto`);
         return await this.sendVoiceAsUpload(params, body);
@@ -217,6 +262,9 @@ export class TelegramApi {
     }
   }
 
+  /** Último recurso quando não houve conversão: baixa a origem e sobe o
+   *  arquivo cru. O fetcher da Telegram às vezes não reconhece o Content-Type
+   *  do CDN e recusa buscar a URL sozinho. */
   private async sendVoiceAsUpload(
     params: SendVoiceParams,
     body: Record<string, unknown>,
@@ -238,6 +286,23 @@ export class TelegramApi {
     // arquivo como voz. Preservar a da origem evita um .mp3 legítimo ser
     // rejeitado por chegar rotulado de "voice.ogg".
     form.append("voice", blob, voiceFileName(params.voice));
+
+    const result = await this.requestMultipart("sendVoice", form);
+    return result as TelegramMessage | null;
+  }
+
+  /** Sobe o OGG/OPUS já convertido. O nome "voice.ogg" é o que o Telegram
+   *  espera pra tratar o upload como nota de voz. */
+  private async uploadOpusVoice(
+    body: Record<string, unknown>,
+    opus: Buffer,
+  ): Promise<TelegramMessage | null> {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(body)) {
+      if (key === "voice") continue;
+      form.append(key, typeof value === "string" ? value : JSON.stringify(value));
+    }
+    form.append("voice", new Blob([new Uint8Array(opus)], { type: "audio/ogg" }), "voice.ogg");
 
     const result = await this.requestMultipart("sendVoice", form);
     return result as TelegramMessage | null;

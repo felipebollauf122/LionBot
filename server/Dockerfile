@@ -2,6 +2,11 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# ffmpeg: converte os áudios do nó de voz pra OGG/OPUS antes de enviar. Sem
+# ele o Telegram mostra o áudio como arquivo anexado em vez da bolha de voz
+# (ver src/telegram/voice-opus.ts).
+RUN apk add --no-cache ffmpeg
+
 # Install dependencies
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev && npm install tsx typescript @types/node @types/express

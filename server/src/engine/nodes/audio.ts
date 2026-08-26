@@ -58,6 +58,10 @@ export async function handleAudioNode(ctx: NodeContext): Promise<NodeResult> {
     }
   }
 
+  // "enviando áudio…" enquanto o arquivo é convertido pra OPUS e sobe: sem
+  // isso o chat fica mudo entre o fim da simulação e a chegada da bolha.
+  await ctx.telegram.sendChatAction(ctx.chatId, "upload_voice");
+
   const sent = await ctx.telegram.sendVoice({
     chatId: ctx.chatId,
     voice: audio,

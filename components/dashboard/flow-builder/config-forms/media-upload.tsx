@@ -15,8 +15,10 @@ interface MediaUploadProps {
 const ALLOWED_TYPES = [
   "image/jpeg", "image/png", "image/gif", "image/webp",
   "video/mp4", "video/webm", "video/quicktime",
-  // Áudio (nó de voz): formatos que a Bot API aceita em sendVoice. audio/mp4 e
-  // audio/x-m4a são o mesmo .m4a rotulado diferente por navegador/SO.
+  // Áudio (nó de voz): o servidor converte tudo pra OGG/OPUS antes de enviar
+  // (server/src/telegram/voice-opus.ts), mas a lista segue nos formatos que a
+  // Bot API também aceita crus — são o fallback quando não há ffmpeg.
+  // audio/mp4 e audio/x-m4a são o mesmo .m4a rotulado diferente por navegador/SO.
   "audio/mpeg", "audio/mp3", "audio/ogg", "audio/opus", "audio/mp4", "audio/x-m4a", "audio/m4a",
 ];
 const MAX_SIZE = 50 * 1024 * 1024; // 50MB
@@ -25,6 +27,9 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Nome original do arquivo enviado nesta sessão: no storage ele vira um
+  // nanoid ilegível, que não diz nada pra quem está montando o fluxo.
+  const [uploadedName, setUploadedName] = useState<{ url: string; name: string } | null>(null);
   // Ref sempre-atual do onChange: um upload demorado concluía chamando o
   // onChange capturado no INÍCIO do upload — com o `data` velho no closure do
   // pai, apagando qualquer edição feita no nó enquanto o arquivo subia.
@@ -60,6 +65,7 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
       if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`);
 
       const { data: urlData } = supabase.storage.from("media").getPublicUrl(fileName);
+      setUploadedName({ url: urlData.publicUrl, name: file.name });
       onChangeRef.current(urlData.publicUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro no upload");
@@ -127,7 +133,7 @@ export function MediaUpload({ value, onChange, accept, label, placeholder }: Med
       {value && (
         <p className="text-(--accent) text-[0.6875rem] leading-snug truncate flex items-center gap-1.5">
           <svg aria-hidden="true" focusable="false" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-          {value.split("/").pop()}
+          {uploadedName?.url === value ? uploadedName.name : value.split("/").pop()}
         </p>
       )}
     </div>

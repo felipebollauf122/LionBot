@@ -54,7 +54,10 @@ describe("handleAudioNode", () => {
       caption: "ouve isso",
       duration: 12,
     });
-    expect(ctx.telegram.sendChatAction).not.toHaveBeenCalled();
+    // Simulação desligada = sem "gravando", mas o "enviando áudio…" continua
+    // (cobre o tempo de conversão pra OPUS + upload).
+    expect(ctx.telegram.sendChatAction).not.toHaveBeenCalledWith(123, "record_voice");
+    expect(ctx.telegram.sendChatAction).toHaveBeenCalledWith(123, "upload_voice");
     expect(result.nextNodeId).toBe("node-next");
     expect(result.messageIds).toEqual([55]);
   });

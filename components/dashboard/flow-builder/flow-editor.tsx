@@ -37,7 +37,7 @@ import { VideoNode } from "./nodes/video-node";
 import { AudioNode } from "./nodes/audio-node";
 import { PaymentButtonNode } from "./nodes/payment-button-node";
 import { UnmappedNode } from "./nodes/unmapped-node";
-import { nodeColor, edgeMetaForHandle, isNodeIncomplete, validSourceHandles, buttonHandleIds, type ButtonLike } from "./flow-utils";
+import { nodeColor, edgeMetaForHandle, isNodeIncomplete, validSourceHandles, renameButtonEdges, type ButtonLike } from "./flow-utils";
 import { saveFlow } from "@/lib/actions/flow-actions";
 import { LionMark } from "@/components/brand/lion-mark";
 import type { FlowData, FlowNode, NodeType } from "@/lib/types/database";
@@ -563,42 +563,21 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
       // validSourceHandles). Editar "Valor"/"Ir para no" troca esse valor, e
       // sem isso a aresta já desenhada ficava presa ao handle ANTIGO — a
       // checagem de poda logo abaixo a via como "handle removido" e apagava
-      // a conexão a cada edição de texto no botão. Renomeia o sourceHandle
-      // da aresta existente em vez de podar: mesma conexão, handle acompanha
-      // o novo valor.
-      let renamedEdges = edgesRef.current;
-      if (node.type === "button") {
-        const oldButtons = Array.isArray(node.data.buttons) ? (node.data.buttons as ButtonLike[]) : [];
-        const newButtons = Array.isArray(mergedData.buttons) ? (mergedData.buttons as ButtonLike[]) : [];
-        const renameMap = new Map<string, string>();
-        oldButtons.forEach((oldBtn, i) => {
-          const newIndex = oldBtn.id ? newButtons.findIndex((b) => b.id === oldBtn.id) : i;
-          const newBtn = newIndex >= 0 ? newButtons[newIndex] : undefined;
-          if (!newBtn) return; // botão removido — a poda abaixo cuida da(s) aresta(s)
-          const oldHandles = buttonHandleIds(oldBtn, i);
-          const newHandles = buttonHandleIds(newBtn, newIndex);
-          // Só renomeia handle-a-handle quando a CONTAGEM bate (mesmo
-          // esquema — ação não mudou): 1-pra-1 (comum) ou 2-pra-2
-          // (pagamento, paid/not_paid na mesma ordem). Ação mudou (virou ou
-          // deixou de ser payment/open_url) → contagem diverge, não tem
-          // correspondência 1:1 sensata; os handles antigos somem de
-          // verdade e a poda (agora precisa, também via buttonHandleIds)
-          // cuida deles.
-          if (oldHandles.length === newHandles.length) {
-            oldHandles.forEach((oldHandle, hi) => {
-              const newHandle = newHandles[hi];
-              if (oldHandle !== newHandle) renameMap.set(oldHandle, newHandle);
-            });
-          }
-        });
-        if (renameMap.size > 0) {
-          renamedEdges = renamedEdges.map((e) =>
-            e.source === nodeId && e.sourceHandle && renameMap.has(e.sourceHandle)
-              ? { ...e, sourceHandle: renameMap.get(e.sourceHandle) }
-              : e,
-          );
-        }
-      }
+      // a conexão a cada edição de texto no botão. renameButtonEdges
+      // (flow-utils.ts) renomeia o sourceHandle da aresta existente em vez de
+      // podar — mesma conexão, handle acompanha o novo valor — e, pra
+      // "go_to_node" (onde o handle É o id do destino), move `target`
+      // também: sem isso o clique continuava roteando pro destino ANTIGO
+      // mesmo com o painel já mostrando a escolha nova.
+      const renamedEdges =
+        node.type === "button"
+          ? renameButtonEdges(
+              nodeId,
+              Array.isArray(node.data.buttons) ? (node.data.buttons as ButtonLike[]) : [],
+              Array.isArray(mergedData.buttons) ? (mergedData.buttons as ButtonLike[]) : [],
+              edgesRef.current,
+            )
+          : edgesRef.current;
 
       const valid = validSourceHandles(node.type, mergedData);
       const willPrune =

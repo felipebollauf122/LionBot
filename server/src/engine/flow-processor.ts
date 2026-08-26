@@ -1022,9 +1022,16 @@ export class FlowProcessor {
 
     const edges = flow.flow_data.edges.filter((e) => e.source === sourceNodeId);
 
-    let edge = edges.find(
-      (e) => e.sourceHandle === targetValue || e.target === targetValue
-    );
+    // Match por sourceHandle SEMPRE tem prioridade sobre o fallback por
+    // target — dois finds separados, não um OR num find só. Com OR, a ORDEM
+    // do array decidia: se uma edge SEM handle batendo mas com target ===
+    // targetValue viesse antes, no array, da edge certa (sourceHandle ===
+    // targetValue), o clique roteava pro destino errado — mesmo o handle
+    // certo existindo. Só cai no target-match quando NENHUMA edge do nó tem
+    // o handle certo (compat com edges antigas/importadas sem sourceHandle).
+    let edge =
+      edges.find((e) => e.sourceHandle === targetValue) ??
+      edges.find((e) => e.target === targetValue);
 
     if (!edge && edges.length > 0) {
       // Fallback "primeira edge do nó" — mas nunca escolhe uma edge de

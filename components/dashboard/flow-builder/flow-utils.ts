@@ -233,6 +233,78 @@ export function buttonHandleIds(b: ButtonLike, index: number): string[] {
   return [plain];
 }
 
+export interface RenamableEdge {
+  id: string;
+  source: string;
+  sourceHandle?: string | null;
+  target: string;
+}
+
+/**
+ * Recalcula sourceHandle (e, pra "go_to_node", target) das arestas de um nó
+ * "button" depois de uma edição — chamado por handleUpdateNode
+ * (flow-editor.tsx) toda vez que a lista de botões de um nó muda.
+ *
+ * Bug real que esta função corrige: pra "go_to_node" o handle É o id do nó
+ * de destino (buttonHandleIds deriva de value). A versão anterior só
+ * renomeava o RÓTULO do handle da aresta (via um Map global, chave = string
+ * do handle antigo) e deixava `target` intocado — trocar o destino no
+ * seletor "Ir para no" fazia a aresta CONTINUAR desenhada (e o clique
+ * continuar roteando) pro destino ANTIGO, mesmo com o painel já mostrando a
+ * escolha nova. Um Map compartilhado também perdia operações quando 2
+ * botões editados na mesma leva convergiam pro mesmo handle novo.
+ *
+ * Aqui cada rename é resolvido por INSTÂNCIA de aresta (edge.id), nunca por
+ * uma tabela chaveada só pela string do handle, e — só pra "go_to_node" —
+ * `target` acompanha o novo handle. No fim, poda duplicatas de
+ * (source, sourceHandle): nunca é válido 2 arestas saírem do mesmo handle
+ * (mesma semântica "1 saída por handle" do onConnect).
+ */
+export function renameButtonEdges<E extends RenamableEdge>(
+  nodeId: string,
+  oldButtons: ButtonLike[],
+  newButtons: ButtonLike[],
+  edges: E[],
+): E[] {
+  const opsByEdgeId = new Map<string, { sourceHandle: string; target?: string }>();
+  oldButtons.forEach((oldBtn, i) => {
+    const newIndex = oldBtn.id ? newButtons.findIndex((b) => b.id === oldBtn.id) : i;
+    const newBtn = newIndex >= 0 ? newButtons[newIndex] : undefined;
+    if (!newBtn) return; // botão removido — a poda de handles inválidos cuida da(s) aresta(s)
+    const oldHandles = buttonHandleIds(oldBtn, i);
+    const newHandles = buttonHandleIds(newBtn, newIndex);
+    // Só renomeia handle-a-handle quando a CONTAGEM bate (ação não mudou):
+    // 1-pra-1 (comum) ou 2-pra-2 (pagamento, paid/not_paid na mesma ordem).
+    if (oldHandles.length !== newHandles.length) return;
+    oldHandles.forEach((oldHandle, hi) => {
+      const newHandle = newHandles[hi];
+      if (oldHandle === newHandle) return;
+      const edge = edges.find((e) => e.source === nodeId && e.sourceHandle === oldHandle);
+      if (!edge) return;
+      const followsTarget = newBtn.action === "go_to_node";
+      opsByEdgeId.set(edge.id, { sourceHandle: newHandle, target: followsTarget ? newHandle : undefined });
+    });
+  });
+  if (opsByEdgeId.size === 0) return edges;
+
+  let renamed = edges.map((e) => {
+    const op = opsByEdgeId.get(e.id);
+    if (!op) return e;
+    return { ...e, sourceHandle: op.sourceHandle, target: op.target ?? e.target };
+  });
+
+  const seenHandles = new Set<string>();
+  renamed = renamed.filter((e) => {
+    if (e.source !== nodeId || !e.sourceHandle) return true;
+    const key = `${e.source}::${e.sourceHandle}`;
+    if (seenHandles.has(key)) return false;
+    seenHandles.add(key);
+    return true;
+  });
+
+  return renamed;
+}
+
 /**
  * Conjunto de sourceHandles válidos de um nó dado seu data atual, para podar
  * arestas presas a handles que deixaram de existir (botão removido, sale_type

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { gatewayLabel, gatewayMethodLabel } from "@/lib/gateways";
 
 interface Product {
   id: string;
@@ -83,12 +84,9 @@ function fmtCurrency(amount: number, currency: string): string {
   return (amount / 100).toLocaleString("pt-BR", { style: "currency", currency });
 }
 
-function gatewayLabel(g: string): string {
-  if (g === "evpay") return "Yvepay";
-  if (g === "sigilopay") return "Poseidon Pay";
-  if (g === "nowpayments") return "NOWPayments";
-  return g;
-}
+// Rótulos vêm de lib/gateways (fonte única). Antes havia uma cópia local aqui
+// que chamava o "evpay" de "Yvepay" enquanto as Configurações chamavam de
+// "EvPay" — o mesmo gateway com dois nomes dependendo da tela.
 
 // Renderiza só se há valor — evita campo vazio "—" poluindo o documento
 function Field({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -279,7 +277,7 @@ export function ProofView({
         <Section title="Detalhes do pagamento">
           <div className="grid grid-cols-2 gap-x-6">
             <Field label="Processadora" value={gatewayLabel(transaction.gateway)} />
-            <Field label="Método" value={transaction.gateway === "nowpayments" ? "Criptomoeda" : "PIX"} />
+            <Field label="Método" value={gatewayMethodLabel(transaction.gateway)} />
             <Field label={transaction.gateway === "nowpayments" ? "Cobrança gerada em" : "PIX gerado em"} value={fmtDateTime(transaction.created_at)} />
             <Field label="Pagamento confirmado em" value={fmtDateTime(transaction.paid_at)} />
             <Field label="ID da transação (gateway)" value={transaction.external_id} />

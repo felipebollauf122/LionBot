@@ -2,6 +2,7 @@
 
 import { NODE_META } from "../flow-utils";
 import type { ProductOption } from "../flow-editor";
+import { GatewaySelect } from "./gateway-select";
 
 interface ButtonData {
   id?: string;
@@ -10,6 +11,7 @@ interface ButtonData {
   value: string;
   product_id?: string;
   sale_type?: string;
+  gateway?: string;
   style?: string;
 }
 
@@ -25,6 +27,8 @@ interface ButtonConfigProps {
   products: ProductOption[];
   /** Nós do fluxo — alimenta o seletor "Ir para no" (repassado pelo NodeConfigPanel). */
   flowNodes?: FlowNodeOption[];
+  /** Gateways ativos no bot — cada botão de pagamento escolhe por qual cobrar. */
+  enabledGateways?: string[];
 }
 
 const SALE_TYPES: { value: string; label: string }[] = [
@@ -67,7 +71,7 @@ function nodeOptionLabel(n: FlowNodeOption): string {
   return preview ? `${label} — ${preview}` : label;
 }
 
-export function ButtonConfig({ data, onChange, products, flowNodes = [] }: ButtonConfigProps) {
+export function ButtonConfig({ data, onChange, products, flowNodes = [], enabledGateways = [] }: ButtonConfigProps) {
   const text = String(data.text ?? "");
   const rawButtons = (data.buttons ?? []) as ButtonData[];
   // Backfill de ids legados: botão sem id ganha PERMANENTEMENTE btn_idx_N —
@@ -207,8 +211,16 @@ export function ButtonConfig({ data, onChange, products, flowNodes = [] }: Butto
                     </option>
                   ))}
                 </select>
+                {/* Gateway POR BOTÃO: dá pra ter "Pagar com PIX" e "Pagar com
+                    cripto" pro mesmo produto, lado a lado no mesmo nó. */}
+                <GatewaySelect
+                  value={btn.gateway ?? ""}
+                  onChange={(gateway) => updateButton(i, "gateway", gateway)}
+                  enabledGateways={enabledGateways}
+                  compact
+                />
                 <p className="text-(--amber) text-[0.6875rem] leading-snug">
-                  Gera um Pix ao clicar. Conecte os handles <strong>Pagou</strong> / <strong>Nao Pagou</strong> deste botao no canvas pra continuar o fluxo.
+                  Gera a cobranca ao clicar. Conecte os handles <strong>Pagou</strong> / <strong>Nao Pagou</strong> deste botao no canvas pra continuar o fluxo.
                 </p>
               </div>
             ) : btn.action === "go_to_node" ? (

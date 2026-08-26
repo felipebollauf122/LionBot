@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/actions/admin-actions";
 import { invalidateBotCache } from "@/lib/actions/cache-actions";
+import { GATEWAYS, NOWPAYMENTS_CURRENCIES, type GatewayKind } from "@/lib/gateways";
 
 interface BotSettings {
   facebook_pixel_id: string;
@@ -14,11 +15,16 @@ interface BotSettings {
   tiktok_access_token: string;
   tiktok_test_event_code: string;
   utmify_api_key: string;
-  payment_gateway: "sigilopay" | "evpay" | "nowpayments";
+  /** Gateway PADRÃO — usado quando o nó de pagamento não escolhe nenhum. */
+  payment_gateway: GatewayKind;
+  /** Todos os gateways que este bot pode usar (escolhidos por nó no fluxo). */
+  enabled_gateways: GatewayKind[];
   sigilopay_public_key: string;
   sigilopay_secret_key: string;
   evpay_api_key: string;
   evpay_project_id: string;
+  zuckpay_client_id: string;
+  zuckpay_client_secret: string;
   nowpayments_api_key: string;
   nowpayments_ipn_secret_key: string;
   nowpayments_pay_currency: string;
@@ -87,10 +93,52 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
   // Mesma lista que o <select> do form oferece — barra aqui pra não mandar um
   // pay_currency inválido pra API da NOWPayments (o form já restringe, mas
   // uma chamada direta ou dado legado poderia burlar isso).
-  const NOWPAYMENTS_CURRENCIES = ["usdttrc20", "usdtbep20", "trx", "btc", "eth", "ltc"];
   const nowpaymentsPayCurrency = settings.nowpayments_pay_currency || "usdttrc20";
-  if (!NOWPAYMENTS_CURRENCIES.includes(nowpaymentsPayCurrency)) {
+  if (!NOWPAYMENTS_CURRENCIES.some((c) => c.value === nowpaymentsPayCurrency)) {
     throw new Error(`NOWPayments: moeda "${nowpaymentsPayCurrency}" não suportada.`);
+  }
+
+  // ── Gateways ativos ────────────────────────────────────────────────────
+  // Credenciais já limpas, num mapa por coluna, pra validar "ativo tem
+  // credencial?" sem repetir o nome de cada campo aqui (GATEWAYS.requiredFields
+  // é a fonte).
+  const credentials: Record<string, string | null> = {
+    sigilopay_public_key: cleanCredential(settings.sigilopay_public_key),
+    sigilopay_secret_key: cleanCredential(settings.sigilopay_secret_key),
+    evpay_api_key: evpayApiKey,
+    evpay_project_id: evpayProjectId,
+    zuckpay_client_id: cleanCredential(settings.zuckpay_client_id),
+    zuckpay_client_secret: cleanCredential(settings.zuckpay_client_secret),
+    nowpayments_api_key: cleanCredential(settings.nowpayments_api_key),
+    nowpayments_ipn_secret_key: cleanCredential(settings.nowpayments_ipn_secret_key),
+  };
+
+  const enabledGateways = (settings.enabled_gateways ?? []).filter((kind) =>
+    GATEWAYS.some((g) => g.kind === kind),
+  );
+  if (enabledGateways.length === 0) {
+    throw new Error("Ative pelo menos um gateway de pagamento.");
+  }
+
+  // Ativo sem credencial completa = cobrança falhando na cara do lead com um
+  // erro cru do gateway. Barra no salvamento, onde dá pra explicar.
+  for (const kind of enabledGateways) {
+    const meta = GATEWAYS.find((g) => g.kind === kind);
+    if (!meta) continue;
+    const missing = meta.requiredFields.filter((f) => !credentials[f]);
+    if (missing.length > 0) {
+      throw new Error(
+        `${meta.label}: está ativo mas faltam credenciais. Preencha os campos ou desative o gateway.`,
+      );
+    }
+  }
+
+  // O padrão TEM que estar entre os ativos — senão todo nó de pagamento sem
+  // gateway escolhido cairia num gateway desligado.
+  if (!enabledGateways.includes(settings.payment_gateway)) {
+    const label = GATEWAYS.find((g) => g.kind === settings.payment_gateway)?.label
+      ?? settings.payment_gateway;
+    throw new Error(`O gateway padrão (${label}) precisa estar ativo.`);
   }
 
   const { error } = await supabase
@@ -106,12 +154,8 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
       tiktok_test_event_code: cleanCredential(settings.tiktok_test_event_code),
       utmify_api_key: cleanCredential(settings.utmify_api_key),
       payment_gateway: settings.payment_gateway,
-      sigilopay_public_key: cleanCredential(settings.sigilopay_public_key),
-      sigilopay_secret_key: cleanCredential(settings.sigilopay_secret_key),
-      evpay_api_key: evpayApiKey,
-      evpay_project_id: evpayProjectId,
-      nowpayments_api_key: cleanCredential(settings.nowpayments_api_key),
-      nowpayments_ipn_secret_key: cleanCredential(settings.nowpayments_ipn_secret_key),
+      enabled_gateways: enabledGateways,
+      ...credentials,
       nowpayments_pay_currency: nowpaymentsPayCurrency,
       collect_email_after_payment: settings.collect_email_after_payment,
       email_request_message: settings.email_request_message || null,
@@ -135,7 +179,11 @@ export async function saveBotSettings(botId: string, settings: BotSettings) {
   // Se o gateway é EvPay e tem credenciais, manda o server registrar o webhook.
   // Checa os valores limpos: com o form cru, credencial só de espaço era truthy
   // e mandava o server registrar webhook com credencial vazia no banco.
-  if (settings.payment_gateway === "evpay" && evpayApiKey && evpayProjectId) {
+  // Condição é ATIVO (não "é o padrão"): com multi-gateway o EvPay pode ser
+  // usado só por um nó do fluxo sem ser o padrão do bot, e nesse caso ele
+  // ainda precisa do webhook registrado — senão as cobranças desse nó nunca
+  // seriam confirmadas.
+  if (enabledGateways.includes("evpay") && evpayApiKey && evpayProjectId) {
     await registerEvpayWebhookOnServer(botId);
   }
 

@@ -59,8 +59,11 @@ export interface Bot {
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
   payment_gateway: string | null;
+  enabled_gateways: string[] | null;
   evpay_api_key: string | null;
   evpay_project_id: string | null;
+  zuckpay_client_id: string | null;
+  zuckpay_client_secret: string | null;
   nowpayments_api_key: string | null;
   nowpayments_ipn_secret_key: string | null;
   nowpayments_pay_currency: string | null;

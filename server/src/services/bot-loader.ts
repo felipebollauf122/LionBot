@@ -1,10 +1,12 @@
 import { supabase } from "../db.js";
 import { botCache } from "../cache.js";
+import { getEnabledGateways } from "./gateway-factory.js";
 
 interface BotPaymentShape {
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
   payment_gateway?: string | null;
+  enabled_gateways?: string[] | null;
 }
 
 /**
@@ -27,15 +29,15 @@ export async function ensureBotPaymentKeys<T extends BotPaymentShape>(
   botId: string,
   bot: T,
 ): Promise<T> {
-  // Gateway explicitamente outro → chaves da Poseidon são irrelevantes.
-  // (getGatewayKind trata qualquer valor != evpay/zuckpay/nowpayments como sigilopay.)
-  if (
-    bot.payment_gateway === "evpay" ||
-    bot.payment_gateway === "zuckpay" ||
-    bot.payment_gateway === "nowpayments"
-  ) {
-    return bot;
-  }
+  // Poseidon não está entre os gateways ATIVOS → as chaves dela são
+  // irrelevantes pra este bot.
+  //
+  // Antes isso olhava só o payment_gateway (o padrão). Com multi-gateway
+  // (migration 070) isso furaria: um bot com padrão nowpayments mas Poseidon
+  // TAMBÉM ativa nunca recarregaria as chaves da Poseidon, e uma cobrança PIX
+  // vinda de um nó que escolheu Poseidon falharia com "chaves não
+  // configuradas" mesmo depois do dono ter preenchido tudo.
+  if (!getEnabledGateways(bot).includes("sigilopay")) return bot;
 
   const hasPub = Boolean(bot.sigilopay_public_key && bot.sigilopay_public_key.trim());
   const hasSec = Boolean(bot.sigilopay_secret_key && bot.sigilopay_secret_key.trim());

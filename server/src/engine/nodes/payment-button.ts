@@ -277,6 +277,13 @@ export async function handlePaymentBundleNode(
       // não-nulo com remarketing_flow_id nulo — dado incoerente).
       pending_remarketing_flow_id: ctx.remarketingFlowId ?? null,
       pending_remarketing_send_id: null,
+      // Gateway escolhido NESTE nó. Precisa viajar pelo state porque o
+      // callback "pay:" reconstrói o nó sinteticamente (só bundle_id
+      // sobrevive — ver flow-processor.ts), então node.data.gateway não
+      // chega lá. Sempre explícito (mesmo null), pela mesma razão dos
+      // outros pending_*: senão a escolha de uma oferta anterior vaza pra
+      // um pagamento de outra origem.
+      pending_payment_gateway: ctx.node.data.gateway ? String(ctx.node.data.gateway) : null,
     },
     // bundleId é reportado sempre (randomizado ou fixo) — é um eixo de stats
     // válido de qualquer forma; ver remarketing_variant_sends.
@@ -690,6 +697,11 @@ export async function handleProductPaymentCallback(
       pending_identifier: identifier,
       pending_pix_code: payment.pixCode,
       pending_pix_image: qrCodeUrl,
+      // Gateway REALMENTE usado nesta cobrança (já resolvido: pode ser o
+      // escolhido no nó ou o padrão do bot, se o pedido não valia). O
+      // handler do botão "Ver QR Code" lê isto pra escolher a legenda —
+      // PIX ("app do seu banco") vs cripto ("sua carteira").
+      pending_gateway_kind: gatewayKind,
       awaiting_product_selection: false,
     },
   };

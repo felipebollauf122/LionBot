@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/actions/admin-actions";
 import { FlowEditor } from "@/components/dashboard/flow-builder/flow-editor";
+import { getEnabledGatewaysForBot } from "@/lib/actions/bot-gateways";
 import { saveRemarketingFlowData } from "@/lib/actions/remarketing-actions";
 import { listMediaAssets } from "@/lib/actions/media-actions";
 import type { RemarketingFlow } from "@/lib/types/database";
@@ -17,7 +18,7 @@ export default async function AdminBotRemarketingFlowEditorPage({
   const { userId, botId, flowId } = await params;
   const supabase = await createClient();
 
-  const [{ data: flow }, { data: bundles }, { data: products }, mediaAssets, { data: targetTenant }] =
+  const [{ data: flow }, { data: bundles }, { data: products }, mediaAssets, { data: targetTenant }, enabledGateways] =
     await Promise.all([
       supabase
         .from("remarketing_flows")
@@ -43,6 +44,7 @@ export default async function AdminBotRemarketingFlowEditorPage({
       // senão o painel esconde variações/randomização já configuradas pelo
       // dono e o admin acaba editando um campo que a engine não lê em runtime.
       supabase.from("tenants").select("is_owner, is_premium").eq("id", userId).single(),
+      getEnabledGatewaysForBot(botId),
     ]);
 
   if (!flow) notFound();
@@ -58,6 +60,7 @@ export default async function AdminBotRemarketingFlowEditorPage({
       botId={botId}
       bundles={(bundles ?? []) as { id: string; name: string }[]}
       products={(products ?? []) as { id: string; name: string; price: number; currency: string }[]}
+      enabledGateways={enabledGateways}
       mediaAssets={mediaAssets}
       canRandomize={canRandomize}
       saveAction={saveRemarketingFlowData}

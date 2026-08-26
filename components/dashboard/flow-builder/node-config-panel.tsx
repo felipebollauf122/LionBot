@@ -30,6 +30,8 @@ interface NodeConfigPanelProps {
   products: ProductOption[];
   /** Mídias cadastradas na Biblioteca de Mídia do bot — usadas nos seletores de randomização. */
   mediaAssets?: MediaAssetOption[];
+  /** Gateways ativos no bot — o nó de pagamento escolhe por qual cobrar. */
+  enabledGateways?: string[];
   /** Libera os controles de randomização (owner ou assinante Premium). */
   canRandomize?: boolean;
 }
@@ -44,6 +46,7 @@ export function NodeConfigPanel({
   bundles,
   products,
   mediaAssets = [],
+  enabledGateways = [],
   canRandomize = false,
 }: NodeConfigPanelProps) {
   const titleId = useId();
@@ -103,14 +106,14 @@ export function NodeConfigPanel({
     trigger: <TriggerConfig key={node.id} data={node.data} onChange={handleChange} />,
     text: <TextConfig key={node.id} data={node.data} onChange={handleChange} canRandomize={canRandomize} />,
     image: <ImageConfig key={node.id} data={node.data} onChange={handleChange} mediaAssets={mediaAssets} canRandomize={canRandomize} />,
-    button: <ButtonConfig key={node.id} data={node.data} onChange={handleChange} products={products} flowNodes={flowNodes} />,
+    button: <ButtonConfig key={node.id} data={node.data} onChange={handleChange} products={products} flowNodes={flowNodes} enabledGateways={enabledGateways} />,
     delay: <DelayConfig key={node.id} data={node.data} onChange={handleChange} />,
     condition: <ConditionConfig key={node.id} data={node.data} onChange={handleChange} />,
     input: <InputConfig key={node.id} data={node.data} onChange={handleChange} />,
     action: <ActionConfig key={node.id} data={node.data} onChange={handleChange} />,
     video: <VideoConfig key={node.id} data={node.data} onChange={handleChange} mediaAssets={mediaAssets} canRandomize={canRandomize} />,
     audio: <AudioConfig key={node.id} data={node.data} onChange={handleChange} />,
-    payment_button: <PaymentButtonConfig key={node.id} data={node.data} onChange={handleChange} bundles={bundles} canRandomize={canRandomize} />,
+    payment_button: <PaymentButtonConfig key={node.id} data={node.data} onChange={handleChange} bundles={bundles} canRandomize={canRandomize} enabledGateways={enabledGateways} />,
     unmapped: <UnmappedConfig key={node.id} data={node.data} onChange={handleChange} />,
   };
 

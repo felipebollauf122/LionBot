@@ -1,12 +1,14 @@
 "use client";
 
 import type { BundleOption } from "../flow-editor";
+import { GatewaySelect } from "./gateway-select";
 
 interface PaymentButtonConfigProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
   bundles: BundleOption[];
   canRandomize?: boolean;
+  enabledGateways?: string[];
 }
 
 // Id nunca-reutilizável (timestamp + aleatório em base36) — nunca "recicla" o
@@ -15,7 +17,7 @@ function freshId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = false }: PaymentButtonConfigProps) {
+export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = false, enabledGateways = [] }: PaymentButtonConfigProps) {
   const bundleId = String(data.bundle_id ?? "");
   const timeoutMinutes = Number(data.payment_timeout_minutes ?? 15);
   const saleType = String(data.sale_type ?? "main");
@@ -351,6 +353,20 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           Adicionar botão
         </button>
+      </div>
+
+      {/* Gateway — permite ter um nó cobrando PIX e outro cobrando cripto no
+          mesmo fluxo, cada um ligado a um botão diferente. */}
+      <div>
+        <GatewaySelect
+          value={String(data.gateway ?? "")}
+          onChange={(gateway) => onChange({ ...data, gateway: gateway || undefined })}
+          enabledGateways={enabledGateways}
+        />
+        <p className="text-(--text-secondary) text-[0.6875rem] leading-snug mt-1">
+          Por qual gateway este nó cobra. Deixe em <strong>Padrão do bot</strong> pra
+          usar o das Configurações.
+        </p>
       </div>
 
       <div>

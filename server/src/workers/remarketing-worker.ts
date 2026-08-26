@@ -34,6 +34,7 @@ interface Bot {
   telegram_token: string;
   protect_content: boolean;
   payment_gateway: string | null;
+  enabled_gateways: string[] | null;
   sigilopay_public_key: string | null;
   sigilopay_secret_key: string | null;
   evpay_api_key: string | null;
@@ -124,7 +125,7 @@ async function processConfig(db: SupabaseClient, cfg: RemarketingConfig): Promis
   // Get bot
   const { data: bot } = await db
     .from("bots")
-    .select("id, tenant_id, telegram_token, protect_content, payment_gateway, sigilopay_public_key, sigilopay_secret_key, evpay_api_key, evpay_project_id, zuckpay_client_id, zuckpay_client_secret, nowpayments_api_key, nowpayments_ipn_secret_key, nowpayments_pay_currency")
+    .select("id, tenant_id, telegram_token, protect_content, payment_gateway, enabled_gateways, sigilopay_public_key, sigilopay_secret_key, evpay_api_key, evpay_project_id, zuckpay_client_id, zuckpay_client_secret, nowpayments_api_key, nowpayments_ipn_secret_key, nowpayments_pay_currency")
     .eq("id", cfg.bot_id)
     .eq("is_active", true)
     .single();
@@ -182,6 +183,7 @@ async function processConfig(db: SupabaseClient, cfg: RemarketingConfig): Promis
     gateway,
     gatewayKind,
     baseWebhookUrl: config.baseWebhookUrl,
+    botPaymentConfig: typedBot,
   });
 
   const now = new Date();

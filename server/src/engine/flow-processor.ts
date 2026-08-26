@@ -6,6 +6,12 @@ import { handleInputResponse } from "./nodes/input.js";
 import type { LeadService } from "../services/lead-service.js";
 import type { ExecuteNodeDeps } from "./node-executor.js";
 import type { PaymentGateway } from "../services/payment-gateway.js";
+import {
+  buildGatewayByKind,
+  resolveGatewayKind,
+  type BotPaymentConfig,
+  type GatewayKind,
+} from "../services/gateway-factory.js";
 import { flowCache, flowByIdCache, remarketingFlowByIdCache } from "../cache.js";
 import { logEvent } from "../services/lead-messages.js";
 
@@ -48,8 +54,15 @@ export class FlowProcessor {
     private delayQueue: DelayQueue,
     deps?: {
       gateway?: PaymentGateway;
-      gatewayKind?: "sigilopay" | "evpay" | "zuckpay" | "nowpayments";
+      gatewayKind?: GatewayKind;
       baseWebhookUrl?: string;
+      /**
+       * Linha do bot (colunas de pagamento). Necessária pra construir um
+       * gateway DIFERENTE do padrão quando o nó de pagamento escolhe um —
+       * `gateway` acima é só o padrão, instanciado uma vez pelo caller.
+       * Sem isso, a escolha por nó é ignorada e tudo cai no padrão.
+       */
+      botPaymentConfig?: BotPaymentConfig;
     },
   ) {
     this.executeDeps = {
@@ -58,7 +71,10 @@ export class FlowProcessor {
       gatewayKind: deps?.gatewayKind ?? "sigilopay",
       baseWebhookUrl: deps?.baseWebhookUrl,
     };
+    this.botPaymentConfig = deps?.botPaymentConfig;
   }
+
+  private botPaymentConfig?: BotPaymentConfig;
 
   /**
    * Fetch a flow by ID, using in-memory cache to avoid repeated DB queries.
@@ -257,12 +273,39 @@ export class FlowProcessor {
     logTag: string;
     remarketingFlowId?: string | null;
     remarketingSendId?: string | null;
+    /**
+     * Gateway escolhido no fluxo (nó de pagamento ou botão inline). Só é
+     * honrado se estiver ativo e configurado no bot — ver resolveGatewayKind.
+     * Ausente = usa o padrão do bot, comportamento de sempre.
+     */
+    requestedGatewayKind?: string | null;
   }): Promise<void> {
-    const { ctx, productId, paymentButtonId, lead, telegram, chatId, isBlack, resolveBotId, logTag, remarketingFlowId, remarketingSendId } = opts;
+    const { ctx, productId, paymentButtonId, lead, telegram, chatId, isBlack, resolveBotId, logTag, remarketingFlowId, remarketingSendId, requestedGatewayKind } = opts;
 
     if (!this.executeDeps.db || !this.executeDeps.gateway || !this.executeDeps.baseWebhookUrl) {
       console.error(`[${logTag}] Missing deps`);
       return;
+    }
+
+    // Gateway padrão (instanciado pelo caller) vs. o escolhido no fluxo.
+    // Só reconstrói quando o pedido resolve pra algo diferente do padrão —
+    // no caminho comum (nó sem escolha) nada muda.
+    let gateway = this.executeDeps.gateway;
+    let gatewayKind: GatewayKind = this.executeDeps.gatewayKind ?? "sigilopay";
+    if (requestedGatewayKind && this.botPaymentConfig) {
+      const resolved = resolveGatewayKind(this.botPaymentConfig, requestedGatewayKind);
+      if (resolved !== gatewayKind) {
+        gateway = buildGatewayByKind(this.botPaymentConfig, resolved);
+        gatewayKind = resolved;
+        console.log(`[${logTag}] gateway do nó: ${resolved} (padrão do bot: ${this.executeDeps.gatewayKind})`);
+      }
+    } else if (requestedGatewayKind && !this.botPaymentConfig) {
+      // Deps incompletas: o caller não passou botPaymentConfig, então não dá
+      // pra construir o gateway pedido. Segue no padrão (cobrança sai, venda
+      // não se perde), mas isso é bug de wiring — precisa aparecer no log.
+      console.warn(
+        `[${logTag}] nó pediu gateway "${requestedGatewayKind}" mas botPaymentConfig não foi passado ao FlowProcessor — usando o padrão "${gatewayKind}"`,
+      );
     }
 
     const { handleProductPaymentCallback } = await import("./nodes/payment-button.js");
@@ -271,10 +314,10 @@ export class FlowProcessor {
       const result = await handleProductPaymentCallback(
         ctx,
         this.executeDeps.db,
-        this.executeDeps.gateway,
+        gateway,
         this.executeDeps.baseWebhookUrl,
         productId,
-        this.executeDeps.gatewayKind ?? "sigilopay",
+        gatewayKind,
         paymentButtonId,
         remarketingFlowId ?? null,
         remarketingSendId ?? null,
@@ -763,9 +806,15 @@ export class FlowProcessor {
     if (callbackData.startsWith("qrcode:")) {
       const pixImage = String(lead.state.pending_pix_image ?? "");
       if (pixImage) {
-        // Gateway é global por bot (não por transação) — this.executeDeps.gatewayKind
-        // reflete o gateway atual do bot, mesma fonte usada pra gerar a cobrança.
-        const isCryptoQr = this.executeDeps.gatewayKind === "nowpayments";
+        // Gateway é POR TRANSAÇÃO (o nó de pagamento pode escolher um
+        // diferente do padrão do bot), então a legenda sai do state gravado
+        // por handleProductPaymentCallback junto do QR — não do padrão do bot,
+        // que estaria errado sempre que o nó escolhesse outro gateway.
+        // Fallback pro padrão cobre cobranças geradas antes desta versão.
+        const qrGatewayKind = String(
+          lead.state.pending_gateway_kind ?? this.executeDeps.gatewayKind ?? "",
+        );
+        const isCryptoQr = qrGatewayKind === "nowpayments";
         const msg = await telegram.sendPhoto({
           chatId,
           photo: pixImage,
@@ -833,6 +882,10 @@ export class FlowProcessor {
         logTag: "pay callback",
         remarketingFlowId,
         remarketingSendId,
+        // O nó sintético acima não carrega node.data.gateway (só bundle_id
+        // sobrevive à reconstrução), então a escolha viaja pelo state —
+        // gravada por handlePaymentBundleNode junto de pending_bundle_id.
+        requestedGatewayKind: (lead.state.pending_payment_gateway as string | null) ?? null,
       });
       return;
     }
@@ -916,6 +969,7 @@ export class FlowProcessor {
         action?: string;
         product_id?: string;
         sale_type?: string;
+        gateway?: string;
       }>;
       const btn = buttons.find((b, i) => (b.id ?? `btn_idx_${i}`) === targetValue && b.action === "payment");
 
@@ -948,6 +1002,10 @@ export class FlowProcessor {
           isBlack,
           resolveBotId: async () => flow.bot_id,
           logTag: "inline payment",
+          // Igual ao sale_type: gateway é config POR BOTÃO (button-config.tsx).
+          // Aqui o nó vem vivo do flow_data, então lê direto — sem precisar do
+          // state, ao contrário do caminho "pay:" do bundle.
+          requestedGatewayKind: btn.gateway ?? null,
           // Antes: sempre null (o comentário partia de current_flow_id
           // nunca ser setado pra remarketing — verdade, mas o fallback
           // acima agora resolve `flow` mesmo assim via

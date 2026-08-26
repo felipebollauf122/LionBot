@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { NODE_META, handleStyle } from "../flow-utils";
 import { BaseNode, inlineHandleStyle } from "./base-node";
+import { gatewayLabel } from "@/lib/gateways";
 
 const COLOR = NODE_META.payment_button.color;
 
@@ -11,6 +12,9 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
   const hasBundle =
     Boolean(bundleId) || (Array.isArray(data.bundle_ids) && (data.bundle_ids as unknown[]).length > 0);
   const saleType = String(data.sale_type ?? "main");
+  // Gateway escolhido neste nó. Sem chip, dois nós de pagamento (um PIX, um
+  // cripto) ficam visualmente idênticos no canvas e é fácil editar o errado.
+  const gateway = String(data.gateway ?? "").trim();
   const isOffer = saleType === "upsell" || saleType === "downsell";
   // botões de recusa/extras (cada um vira um handle de saída próprio).
   // Padrão se não configurado: só "Recusar".
@@ -59,6 +63,22 @@ export function PaymentButtonNode({ data, selected }: NodeProps) {
           </span>
         )}
       </div>
+      {gateway && (
+        <div className="flex justify-center mt-1.5">
+          <span
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[0.6875rem] font-medium max-w-full truncate"
+            style={{
+              background: "color-mix(in srgb, var(--cyan) 12%, transparent)",
+              color: "var(--cyan)",
+            }}
+          >
+            <svg aria-hidden="true" focusable="false" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+            </svg>
+            {gatewayLabel(gateway)}
+          </span>
+        </div>
+      )}
       {/* Upsell/Downsell: clicar no produto = Aceitar (segue por "Pagou").
           "Recusar" e extras viram handles próprios pra ramificar. */}
       {isOffer && (

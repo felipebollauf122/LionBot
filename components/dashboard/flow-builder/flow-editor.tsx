@@ -70,6 +70,8 @@ interface FlowEditorProps {
   products: ProductOption[];
   /** Mídias cadastradas na Biblioteca de Mídia do bot — usadas nos seletores de randomização. */
   mediaAssets?: MediaAssetOption[];
+  /** Gateways de pagamento ativos no bot — cada nó de pagamento escolhe um. */
+  enabledGateways?: string[];
   /** Libera os controles de randomização (owner ou assinante Premium). */
   canRandomize?: boolean;
   saveAction?: (flowId: string, flowData: FlowData) => Promise<{ success: boolean }>;
@@ -190,7 +192,7 @@ const HISTORY_LIMIT = 100;
 
 type FlowSnapshot = { nodes: Node[]; edges: Edge[] };
 
-function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, products, mediaAssets = [], canRandomize = false, saveAction, backUrl }: FlowEditorProps) {
+function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, products, mediaAssets = [], enabledGateways = [], canRandomize = false, saveAction, backUrl }: FlowEditorProps) {
   const router = useRouter();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -990,6 +992,7 @@ function FlowEditorInner({ flowId, flowName, initialData, botId, bundles, produc
         bundles={bundles}
         products={products}
         mediaAssets={mediaAssets}
+        enabledGateways={enabledGateways}
         canRandomize={canRandomize}
       />
 

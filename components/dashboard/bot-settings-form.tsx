@@ -8,6 +8,7 @@ import { uploadMedia } from "@/lib/actions/upload-actions";
 import { LionMark } from "@/components/brand/lion-mark";
 import { TrafficFilterManager } from "@/components/dashboard/traffic-filter-manager";
 import type { Bot, TrafficFilterRule } from "@/lib/types/database";
+import { GATEWAYS, NOWPAYMENTS_CURRENCIES, type GatewayKind } from "@/lib/gateways";
 import type { ReactNode } from "react";
 
 interface BotSettingsFormProps {
@@ -116,7 +117,7 @@ const sections = [
   { key: "facebook", label: "Facebook Ads", desc: "Pixel e Conversions API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--cyan)" },
   { key: "tiktok", label: "TikTok Ads", desc: "Pixel e Events API", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--amber)" },
   { key: "utmify", label: "Utmify", desc: "Integracao de tracking", icon: "M22 12h-4l-3 9L9 3l-3 9H2", color: "var(--purple)" },
-  { key: "gateway", label: "Gateway de pagamento", desc: "Poseidon Pay, EvPay ou cripto", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--accent)" },
+  { key: "gateway", label: "Gateway de pagamento", desc: "PIX e cripto — ative os que quiser", icon: "M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6", color: "var(--accent)" },
   { key: "tracking", label: "Pagina de Tracking", desc: "Configuracao da pagina de redirecionamento", icon: "M21 12a9 9 0 11-6.219-8.56", color: "var(--amber)" },
   { key: "advanced", label: "Avancado", desc: "Protecao, fluxo black e token", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z", color: "var(--purple)" },
   { key: "danger", label: "Zona de perigo", desc: "Excluir bot permanentemente", icon: "M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01", color: "var(--red)" },
@@ -159,17 +160,30 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [sendingTiktokTest, setSendingTiktokTest] = useState(false);
   const [tiktokTestMsg, setTiktokTestMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [utmifyKey, setUtmifyKey] = useState(bot.utmify_api_key ?? "");
-  const [paymentGateway, setPaymentGateway] = useState<"sigilopay" | "evpay" | "nowpayments">(
-    bot.payment_gateway === "evpay"
-      ? "evpay"
-      : bot.payment_gateway === "nowpayments"
-        ? "nowpayments"
-        : "sigilopay",
+  const [paymentGateway, setPaymentGateway] = useState<GatewayKind>(
+    GATEWAYS.some((g) => g.kind === bot.payment_gateway)
+      ? (bot.payment_gateway as GatewayKind)
+      : "sigilopay",
   );
+  // Gateways ativos. Bot antigo (coluna nula, pré-migration 070) cai no
+  // gateway que ele já usava — mesmo backfill que a migration faz no banco.
+  const [enabledGateways, setEnabledGateways] = useState<GatewayKind[]>(() => {
+    const stored = (bot.enabled_gateways ?? []).filter((k): k is GatewayKind =>
+      GATEWAYS.some((g) => g.kind === k),
+    );
+    if (stored.length > 0) return stored;
+    return [
+      GATEWAYS.some((g) => g.kind === bot.payment_gateway)
+        ? (bot.payment_gateway as GatewayKind)
+        : "sigilopay",
+    ];
+  });
   const [sigiloPublicKey, setSigiloPublicKey] = useState(bot.sigilopay_public_key ?? "");
   const [sigiloSecretKey, setSigiloSecretKey] = useState(bot.sigilopay_secret_key ?? "");
   const [evpayApiKey, setEvpayApiKey] = useState(bot.evpay_api_key ?? "");
   const [evpayProjectId, setEvpayProjectId] = useState(bot.evpay_project_id ?? "");
+  const [zuckpayClientId, setZuckpayClientId] = useState(bot.zuckpay_client_id ?? "");
+  const [zuckpayClientSecret, setZuckpayClientSecret] = useState(bot.zuckpay_client_secret ?? "");
   const [nowpaymentsApiKey, setNowpaymentsApiKey] = useState(bot.nowpayments_api_key ?? "");
   const [nowpaymentsIpnSecretKey, setNowpaymentsIpnSecretKey] = useState(bot.nowpayments_ipn_secret_key ?? "");
   const [nowpaymentsPayCurrency, setNowpaymentsPayCurrency] = useState(bot.nowpayments_pay_currency ?? "usdttrc20");
@@ -182,6 +196,18 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [ctaText, setCtaText] = useState(bot.prelander_cta_text ?? "");
   const [redirectDisplayName, setRedirectDisplayName] = useState(bot.redirect_display_name ?? "");
   const [trackingPageIntro, setTrackingPageIntro] = useState(bot.tracking_page_intro ?? "");
+
+  /**
+   * Liga/desliga um gateway. O padrão nunca pode ser desligado (o botão fica
+   * disabled) — sem essa trava dava pra salvar um bot cujo gateway padrão está
+   * inativo, e todo nó de pagamento sem escolha explícita cairia num gateway
+   * desligado. O server action valida isso de novo, por garantia.
+   */
+  const toggleGateway = (kind: GatewayKind) => {
+    setEnabledGateways((prev) =>
+      prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind],
+    );
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -199,10 +225,13 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
         tiktok_test_event_code: tiktokTestEventCode,
         utmify_api_key: utmifyKey,
         payment_gateway: paymentGateway,
+        enabled_gateways: enabledGateways,
         sigilopay_public_key: sigiloPublicKey,
         sigilopay_secret_key: sigiloSecretKey,
         evpay_api_key: evpayApiKey,
         evpay_project_id: evpayProjectId,
+        zuckpay_client_id: zuckpayClientId,
+        zuckpay_client_secret: zuckpayClientSecret,
         nowpayments_api_key: nowpaymentsApiKey,
         nowpayments_ipn_secret_key: nowpaymentsIpnSecretKey,
         nowpayments_pay_currency: nowpaymentsPayCurrency,
@@ -679,117 +708,178 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
               <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-(--accent)/15 to-transparent" />
               <SectionHeader sKey="gateway" />
               <div className="space-y-4">
+                <p className="text-white/50 text-xs leading-relaxed">
+                  Ative quantos gateways quiser. No editor de fluxo, cada nó de
+                  pagamento escolhe por qual deles cobrar — é assim que você
+                  oferece PIX e cripto no mesmo funil, com um botão pra cada.
+                </p>
+
+                {GATEWAYS.map((g) => {
+                  const active = enabledGateways.includes(g.kind);
+                  const isDefault = paymentGateway === g.kind;
+                  return (
+                    <div
+                      key={g.kind}
+                      className="rounded-xl p-3 space-y-3"
+                      style={{
+                        background: active ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.01)",
+                        border: active
+                          ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)"
+                          : "1px solid var(--border-subtle)",
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-white text-sm font-medium">{g.label}</span>
+                            {isDefault && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider text-(--accent) bg-(--accent)/12">
+                                padrão
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-white/40 text-[11px] mt-0.5">
+                            {g.method === "crypto" ? "Criptomoeda" : "PIX"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isDefault}
+                          title={isDefault ? "Escolha outro gateway padrão antes de desativar este." : undefined}
+                          onClick={() => toggleGateway(g.kind)}
+                          className={`toggle-btn ${active ? "on" : "off"} disabled:opacity-40 disabled:cursor-not-allowed shrink-0`}
+                        >
+                          {active ? "Ativo" : "Desativado"}
+                        </button>
+                      </div>
+
+                      {active && g.kind === "sigilopay" && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="input-label">Chave Publica</label>
+                            <input type="text" value={sigiloPublicKey} onChange={(e) => setSigiloPublicKey(e.target.value)} placeholder="pub_..." className="input" />
+                          </div>
+                          <div>
+                            <label className="input-label">Chave Secreta</label>
+                            <SecretInput value={sigiloSecretKey} onChange={setSigiloSecretKey} placeholder="sec_..." />
+                          </div>
+                        </div>
+                      )}
+
+                      {active && g.kind === "evpay" && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="input-label">API Key (X-API-Key)</label>
+                            <SecretInput value={evpayApiKey} onChange={setEvpayApiKey} placeholder="fp_sk_..." />
+                          </div>
+                          <div>
+                            <label className="input-label">Project ID</label>
+                            <input type="text" value={evpayProjectId} onChange={(e) => setEvpayProjectId(e.target.value)} placeholder="cmop4ynuc..." className="input" />
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
+                                try {
+                                  const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/setup-evpay-webhook`, { method: "POST" });
+                                  alert(ok ? `Webhook registrado: ${data.webhook_url}` : `Erro: ${data.error}`);
+                                } catch (e) {
+                                  alert(e instanceof Error ? e.message : "Erro inesperado");
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5"
+                            >
+                              Re-registrar webhook no Yvepay
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
+                                try {
+                                  const { data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/evpay-webhook-status`);
+                                  alert(JSON.stringify(data, null, 2));
+                                } catch (e) {
+                                  alert(e instanceof Error ? e.message : "Erro inesperado");
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5"
+                            >
+                              Verificar status
+                            </button>
+                          </div>
+                          <p className="text-xs text-white/40">
+                            Salvar registra o webhook automaticamente. Use os botões acima
+                            pra re-registrar ou conferir se o Yvepay tem nosso URL cadastrado.
+                            Evento monitorado: <code>pix.in.confirmation</code>.
+                          </p>
+                        </div>
+                      )}
+
+                      {active && g.kind === "zuckpay" && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="input-label">Client ID</label>
+                            <input type="text" value={zuckpayClientId} onChange={(e) => setZuckpayClientId(e.target.value)} placeholder="..." className="input" />
+                          </div>
+                          <div>
+                            <label className="input-label">Client Secret</label>
+                            <SecretInput value={zuckpayClientSecret} onChange={setZuckpayClientSecret} placeholder="..." />
+                          </div>
+                        </div>
+                      )}
+
+                      {active && g.kind === "nowpayments" && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="input-label">API Key</label>
+                            <SecretInput value={nowpaymentsApiKey} onChange={setNowpaymentsApiKey} placeholder="..." />
+                          </div>
+                          <div>
+                            <label className="input-label">IPN Secret Key</label>
+                            <SecretInput value={nowpaymentsIpnSecretKey} onChange={setNowpaymentsIpnSecretKey} placeholder="..." />
+                          </div>
+                          <div>
+                            <label className="input-label">Moeda para receber</label>
+                            <select
+                              value={nowpaymentsPayCurrency}
+                              onChange={(e) => setNowpaymentsPayCurrency(e.target.value)}
+                              className="input"
+                            >
+                              {NOWPAYMENTS_CURRENCIES.map((c) => (
+                                <option key={c.value} value={c.value}>{c.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <p className="text-xs text-white/40">
+                            Chaves geradas em nowpayments.io → Configurações da conta → API Keys /
+                            IPN. A conversão de R$ pra cripto é feita automaticamente pela
+                            NOWPayments no valor de cada cobrança. Prefira USDT/TRX pra produtos
+                            de ticket baixo — moedas como BTC têm valor mínimo de rede que pode
+                            superar o preço do produto.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
                 <div>
-                  <label className="input-label">Gateway</label>
+                  <label className="input-label">Gateway padrão</label>
                   <select
                     value={paymentGateway}
-                    onChange={(e) => setPaymentGateway(e.target.value as "sigilopay" | "evpay" | "nowpayments")}
+                    onChange={(e) => setPaymentGateway(e.target.value as GatewayKind)}
                     className="input"
                   >
-                    <option value="sigilopay">Poseidon Pay</option>
-                    <option value="evpay">EvPay</option>
-                    <option value="nowpayments">Cripto (NOWPayments)</option>
+                    {GATEWAYS.filter((g) => enabledGateways.includes(g.kind)).map((g) => (
+                      <option key={g.kind} value={g.kind}>{g.label}</option>
+                    ))}
                   </select>
+                  <p className="text-white/50 text-xs mt-1.5 leading-relaxed">
+                    Usado quando o nó de pagamento no fluxo não escolhe nenhum —
+                    inclusive em todos os fluxos que você já tem hoje.
+                  </p>
                 </div>
-
-                {paymentGateway === "sigilopay" && (
-                  <>
-                    <div>
-                      <label className="input-label">Chave Publica</label>
-                      <input type="text" value={sigiloPublicKey} onChange={(e) => setSigiloPublicKey(e.target.value)} placeholder="pub_..." className="input" />
-                    </div>
-                    <div>
-                      <label className="input-label">Chave Secreta</label>
-                      <SecretInput value={sigiloSecretKey} onChange={setSigiloSecretKey} placeholder="sec_..." />
-                    </div>
-                  </>
-                )}
-
-                {paymentGateway === "evpay" && (
-                  <>
-                    <div>
-                      <label className="input-label">API Key (X-API-Key)</label>
-                      <SecretInput value={evpayApiKey} onChange={setEvpayApiKey} placeholder="fp_sk_..." />
-                    </div>
-                    <div>
-                      <label className="input-label">Project ID</label>
-                      <input type="text" value={evpayProjectId} onChange={(e) => setEvpayProjectId(e.target.value)} placeholder="cmop4ynuc..." className="input" />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
-                          try {
-                            const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/setup-evpay-webhook`, { method: "POST" });
-                            alert(ok ? `Webhook registrado: ${data.webhook_url}` : `Erro: ${data.error}`);
-                          } catch (e) {
-                            alert(e instanceof Error ? e.message : "Erro inesperado");
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5"
-                      >
-                        Re-registrar webhook no Yvepay
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
-                          try {
-                            const { data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/evpay-webhook-status`);
-                            alert(JSON.stringify(data, null, 2));
-                          } catch (e) {
-                            alert(e instanceof Error ? e.message : "Erro inesperado");
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded border border-white/15 text-white/80 text-xs hover:bg-white/5"
-                      >
-                        Verificar status
-                      </button>
-                    </div>
-                    <p className="text-xs text-white/40">
-                      Salvar registra o webhook automaticamente. Use os botões acima
-                      pra re-registrar ou conferir se o Yvepay tem nosso URL cadastrado.
-                      Evento monitorado: <code>pix.in.confirmation</code>.
-                    </p>
-                  </>
-                )}
-
-                {paymentGateway === "nowpayments" && (
-                  <>
-                    <div>
-                      <label className="input-label">API Key</label>
-                      <SecretInput value={nowpaymentsApiKey} onChange={setNowpaymentsApiKey} placeholder="..." />
-                    </div>
-                    <div>
-                      <label className="input-label">IPN Secret Key</label>
-                      <SecretInput value={nowpaymentsIpnSecretKey} onChange={setNowpaymentsIpnSecretKey} placeholder="..." />
-                    </div>
-                    <div>
-                      <label className="input-label">Moeda para receber</label>
-                      <select
-                        value={nowpaymentsPayCurrency}
-                        onChange={(e) => setNowpaymentsPayCurrency(e.target.value)}
-                        className="input"
-                      >
-                        <option value="usdttrc20">USDT (rede TRC20 — Tron)</option>
-                        <option value="usdtbep20">USDT (rede BEP20 — BNB Chain)</option>
-                        <option value="trx">TRX (Tron)</option>
-                        <option value="btc">BTC (Bitcoin)</option>
-                        <option value="eth">ETH (Ethereum)</option>
-                        <option value="ltc">LTC (Litecoin)</option>
-                      </select>
-                    </div>
-                    <p className="text-xs text-white/40">
-                      Chaves geradas em nowpayments.io → Configurações da conta → API Keys /
-                      IPN. A conversão de R$ pra cripto é feita automaticamente pela
-                      NOWPayments no valor de cada cobrança. Prefira USDT/TRX pra produtos
-                      de ticket baixo — moedas como BTC têm valor mínimo de rede que pode
-                      superar o preço do produto.
-                    </p>
-                  </>
-                )}
-
                 <div className="pt-4 border-t border-white/10">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input

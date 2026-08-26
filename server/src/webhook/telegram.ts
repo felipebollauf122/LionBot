@@ -256,6 +256,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
       gateway,
       gatewayKind,
       baseWebhookUrl: config.baseWebhookUrl,
+      botPaymentConfig: typedBot,
     });
 
     const update = req.body;

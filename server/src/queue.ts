@@ -189,7 +189,7 @@ export function startWorkers(): void {
         supabase,
         leadService,
         { addDelayedJob },
-        { gateway, gatewayKind, baseWebhookUrl: config.baseWebhookUrl },
+        { gateway, gatewayKind, baseWebhookUrl: config.baseWebhookUrl, botPaymentConfig: freshBot },
       );
 
       const isBlack = lead.active_flow_name === "_black_flow";
@@ -260,7 +260,7 @@ export function startWorkers(): void {
         supabase,
         leadService,
         { addDelayedJob },
-        { gateway, gatewayKind, baseWebhookUrl: config.baseWebhookUrl },
+        { gateway, gatewayKind, baseWebhookUrl: config.baseWebhookUrl, botPaymentConfig: freshBot },
       );
 
       const isBlack = lead.active_flow_name === "_black_flow";

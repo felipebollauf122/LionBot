@@ -107,7 +107,26 @@ export class SigiloPay implements PaymentGateway {
         try {
           const parsed = JSON.parse(rawBody) as Record<string, unknown>;
           const baseMsg = String(parsed.message ?? parsed.errorCode ?? response.statusText);
-          const detailsText = formatValidationDetails(parsed.details);
+          // Nome do campo de detalhe não é documentado — tenta os candidatos
+          // mais comuns antes de desistir e devolver o corpo inteiro (menos o
+          // que já foi mostrado em baseMsg). Sem esse fallback, um nome
+          // diferente de "details" (ex.: "errors") fazia o admin continuar
+          // sem NADA além do "verifique details" genérico, mesmo com a
+          // explicação real presente em algum campo do body.
+          const detailKeys = ["details", "errors", "error", "validation", "fields", "issues"];
+          let detailsText: string | null = null;
+          for (const key of detailKeys) {
+            if (key in parsed) {
+              detailsText = formatValidationDetails(parsed[key]);
+              if (detailsText) break;
+            }
+          }
+          if (!detailsText) {
+            const rest = Object.fromEntries(
+              Object.entries(parsed).filter(([k]) => !["statusCode", "message", "errorCode"].includes(k)),
+            );
+            detailsText = Object.keys(rest).length > 0 ? JSON.stringify(rest) : null;
+          }
           msg = detailsText ? `${baseMsg} — ${detailsText}` : baseMsg;
         } catch {
           msg = rawBody.slice(0, 200) || response.statusText;

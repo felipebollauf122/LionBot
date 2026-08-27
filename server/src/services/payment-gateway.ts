@@ -28,6 +28,10 @@ export interface PixPaymentResult {
   payAmount?: string;
   payCurrency?: string;
   network?: string;
+  // Aproximação em dólar do valor da cobrança — a mensagem de cripto (en-US)
+  // mostra só isso, sem BRL. undefined se a estimativa falhou (fallback pro
+  // BRL nesse caso raro, ver payment-button.ts).
+  usdApprox?: string;
 }
 
 export interface PaymentGateway {

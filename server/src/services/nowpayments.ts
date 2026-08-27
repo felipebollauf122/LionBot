@@ -59,6 +59,24 @@ export class NowPayments implements PaymentGateway {
     console.log(`[nowpayments] Creating payment (pay_currency=${this.payCurrency})`);
     console.log(`[nowpayments] Payload enviado:`, JSON.stringify(payload, null, 2));
 
+    // Estimativa em dólar pra exibir na mensagem (mensagem de cripto é 100%
+    // en-US — não mostra BRL nenhum). Quando a moeda de recebimento já é USDT
+    // (pareada a US$1), o próprio payAmount da resposta principal SERVE de
+    // aproximação, sem chamada extra. Pra qualquer outra moeda (BTC/ETH/TRX/
+    // LTC), usa o endpoint /estimate da própria NOWPayments (mesma API key,
+    // sem depender de fonte de câmbio externa) convertendo BRL→USDT — dispara
+    // em PARALELO com a criação da cobrança (chamadas independentes) pra não
+    // somar latência no checkout. Falha aqui NUNCA aborta o pagamento, é
+    // só pra exibição: sem estimativa, cai no fallback de mostrar BRL mesmo
+    // (ver payment-button.ts) em vez de quebrar a mensagem.
+    const isUsdtPegged = this.payCurrency.toLowerCase().startsWith("usdt");
+    const usdEstimatePromise: Promise<string | null> = isUsdtPegged
+      ? Promise.resolve(null)
+      : this.estimateUsd(params.amount).catch((err: unknown) => {
+          console.warn(`[nowpayments] estimateUsd falhou (não bloqueia a cobrança):`, err);
+          return null;
+        });
+
     const response = await fetch(`${this.baseUrl}/payment`, {
       method: "POST",
       headers: {
@@ -125,6 +143,11 @@ export class NowPayments implements PaymentGateway {
 
     console.log(`[nowpayments] payment created, id ${paymentId}, address ${payAddress}`);
 
+    // USDT já pareado a US$1 → usa o próprio payAmount. Outra moeda → usa a
+    // estimativa disparada em paralelo lá em cima (pode ter voltado null se
+    // a chamada falhou — payment-button.ts trata esse caso).
+    const usdApprox = isUsdtPegged ? payAmount : (await usdEstimatePromise) ?? undefined;
+
     return {
       transactionId: paymentId,
       status,
@@ -134,7 +157,34 @@ export class NowPayments implements PaymentGateway {
       payAmount,
       payCurrency,
       network,
+      usdApprox,
     };
+  }
+
+  /**
+   * Converte um valor em BRL pra USDT (≈ dólar) usando o conversor da própria
+   * NOWPayments — GET /v1/estimate. Usado SÓ pra exibição (o valor real da
+   * cobrança sai de POST /v1/payment, na moeda que o bot escolheu). Retorna
+   * null em qualquer falha (rede, formato de resposta inesperado, HTTP não-ok)
+   * — nunca lança, pra não arriscar quebrar a criação da cobrança por causa
+   * de um dado que é só cosmético.
+   */
+  private async estimateUsd(priceAmountBrl: number): Promise<string | null> {
+    try {
+      const url = `${this.baseUrl}/estimate?amount=${priceAmountBrl}&currency_from=brl&currency_to=usdttrc20`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json", "x-api-key": this.apiKey },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!response.ok) return null;
+      const body = (await response.json().catch(() => ({}))) as { estimated_amount?: number | string };
+      if (body.estimated_amount == null) return null;
+      return String(body.estimated_amount);
+    } catch (err) {
+      console.warn(`[nowpayments] estimateUsd(${priceAmountBrl}) erro:`, err);
+      return null;
+    }
   }
 
   /**

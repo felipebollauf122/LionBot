@@ -532,27 +532,26 @@ export async function handleProductPaymentCallback(
   const cryptoAmountLine = payment.payAmount
     ? `${payment.payAmount}${cryptoCurrency ? ` ${cryptoCurrency}` : ""}`
     : cryptoCurrency || "the exact amount shown by the gateway";
-  // USDT é uma stablecoin pareada a US$1 — só nesse caso o próprio payAmount
-  // JÁ é a aproximação do valor em dólar, sem precisar de uma fonte de câmbio
-  // própria (que o sistema não tem). Pra BTC/ETH/TRX/LTC não dá pra aproximar
-  // com confiança por esse caminho, então omitimos em vez de mostrar um
-  // número errado.
-  const payAmountNum = payment.payAmount ? Number(payment.payAmount) : NaN;
-  const usdEquivalent =
-    cryptoCurrency.startsWith("USDT") && Number.isFinite(payAmountNum)
-      ? payAmountNum.toLocaleString("en-US", { style: "currency", currency: "USD" })
-      : null;
+  // Mensagem de cripto é 100% en-US — não mostra BRL em lugar nenhum.
+  // NowPayments.createPixPayment já resolve o valor em dólar (payAmount
+  // direto se a moeda for USDT, senão a estimativa de /v1/estimate). Só cai
+  // pro BRL (priceFormatted) no caso raro da estimativa ter falhado — melhor
+  // mostrar um preço em BRL do que uma linha vazia, mesmo na mensagem em
+  // inglês.
+  const usdAmountNum = payment.usdApprox ? Number(payment.usdApprox) : NaN;
+  const priceLine = Number.isFinite(usdAmountNum)
+    ? usdAmountNum.toLocaleString("en-US", { style: "currency", currency: "USD" })
+    : priceFormatted;
   // Cabeçalho também varia (não só a instrução de pagamento): a mensagem
-  // inteira de cripto é en-US, a de PIX continua pt-BR. priceFormatted
-  // continua formatado como BRL nos dois casos — só o texto ao redor muda.
+  // inteira de cripto é en-US, a de PIX continua pt-BR.
   const messageText = isCrypto
     ? [
         `🌟 You selected the following plan:`,
         ``,
         `🎁 Plan: ${displayName}`,
-        `💰 Price: ${priceFormatted}${usdEquivalent ? ` (≈ ${usdEquivalent})` : ""}`,
+        `💰 Price: ${priceLine}`,
         ``,
-        `💳 Total: ${priceFormatted}${usdEquivalent ? ` (≈ ${usdEquivalent})` : ""}`,
+        `💳 Total: ${priceLine}`,
         ``,
         `💠 Send exactly <b>${cryptoAmountLine}</b>${payment.network ? ` (network: ${payment.network})` : ""} to the address below:`,
         ``,

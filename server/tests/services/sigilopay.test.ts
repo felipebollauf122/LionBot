@@ -173,6 +173,41 @@ describe("SigiloPay", () => {
     );
   });
 
+  it("joins an array-style 'path' (Zod-shaped details) with dots, not the default comma", async () => {
+    // Bug real observado em produção: a Poseidon devolve `path` como array
+    // (["client","email"]) — interpolar o array direto num template literal
+    // chama Array.toString(), que junta com VÍRGULA por padrão, então a
+    // mensagem de erro saía "client,email: Invalid email" em vez de
+    // "client.email: Invalid email".
+    const errorBody = {
+      statusCode: 400,
+      message: "Dados da requisição inválidos, verifique 'details' para mais informações",
+      details: [{ path: ["client", "email"], message: "Invalid email" }],
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      headers: makeHeaders({ server: "nginx", "cf-ray": "abc123" }),
+      json: async () => errorBody,
+      text: async () => JSON.stringify(errorBody),
+    });
+
+    await expect(
+      service.createPixPayment({
+        identifier: "test_email_path",
+        amount: 97.0,
+        clientName: "João",
+        clientEmail: "joão@gmail.com",
+        clientPhone: "11999999999",
+        clientDocument: "52998224725",
+        callbackUrl: "https://example.com/webhook",
+      }),
+    ).rejects.toThrow(
+      /Dados da requisição inválidos, verifique 'details' para mais informações — client\.email: Invalid email/,
+    );
+  });
+
   it("falls back to the full error body when no recognizable details-like field exists", async () => {
     // Reproduz o caso relatado em produção: a API devolve exatamente
     // "verifique 'details' para mais informações" mas o body NÃO tem uma

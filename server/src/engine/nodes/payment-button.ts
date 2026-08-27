@@ -10,6 +10,25 @@ import { addPaymentTimeoutJob } from "../../queue.js";
 import { logEvent } from "../../services/lead-messages.js";
 import { botCache } from "../../cache.js";
 
+// E-mail que sai pro gateway de pagamento precisa passar num formato
+// ASCII/RFC-simples — bem mais estrito que o validador do nó "Pergunta"
+// (input.ts), que é propositalmente frouxo (aceita acento, foco em não
+// travar quem digita errado) e deixa passar coisas que a Poseidon rejeita
+// com 400 "Invalid email" (ex.: "joão@gmail.com" — acento no local-part).
+// Sem essa segunda checagem, um e-mail que já passou pro lead digitar podia
+// quebrar a geração do Pix de qualquer gateway silenciosamente.
+const GATEWAY_EMAIL_RE =
+  /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
+/** Valida o e-mail salvo no state pro formato que os gateways exigem — cai
+ *  pro placeholder sintético (`@eaglebot.temp`, já testado contra a Poseidon)
+ *  quando o valor não bate, em vez de mandar algo que vai ser recusado. */
+export function sanitizeEmailForGateway(raw: unknown, telegramUserId: number): string {
+  const trimmed = String(raw ?? "").trim();
+  if (trimmed && GATEWAY_EMAIL_RE.test(trimmed)) return trimmed;
+  return `${telegramUserId}@eaglebot.temp`;
+}
+
 /** Colunas do bot usadas só pra tracking (FB CAPI / TikTok / Utmify). */
 interface BotTrackingConfig {
   facebook_pixel_id: string | null;
@@ -335,7 +354,7 @@ export async function handleProductPaymentCallback(
   const amountInReais = typedProduct.price / 100;
 
   // Build client data from lead info (fallbacks are valid test values)
-  const clientEmail = String(ctx.lead.state.email ?? `${ctx.lead.telegram_user_id}@eaglebot.temp`);
+  const clientEmail = sanitizeEmailForGateway(ctx.lead.state.email, ctx.lead.telegram_user_id);
   const clientPhone = String(ctx.lead.state.phone ?? "11999999999");
   const clientDocument = String(ctx.lead.state.document ?? "52998224725");
 

@@ -20,7 +20,11 @@ function formatValidationDetails(details: unknown): string | null {
     const parts = details.map((d) => {
       if (d && typeof d === "object") {
         const rec = d as Record<string, unknown>;
-        const field = rec.path ?? rec.field ?? rec.param ?? rec.property;
+        const rawField = rec.path ?? rec.field ?? rec.param ?? rec.property;
+        // `path` no estilo Zod vem como array (ex.: ["client","email"]) — sem
+        // join(".") o template literal chama Array.toString(), que junta com
+        // VÍRGULA por padrão ("client,email" em vez de "client.email").
+        const field = Array.isArray(rawField) ? rawField.join(".") : rawField;
         const message = rec.message ?? rec.msg ?? JSON.stringify(rec);
         return field ? `${field}: ${message}` : String(message);
       }

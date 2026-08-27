@@ -132,4 +132,44 @@ describe("SigiloPay", () => {
       /Poseidon Pay API erro \(400\): O valor fornecido para o campo 'amount' é inválido\./,
     );
   });
+
+  it("surfaces the 'details' field on generic validation errors instead of hiding it", async () => {
+    // Reproduz o erro real relatado: a API devolve message genérica
+    // ("Dados da requisição inválidos, verifique 'details' para mais
+    // informações") mas o campo que ela mesma aponta como explicação nunca
+    // chegava no throw — o admin via só "verifique 'details'" sem os
+    // details. errorBody imita o formato de validação mais comum (array de
+    // {path, message}, estilo Zod).
+    const errorBody = {
+      statusCode: 400,
+      errorCode: "VALIDATION_ERROR",
+      message: "Dados da requisição inválidos, verifique 'details' para mais informações",
+      details: [
+        { path: "client.document", message: "CPF inválido" },
+        { path: "client.phone", message: "Telefone deve estar no formato E.164" },
+      ],
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      headers: makeHeaders({ server: "nginx", "cf-ray": "abc123" }),
+      json: async () => errorBody,
+      text: async () => JSON.stringify(errorBody),
+    });
+
+    await expect(
+      service.createPixPayment({
+        identifier: "test_789",
+        amount: 97.0,
+        clientName: "João",
+        clientEmail: "joao@gmail.com",
+        clientPhone: "11999999999",
+        clientDocument: "52998224725",
+        callbackUrl: "https://example.com/webhook",
+      }),
+    ).rejects.toThrow(
+      /Dados da requisição inválidos, verifique 'details' para mais informações — client\.document: CPF inválido; client\.phone: Telefone deve estar no formato E\.164/,
+    );
+  });
 });

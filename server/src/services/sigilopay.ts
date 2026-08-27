@@ -4,6 +4,39 @@ import type {
   PixPaymentResult,
 } from "./payment-gateway.js";
 
+/**
+ * Formata `details` de um erro de validação da Poseidon Pay num texto legível.
+ * A API devolve `message: "... verifique 'details' para mais informações"`
+ * mas o código antigo só lia `message`/`errorCode` — o campo que ela mesma
+ * aponta como a explicação de verdade (qual campo, por quê) nunca era lido,
+ * então "Dados da requisição inválidos" era tudo que sobrava pro admin ver.
+ * Forma exata de `details` não é documentada — cobre os formatos mais comuns
+ * de validação (array de {path/field, message} ou objeto campo→mensagem).
+ */
+function formatValidationDetails(details: unknown): string | null {
+  if (details === null || details === undefined) return null;
+  if (typeof details === "string") return details || null;
+  if (Array.isArray(details)) {
+    const parts = details.map((d) => {
+      if (d && typeof d === "object") {
+        const rec = d as Record<string, unknown>;
+        const field = rec.path ?? rec.field ?? rec.param ?? rec.property;
+        const message = rec.message ?? rec.msg ?? JSON.stringify(rec);
+        return field ? `${field}: ${message}` : String(message);
+      }
+      return String(d);
+    });
+    return parts.length > 0 ? parts.join("; ") : null;
+  }
+  if (typeof details === "object") {
+    const entries = Object.entries(details as Record<string, unknown>);
+    return entries.length > 0
+      ? entries.map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join("; ")
+      : null;
+  }
+  return String(details);
+}
+
 export class SigiloPay implements PaymentGateway {
   private baseUrl = "https://app.poseidonpay.site/api/v1";
 
@@ -73,7 +106,9 @@ export class SigiloPay implements PaymentGateway {
       } else {
         try {
           const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-          msg = parsed.message ?? parsed.errorCode ?? response.statusText;
+          const baseMsg = String(parsed.message ?? parsed.errorCode ?? response.statusText);
+          const detailsText = formatValidationDetails(parsed.details);
+          msg = detailsText ? `${baseMsg} — ${detailsText}` : baseMsg;
         } catch {
           msg = rawBody.slice(0, 200) || response.statusText;
         }

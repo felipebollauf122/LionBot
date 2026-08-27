@@ -353,13 +353,18 @@ export async function handleProductPaymentCallback(
           ? `${baseWebhookUrl}/webhook/nowpayments`
           : `${baseWebhookUrl}/webhook/payment`;
 
+  // Cripto (NOWPayments) fala inglês do início ao fim — público de cripto
+  // tende a ser internacional, diferente do PIX (só Brasil). Calculado aqui
+  // (não só lá embaixo) porque a mensagem de loading já precisa saber.
+  const isCrypto = gatewayKind === "nowpayments";
+
   // Instant feedback — dispara JÁ, sem await: a chamada ao gateway começa
   // no mesmo tick. Antes isso era awaited, serializando um round-trip do
   // Telegram (~150-500ms) na frente de toda geração de PIX.
   const loadingMsgPromise = ctx.telegram
     .sendMessage({
       chatId: ctx.chatId,
-      text: "⏳ Gerando seu Pix, aguarde...",
+      text: isCrypto ? "⏳ Generating your crypto payment, please wait..." : "⏳ Gerando seu Pix, aguarde...",
     })
     .catch((err: unknown) => {
       // Antes esse envio era awaited, então uma falha aqui (bot bloqueado,
@@ -421,7 +426,7 @@ export async function handleProductPaymentCallback(
     const safeMsg = errorMsg.replace(/<[^>]*>/g, "").replace(/[<>&]/g, "").slice(0, 200);
     await ctx.telegram.sendMessage({
       chatId: ctx.chatId,
-      text: `⚠️ Erro no pagamento: ${safeMsg}`,
+      text: isCrypto ? `⚠️ Payment error: ${safeMsg}` : `⚠️ Erro no pagamento: ${safeMsg}`,
     });
     return { nextNodeId: "wait" };
   }
@@ -501,54 +506,57 @@ export async function handleProductPaymentCallback(
   // pelo código que chegou a aparecer nunca é creditado pelo webhook.
   let txRecord: { id: string } | null = null;
   let paymentMsg: Awaited<ReturnType<typeof ctx.telegram.sendMessage>> = null;
-  // Cripto (NOWPayments) mostra endereço + valor exato na moeda escolhida,
-  // em vez do código Pix copia-e-cola — a mecânica de copiar/QR é a mesma,
-  // só reaproveitando pixCode=endereço e o mesmo fallback de QR acima.
-  const isCrypto = gatewayKind === "nowpayments";
+  // Cripto mostra endereço + valor exato na moeda escolhida em vez do código
+  // Pix copia-e-cola — mecânica de copiar/QR é a mesma, só reaproveitando
+  // pixCode=endereço e o mesmo fallback de QR acima.
   const cryptoCurrency = (payment.payCurrency ?? "").toUpperCase();
   const cryptoAmountLine = payment.payAmount
     ? `${payment.payAmount}${cryptoCurrency ? ` ${cryptoCurrency}` : ""}`
-    : cryptoCurrency || "valor exato exibido no gateway";
-  // Só a seção de instrução de pagamento e a linha de fechamento variam por
-  // gateway — o resto da mensagem (cabeçalho/plano/valor) é compartilhado,
-  // pra não ter dois templates quase-idênticos divergindo com o tempo.
-  const paymentInstructionLines = isCrypto
+    : cryptoCurrency || "the exact amount shown by the gateway";
+  // Cabeçalho também varia (não só a instrução de pagamento): a mensagem
+  // inteira de cripto é en-US, a de PIX continua pt-BR. priceFormatted
+  // continua formatado como BRL nos dois casos — só o texto ao redor muda.
+  const messageText = isCrypto
     ? [
-        `💠 Envie exatamente <b>${cryptoAmountLine}</b>${payment.network ? ` (rede ${payment.network})` : ""} para o endereço abaixo:`,
+        `🌟 You selected the following plan:`,
+        ``,
+        `🎁 Plan: ${displayName}`,
+        `💰 Price: ${priceFormatted}`,
+        ``,
+        `💳 Total: ${priceFormatted}`,
+        ``,
+        `💠 Send exactly <b>${cryptoAmountLine}</b>${payment.network ? ` (network: ${payment.network})` : ""} to the address below:`,
         ``,
         `<code>${payment.pixCode}</code>`,
         ``,
-        `👆 Toque no endereço acima para copiá-lo`,
-      ]
+        `👆 Tap the address above to copy it`,
+        ``,
+        `⏳ Blockchain confirmation may take a few minutes. Your access will be released automatically once confirmed.`,
+      ].join("\n")
     : [
+        `🌟 Você selecionou o seguinte plano:`,
+        ``,
+        `🎁 Plano: ${displayName}`,
+        `💰 Valor: ${priceFormatted}`,
+        ``,
+        `💳 Total: ${priceFormatted}`,
+        ``,
         `💠 Pague via Pix Copia e Cola:`,
         ``,
         `<code>${payment.pixCode}</code>`,
         ``,
         `👆 Toque no código acima para copiá-lo`,
-      ];
-  const closingLine = isCrypto
-    ? `⏳ A confirmação na blockchain pode levar alguns minutos. Após confirmado, seu acesso será liberado automaticamente.`
-    : `‼️ Após o pagamento seu acesso será liberado automaticamente.`;
+        ``,
+        `‼️ Após o pagamento seu acesso será liberado automaticamente.`,
+      ].join("\n");
   try {
     paymentMsg = await ctx.telegram.sendMessage({
     chatId: ctx.chatId,
-    text: [
-      `🌟 Você selecionou o seguinte plano:`,
-      ``,
-      `🎁 Plano: ${displayName}`,
-      `💰 Valor: ${priceFormatted}`,
-      ``,
-      `💳 Total: ${priceFormatted}`,
-      ``,
-      ...paymentInstructionLines,
-      ``,
-      closingLine,
-    ].join("\n"),
+    text: messageText,
     replyMarkup: {
       inline_keyboard: [
-        [{ text: isCrypto ? "📋 Copiar endereço" : "📋 Copiar código Pix", copy_text: { text: payment.pixCode } }],
-        [{ text: "📱 Ver QR Code", callback_data: `qrcode:${ctx.node.id}` }],
+        [{ text: isCrypto ? "📋 Copy address" : "📋 Copiar código Pix", copy_text: { text: payment.pixCode } }],
+        [{ text: isCrypto ? "📱 View QR Code" : "📱 Ver QR Code", callback_data: `qrcode:${ctx.node.id}` }],
       ],
     },
     });

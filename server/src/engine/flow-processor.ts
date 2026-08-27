@@ -819,7 +819,7 @@ export class FlowProcessor {
           chatId,
           photo: pixImage,
           caption: isCryptoQr
-            ? "📱 QR Code — escaneie com sua carteira cripto"
+            ? "📱 QR Code — scan with your crypto wallet"
             : "📱 QR Code Pix — escaneie com o app do seu banco",
         });
         if (isBlack && msg) {

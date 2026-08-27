@@ -34,7 +34,7 @@ export class NowPayments implements PaymentGateway {
   async createPixPayment(params: CreatePixPaymentParams): Promise<PixPaymentResult> {
     if (!this.isConfigured()) {
       throw new Error(
-        "NOWPayments não configurado. Vá em Configurações do bot e preencha a API Key e a IPN Secret Key.",
+        "NOWPayments is not configured. Go to Bot Settings and fill in the API Key and the IPN Secret Key.",
       );
     }
 
@@ -99,11 +99,11 @@ export class NowPayments implements PaymentGateway {
           `moeda de recebimento nas Configurações do bot (USDT/TRX têm mínimo mais baixo que BTC/ETH).`,
         );
         throw new Error(
-          `No momento não é possível gerar essa cobrança em cripto para este valor. Tente novamente mais tarde ou fale com o suporte.`,
+          `This crypto payment amount can't be processed right now. Please try again later or contact support.`,
         );
       }
 
-      throw new Error(`NOWPayments erro (${response.status}): ${msg}`);
+      throw new Error(`NOWPayments error (${response.status}): ${msg}`);
     }
 
     const paymentId = String(rawBody.payment_id ?? "");
@@ -116,11 +116,11 @@ export class NowPayments implements PaymentGateway {
 
     if (!paymentId) {
       console.error(`[nowpayments] response missing payment_id. body:`, JSON.stringify(rawBody));
-      throw new Error(`NOWPayments devolveu resposta sem id de pagamento. Verifique a API Key.`);
+      throw new Error(`NOWPayments returned a response without a payment id. Check the API Key.`);
     }
     if (!payAddress) {
       console.error(`[nowpayments] response missing pay_address. body:`, JSON.stringify(rawBody));
-      throw new Error(`NOWPayments devolveu resposta sem endereço de pagamento.`);
+      throw new Error(`NOWPayments returned a response without a payment address.`);
     }
 
     console.log(`[nowpayments] payment created, id ${paymentId}, address ${payAddress}`);

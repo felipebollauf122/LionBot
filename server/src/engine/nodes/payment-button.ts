@@ -532,6 +532,16 @@ export async function handleProductPaymentCallback(
   const cryptoAmountLine = payment.payAmount
     ? `${payment.payAmount}${cryptoCurrency ? ` ${cryptoCurrency}` : ""}`
     : cryptoCurrency || "the exact amount shown by the gateway";
+  // USDT é uma stablecoin pareada a US$1 — só nesse caso o próprio payAmount
+  // JÁ é a aproximação do valor em dólar, sem precisar de uma fonte de câmbio
+  // própria (que o sistema não tem). Pra BTC/ETH/TRX/LTC não dá pra aproximar
+  // com confiança por esse caminho, então omitimos em vez de mostrar um
+  // número errado.
+  const payAmountNum = payment.payAmount ? Number(payment.payAmount) : NaN;
+  const usdEquivalent =
+    cryptoCurrency.startsWith("USDT") && Number.isFinite(payAmountNum)
+      ? payAmountNum.toLocaleString("en-US", { style: "currency", currency: "USD" })
+      : null;
   // Cabeçalho também varia (não só a instrução de pagamento): a mensagem
   // inteira de cripto é en-US, a de PIX continua pt-BR. priceFormatted
   // continua formatado como BRL nos dois casos — só o texto ao redor muda.
@@ -540,9 +550,9 @@ export async function handleProductPaymentCallback(
         `🌟 You selected the following plan:`,
         ``,
         `🎁 Plan: ${displayName}`,
-        `💰 Price: ${priceFormatted}`,
+        `💰 Price: ${priceFormatted}${usdEquivalent ? ` (≈ ${usdEquivalent})` : ""}`,
         ``,
-        `💳 Total: ${priceFormatted}`,
+        `💳 Total: ${priceFormatted}${usdEquivalent ? ` (≈ ${usdEquivalent})` : ""}`,
         ``,
         `💠 Send exactly <b>${cryptoAmountLine}</b>${payment.network ? ` (network: ${payment.network})` : ""} to the address below:`,
         ``,

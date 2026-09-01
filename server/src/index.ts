@@ -428,16 +428,73 @@ app.post("/api/bots/:botId/tiktok-test-event", async (req, res) => {
       typedBot.tiktok_test_event_code,
     );
 
-    const ok = await tiktokEvents.sendContactEvent({
-      eventTime: Math.floor(Date.now() / 1000),
-      eventId: `test_${botId}_${Date.now()}`,
-      userData: { externalIds: [`tiktok_test_${botId}`] },
-    });
+    // Qual evento disparar. A TikTok só libera CADA evento pra otimização de
+    // campanha depois de vê-lo pelo menos uma vez — então o teste precisa
+    // conseguir mandar Purchase (o que interessa pra conversão), não só um
+    // Contact. Default = Purchase justamente por isso.
+    const TEST_EVENTS = ["Purchase", "InitiateCheckout", "ViewContent", "Contact"] as const;
+    type TestEvent = (typeof TEST_EVENTS)[number];
+    const requested = (req.body as { event?: unknown } | undefined)?.event;
+    const eventName: TestEvent = typeof requested === "string" && (TEST_EVENTS as readonly string[]).includes(requested)
+      ? (requested as TestEvent)
+      : "Purchase";
+
+    const eventTime = Math.floor(Date.now() / 1000);
+    const eventId = `test_${botId}_${Date.now()}`;
+    const userData = { externalIds: [`tiktok_test_${botId}`] };
+    // Valor simbólico: o evento vai pra aba Test Events (isolada pelo
+    // test_event_code), não entra em relatório nem em receita real — mas
+    // precisa ser > 0, senão o próprio TiktokEvents recusa o envio.
+    const TEST_VALUE = 9.9;
+    const TEST_CURRENCY = "BRL";
+    const contentIds = ["eaglebot_test_product"];
+    const contentName = "Evento de teste EagleBot";
+
+    let ok = false;
+    if (eventName === "Purchase") {
+      ok = await tiktokEvents.sendCompletePaymentEvent({
+        eventTime,
+        eventId,
+        userData,
+        value: TEST_VALUE,
+        currency: TEST_CURRENCY,
+        contentIds,
+        contentName,
+        contents: [
+          {
+            content_id: contentIds[0],
+            content_type: "product",
+            content_name: contentName,
+            price: TEST_VALUE,
+            quantity: 1,
+          },
+        ],
+        orderId: eventId,
+      });
+    } else if (eventName === "InitiateCheckout") {
+      ok = await tiktokEvents.sendInitiateCheckoutEvent({
+        eventTime,
+        eventId,
+        userData,
+        value: TEST_VALUE,
+        currency: TEST_CURRENCY,
+        contentIds,
+        contentName,
+      });
+    } else if (eventName === "ViewContent") {
+      ok = await tiktokEvents.sendViewContentEvent({ eventTime, eventId, userData, contentName });
+    } else {
+      ok = await tiktokEvents.sendContactEvent({ eventTime, eventId, userData });
+    }
 
     if (ok) {
-      res.json({ success: true, message: "Evento de teste enviado — confira o TikTok Events Manager → Test Events." });
+      res.json({
+        success: true,
+        event: eventName,
+        message: `Evento ${eventName} de teste enviado — confira o TikTok Events Manager → Test Events.`,
+      });
     } else {
-      res.status(502).json({ error: "A TikTok recusou o evento. Confira o Test Event Code e os logs do servidor." });
+      res.status(502).json({ error: `A TikTok recusou o evento ${eventName}. Confira o Test Event Code e os logs do servidor.` });
     }
   } catch (error) {
     console.error("Failed to send TikTok test event:", error);

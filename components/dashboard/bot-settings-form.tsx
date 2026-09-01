@@ -158,6 +158,10 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
   const [tiktokAccessToken, setTiktokAccessToken] = useState(bot.tiktok_access_token ?? "");
   const [tiktokTestEventCode, setTiktokTestEventCode] = useState(bot.tiktok_test_event_code ?? "");
   const [sendingTiktokTest, setSendingTiktokTest] = useState(false);
+  // Qual evento o botão de teste dispara. Purchase é o default porque é o
+  // evento de conversão que a TikTok precisa "ver" pra liberar otimização
+  // de campanha — os outros ficam disponíveis pra liberar um por um.
+  const [tiktokTestEvent, setTiktokTestEvent] = useState("Purchase");
   const [tiktokTestMsg, setTiktokTestMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [utmifyKey, setUtmifyKey] = useState(bot.utmify_api_key ?? "");
   const [paymentGateway, setPaymentGateway] = useState<GatewayKind>(
@@ -637,10 +641,11 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                 <div className="pt-4 mt-2 border-t border-(--border-subtle)">
                   <div className="text-foreground text-sm font-medium mb-1">Evento de teste</div>
                   <p className="text-(--text-muted) text-xs mb-3 leading-relaxed">
-                    A TikTok só libera um evento (ex: Purchase) pra otimização de campanha depois de ver
-                    esse evento pelo menos uma vez. Cole o <b>Test Event Code</b> (Events Manager → seu
-                    pixel → aba <b>Test Events</b>) e salve as configurações — só então o botão abaixo
-                    envia um evento de teste isolado, sem tocar no funil real de nenhum bot.
+                    A TikTok só libera <b>cada</b> evento pra otimização de campanha depois de vê-lo pelo
+                    menos uma vez — então mande o <b>Purchase</b> aqui pra liberar a conversão de compra.
+                    Cole o <b>Test Event Code</b> (Events Manager → seu pixel → aba <b>Test Events</b>) e
+                    salve as configurações — só então o botão abaixo envia um evento de teste isolado,
+                    sem tocar no funil real de nenhum bot.
                   </p>
                   <div className="mb-3">
                     <label className="input-label">Test Event Code</label>
@@ -652,6 +657,19 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       className="input font-mono text-sm"
                     />
                   </div>
+                  <div className="mb-3">
+                    <label className="input-label">Evento</label>
+                    <select
+                      value={tiktokTestEvent}
+                      onChange={(e) => setTiktokTestEvent(e.target.value)}
+                      className="input"
+                    >
+                      <option value="Purchase">Purchase (compra — conversão)</option>
+                      <option value="InitiateCheckout">InitiateCheckout (Pix gerado)</option>
+                      <option value="ViewContent">ViewContent</option>
+                      <option value="Contact">Contact</option>
+                    </select>
+                  </div>
                   <button
                     type="button"
                     disabled={sendingTiktokTest || !bot.tiktok_test_event_code}
@@ -660,7 +678,11 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       setTiktokTestMsg(null);
                       try {
                         const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "").replace(/\/+$/, "");
-                        const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/tiktok-test-event`, { method: "POST" });
+                        const { ok, data } = await fetchJson(`${serverUrl}/api/bots/${bot.id}/tiktok-test-event`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ event: tiktokTestEvent }),
+                        });
                         setTiktokTestMsg({
                           kind: ok ? "ok" : "err",
                           text: ok ? String(data.message ?? "Evento de teste enviado.") : String(data.error ?? "Erro ao enviar."),

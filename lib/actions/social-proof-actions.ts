@@ -7,6 +7,7 @@ import type { SocialProofChannel, SocialProofMessage } from "@/lib/types/databas
 // Os tipos vivem em types.ts: um módulo "use server" só pode exportar funções async.
 import type { ActionResult, ChannelInput, MessageInput } from "@/lib/social-proof/types";
 import { nextPosition } from "@/lib/social-proof/position";
+import { validateMessage } from "@/lib/social-proof/validate-message";
 
 export async function getSocialProof(
   botId: string,
@@ -65,6 +66,9 @@ export async function saveChannel(botId: string, input: ChannelInput): Promise<A
   if (input.title.trim() === "") {
     return { ok: false, error: "O nome do canal não pode ficar vazio." };
   }
+  if (input.unread_badge < 0) {
+    return { ok: false, error: "O contador de não lidas não pode ser negativo." };
+  }
 
   const tenantId = await tenantDoBot(botId);
   if (!tenantId) return { ok: false, error: "Bot não encontrado." };
@@ -81,21 +85,8 @@ export async function saveChannel(botId: string, input: ChannelInput): Promise<A
 }
 
 export async function saveMessage(botId: string, input: MessageInput): Promise<ActionResult> {
-  const temTexto = (input.content_text ?? "").trim() !== "";
-  const temMidia = (input.media_url ?? "").trim() !== "";
-
-  if (!temTexto && !temMidia) {
-    return { ok: false, error: "A mensagem precisa de texto ou mídia." };
-  }
-  if (temMidia && input.media_type === null) {
-    return { ok: false, error: "Escolha se a mídia é imagem ou vídeo." };
-  }
-  if (input.sender_name.trim() === "") {
-    return { ok: false, error: "O nome do remetente não pode ficar vazio." };
-  }
-  if (input.offset_seconds < 0) {
-    return { ok: false, error: "O tempo atrás não pode ser negativo." };
-  }
+  const valido = validateMessage(input);
+  if (!valido.ok) return valido;
 
   const tenantId = await tenantDoBot(botId);
   if (!tenantId) return { ok: false, error: "Bot não encontrado." };
@@ -115,11 +106,15 @@ export async function saveMessage(botId: string, input: MessageInput): Promise<A
     tenant_id: tenantId,
     bot_id: botId,
     channel_id: channelId,
+    sender_kind: input.sender_kind,
     sender_name: input.sender_name,
     sender_avatar_url: input.sender_avatar_url,
-    content_text: temTexto ? input.content_text : null,
-    media_url: temMidia ? input.media_url : null,
-    media_type: temMidia ? input.media_type : null,
+    kind: input.kind,
+    content_text: (input.content_text ?? "").trim() === "" ? null : input.content_text,
+    media: input.media,
+    reactions: input.reactions,
+    reply_to_id: input.reply_to_id,
+    display_time: input.display_time,
     offset_seconds: input.offset_seconds,
     views_count: input.views_count,
     is_active: true,
@@ -197,6 +192,112 @@ export async function deleteMessage(messageId: string, botId: string): Promise<A
   if (error) return { ok: false, error: `Não deu pra apagar: ${error.message}` };
   if (!data || data.length === 0) {
     return { ok: false, error: "Mensagem não encontrada neste bot (ou sem permissão pra apagar)." };
+  }
+
+  revalidatePath(`/dashboard/bots/${botId}/prova-social`);
+  return { ok: true };
+}
+
+/**
+ * Copia uma mensagem para o fim do feed.
+ *
+ * Lê a linha com o client sob RLS — se o tenant não puder ver, não pode
+ * duplicar, e a checagem sai de graça. A cópia nasce com position nova e SEM
+ * herdar reply_to_id: uma resposta duplicada apontaria para a mesma citação em
+ * dois lugares do feed, o que não acontece num canal real.
+ */
+export async function duplicateMessage(messageId: string, botId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  const { data: origem } = await supabase
+    .from("social_proof_messages")
+    .select(
+      "tenant_id,bot_id,channel_id,sender_kind,sender_name,sender_avatar_url,kind,content_text,media,reactions,display_time,offset_seconds,views_count",
+    )
+    .eq("id", messageId)
+    .eq("bot_id", botId)
+    .maybeSingle();
+
+  if (!origem) {
+    return { ok: false, error: "Mensagem não encontrada neste bot (ou sem permissão)." };
+  }
+
+  const { error } = await supabase.from("social_proof_messages").insert({
+    ...origem,
+    reply_to_id: null,
+    is_active: true,
+    position: await proximaPosicao(origem.channel_id as string),
+  });
+
+  if (error) return { ok: false, error: `Não deu pra duplicar: ${error.message}` };
+
+  revalidatePath(`/dashboard/bots/${botId}/prova-social`);
+  return { ok: true };
+}
+
+/**
+ * Fixa uma mensagem no topo do canal, ou desafixa com `null`.
+ *
+ * O `.eq("bot_id", botId)` na leitura impede fixar mensagem de outro bot mesmo
+ * que o id vaze — a RLS cobriria, mas Server Action é invocável direto e a
+ * defesa em profundidade custa uma linha.
+ */
+export async function setPinnedMessage(
+  botId: string,
+  messageId: string | null,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  if (messageId !== null) {
+    const { data: alvo } = await supabase
+      .from("social_proof_messages")
+      .select("id")
+      .eq("id", messageId)
+      .eq("bot_id", botId)
+      .maybeSingle();
+
+    if (!alvo) {
+      return { ok: false, error: "Mensagem não encontrada neste bot (ou sem permissão)." };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("social_proof_channels")
+    .update({ pinned_message_id: messageId })
+    .eq("bot_id", botId)
+    .select("id");
+
+  if (error) return { ok: false, error: `Não deu pra fixar: ${error.message}` };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Canal não encontrado (ou sem permissão)." };
+  }
+
+  revalidatePath(`/dashboard/bots/${botId}/prova-social`);
+  return { ok: true };
+}
+
+/**
+ * Grava a ordem nova depois de arrastar-e-soltar.
+ *
+ * As posições são reescritas como 1..N em vez de trocar duas: depois de vários
+ * arrastes as posições ficam com buracos, e renumerar mantém a lista estável e
+ * previsível. Cada update leva `.eq("bot_id", botId)` — a lista de ids vem do
+ * cliente e não pode ser confiada sozinha.
+ */
+export async function reorderMessages(
+  botId: string,
+  orderedIds: string[],
+): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await supabase
+      .from("social_proof_messages")
+      .update({ position: i + 1 })
+      .eq("id", orderedIds[i])
+      .eq("bot_id", botId);
+
+    if (error) return { ok: false, error: `Não deu pra reordenar: ${error.message}` };
   }
 
   revalidatePath(`/dashboard/bots/${botId}/prova-social`);

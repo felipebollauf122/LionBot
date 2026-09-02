@@ -81,6 +81,7 @@
 **Files:**
 - Create: `supabase/migrations/073_social_proof_v2.sql`
 - Modify: `lib/social-proof/types.ts`
+- Modify: `lib/types/database.ts` (Step 6 — é de lá que o composer lê as linhas cruas)
 
 **Interfaces:**
 - Consumes: nada.
@@ -1993,6 +1994,135 @@ git add components/telegram/media-container.tsx components/telegram/message-bubb
         components/telegram/channel-feed.tsx components/telegram/channel-header.tsx \
         tests/lib/social-proof-bubble.test.tsx
 git commit -m "feat(prova-social): bolha entende dona, album, audio, resposta e reacoes"
+```
+
+---
+
+### Task 8b: Agrupamento entende quem é a dona
+
+> Task acrescentada por ruling do controlador durante a execução. O implementador da Task 8
+> notou que `groupMessages` compara `senderName` cru, sem olhar `senderKind` — e nenhuma task do
+> plano original cobria isso.
+
+**Files:**
+- Modify: `lib/social-proof/grouping.ts`
+- Modify: `tests/lib/social-proof-grouping.test.ts`
+
+**Interfaces:**
+- Consumes: `FeedMessage`, `SenderKind` de `@/lib/social-proof/types` (Task 1).
+- Produces: `groupMessages(messages, now)` com a MESMA assinatura — só a regra interna de
+  `sameSender` muda. Nenhum consumidor precisa mudar.
+
+**O problema, concretamente**
+
+Mensagens com `senderKind: "owner"` tiram nome e avatar do CANAL, e o `senderName` da mensagem é
+ignorado na renderização (`resolveSender`, Task 3). Mas o agrupamento ainda compara esse campo:
+
+- Duas mensagens seguidas da dona, com `senderName` diferentes (ou vazios de formas diferentes),
+  **não agrupam** — cada uma repete avatar e nome. É exatamente o defeito que denuncia clone mal
+  feito, documentado na spec da v1.
+- Uma mensagem da dona com `senderName: "Ana"` e uma de um membro chamado `"Ana"` **agrupam** —
+  um avatar só para dois remetentes que a tela mostra como pessoas diferentes.
+
+- [ ] **Step 1: Corrigir as fixtures do arquivo de teste**
+
+`tests/lib/social-proof-grouping.test.ts` monta `FeedMessage` no formato antigo e é a origem do
+único erro de `tsc` que sobrou nesse arquivo. Substituir o helper `msg` por:
+
+```ts
+function msg(id: string, senderName: string, offsetSeconds: number): FeedMessage {
+  return {
+    id,
+    senderKind: "member",
+    senderName,
+    senderAvatarUrl: null,
+    kind: "text",
+    contentText: `texto ${id}`,
+    media: [],
+    reactions: [],
+    replyToText: null,
+    replyToSender: null,
+    offsetSeconds,
+    displayTime: null,
+    viewsCount: 0,
+  };
+}
+```
+
+- [ ] **Step 2: Escrever os testes novos que falham**
+
+Acrescentar ao final de `tests/lib/social-proof-grouping.test.ts`:
+
+```ts
+describe("groupMessages — identidade da dona", () => {
+  function dona(id: string, senderName: string, offsetSeconds: number): FeedMessage {
+    return { ...msg(id, senderName, offsetSeconds), senderKind: "owner" };
+  }
+
+  it("duas mensagens seguidas da dona agrupam mesmo com senderName diferente", () => {
+    // A dona tira identidade do canal; o senderName da mensagem é ignorado na
+    // renderização, então não pode separar grupos.
+    const out = groupMessages([dona("a", "", 600), dona("b", "sobra antiga", 580)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, false]);
+    expect(out.map((m) => m.isLastOfGroup)).toEqual([false, true]);
+  });
+
+  it("dona e membro com o MESMO nome não agrupam", () => {
+    // Senão um avatar só cobriria dois remetentes que a tela mostra diferentes.
+    const out = groupMessages([dona("a", "Ana", 600), msg("b", "Ana", 580)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, true]);
+    expect(out.map((m) => m.isLastOfGroup)).toEqual([true, true]);
+  });
+
+  it("membro e dona alternando: cada um é seu próprio grupo", () => {
+    const out = groupMessages([msg("a", "Ana", 600), dona("b", "", 580), msg("c", "Ana", 560)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, true, true]);
+  });
+
+  it("a janela de tempo continua valendo para a dona", () => {
+    const out = groupMessages([dona("a", "", 3600), dona("b", "", 3600 - 960)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, true]);
+  });
+});
+```
+
+- [ ] **Step 3: Rodar e ver falhar**
+
+Run: `npx vitest run tests/lib/social-proof-grouping.test.ts`
+Expected: FAIL nos dois primeiros testes novos — hoje a comparação é só por `senderName`.
+
+- [ ] **Step 4: Implementar**
+
+Em `lib/social-proof/grouping.ts`, substituir `sameSender` por:
+
+```ts
+function sameSender(a: FeedMessage, b: FeedMessage): boolean {
+  // Remetentes de espécies diferentes nunca agrupam, mesmo com nome igual: a
+  // tela os mostra como pessoas distintas (a dona ganha selo e o avatar do
+  // canal), e um avatar só cobrindo os dois seria mentira visual.
+  if (a.senderKind !== b.senderKind) return false;
+
+  // Mensagens da dona tiram identidade do CANAL — o senderName da mensagem é
+  // ignorado na renderização, então não pode separar grupos aqui.
+  if (a.senderKind === "owner") return true;
+
+  return a.senderName.trim() === b.senderName.trim();
+}
+```
+
+- [ ] **Step 5: Rodar e ver passar**
+
+Run: `npx vitest run tests/lib/social-proof-grouping.test.ts`
+Expected: PASS. O arquivo cresce de 12 para 16 testes.
+
+Run: `npm test`
+Expected: 252 → 256.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/social-proof/grouping.ts tests/lib/social-proof-grouping.test.ts
+git commit -m "fix(prova-social): agrupamento separa dona de membro com mesmo nome"
 ```
 
 ---

@@ -97,6 +97,31 @@ export function MessageEditor({
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {value.reply_to_id && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, scale: 0.95 }}
+            animate={{ opacity: 1, height: "auto", scale: 1 }}
+            exit={{ opacity: 0, height: 0, scale: 0.95 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center justify-between rounded-lg bg-(--accent)/10 border border-(--accent)/20 px-3 py-2.5 mb-2">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                <span className="text-sm font-medium text-(--accent)">Respondendo à mensagem</span>
+              </div>
+              <button 
+                onClick={() => onChange({ ...value, reply_to_id: null })}
+                className="text-(--text-muted) hover:text-(--red) transition-colors p-1"
+                title="Remover resposta"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Enviar como — dois cartões, nunca um select */}
       <div className="space-y-2">
         <p className="text-xs text-(--text-muted)">Enviar como</p>

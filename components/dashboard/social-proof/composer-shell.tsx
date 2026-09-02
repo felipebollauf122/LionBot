@@ -213,7 +213,7 @@ export function ComposerShell({
           />
         </div>
 
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center sticky top-6 self-start">
           <FeedPreview
             channel={canal}
             messages={messages}

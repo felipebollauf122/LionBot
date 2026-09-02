@@ -137,8 +137,8 @@ export function FeedPreview({
       </h2>
 
       <div
-        className="tg-app overflow-hidden rounded-[28px] border-4 border-(--border-default)"
-        style={{ height: 620, maxWidth: 380, position: "relative" }}
+        className="tg-app w-full overflow-hidden rounded-[40px] border-[6px] border-(--border-default) shadow-2xl relative bg-black mx-auto"
+        style={{ aspectRatio: "9/19.5", maxWidth: 360, maxHeight: "calc(100vh - 180px)" }}
       >
         <ChatBackdrop />
         <ChannelHeader channel={feedChannel} />

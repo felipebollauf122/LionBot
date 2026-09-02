@@ -82,31 +82,35 @@ export function MediaPicker({
     const novos: MediaItem[] = [];
     const falhas: string[] = [];
 
-    for (const file of lista) {
-      const tipo = tipoDoArquivo(file);
-      if (!tipo || !tipoPermitido(tipo, kind)) {
-        falhas.push(`${file.name}: não é ${ROTULO[kind]}`);
-        continue;
+    try {
+      for (const file of lista) {
+        const tipo = tipoDoArquivo(file);
+        if (!tipo || !tipoPermitido(tipo, kind)) {
+          falhas.push(`${file.name}: não é ${ROTULO[kind]}`);
+          continue;
+        }
+
+        try {
+          const fd = new FormData();
+          fd.append("file", file);
+          const { url: enviado } = await uploadMedia(fd);
+          novos.push({ url: enviado, type: tipo });
+        } catch (e) {
+          // try/catch POR ARQUIVO: o que já subiu está no Storage de verdade, e
+          // descartar por causa de um erro posterior deixaria arquivo órfão.
+          falhas.push(`${file.name}: ${e instanceof Error ? e.message : "falha no upload"}`);
+        }
       }
 
-      try {
-        const fd = new FormData();
-        fd.append("file", file);
-        const { url: enviado } = await uploadMedia(fd);
-        novos.push({ url: enviado, type: tipo });
-      } catch (e) {
-        // try/catch POR ARQUIVO, não em volta do laço: o que já subiu está no
-        // Storage de verdade, e descartar por causa de um erro posterior
-        // deixaria arquivo órfão sem o tenant saber.
-        falhas.push(`${file.name}: ${e instanceof Error ? e.message : "falha no upload"}`);
-      }
+      if (novos.length > 0) onChange(multiplo ? [...media, ...novos] : [novos[0]]);
+      if (falhas.length > 0) setErro(falhas.join(" · "));
+    } finally {
+      // `finally`, não `catch`: se o onChange do pai lançar, o spinner e o input
+      // precisam voltar ao normal do mesmo jeito. Sem isto a tela fica presa em
+      // "Enviando…" e reescolher o mesmo arquivo não dispara nada.
+      setEnviando(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
-
-    if (novos.length > 0) onChange(multiplo ? [...media, ...novos] : [novos[0]]);
-    if (falhas.length > 0) setErro(falhas.join(" · "));
-
-    setEnviando(false);
-    if (inputRef.current) inputRef.current.value = "";
   }
 
   function adicionarUrl() {

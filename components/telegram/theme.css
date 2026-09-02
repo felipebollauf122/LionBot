@@ -31,6 +31,12 @@
   /* Véu escuro sobre o fundo do chat, onde ficam pills e metadados. */
   --tgc-veil: rgba(0, 0, 0, 0.28);
 
+  /* Superfícies das bolhas novas. Derivadas, porque o SDK não expõe nenhuma
+     delas — mesma limitação já documentada para --tgc-bubble. */
+  --tgc-pinned-bg: rgba(0, 0, 0, 0.22);
+  --tgc-reaction-bg: rgba(255, 255, 255, 0.10);
+  --tgc-reply-bar: var(--tgc-link);
+
   color: var(--tgc-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -98,4 +104,151 @@
 
 .tg-bubble--media-only {
   padding: 3px;
+}
+
+/* Barra de mensagem fixada, logo abaixo do cabeçalho do canal. */
+.tg-pinned {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--tgc-pinned-bg);
+  border-left: 3px solid var(--tgc-link);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.tg-pinned-title {
+  color: var(--tgc-link);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.tg-pinned-text {
+  color: var(--tgc-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Selo "Dona do canal" — alinhado à direita no cabeçalho da bolha. */
+.tg-owner-badge {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--tgc-hint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Linha de reações sob o conteúdo da bolha. */
+.tg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.tg-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--tgc-reaction-bg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Grade de álbum. 2 itens = 2 colunas; 3 ou 4 = 2x2 com o primeiro largo. */
+.tg-album {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  border-radius: calc(var(--tgc-bubble-radius) - 3px);
+  overflow: hidden;
+}
+
+.tg-album-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+}
+
+.tg-album-item img,
+.tg-album-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Bolha de áudio: play + onda + duração. */
+.tg-audio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+  padding: 4px 0;
+}
+
+.tg-audio-play {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--tgc-button);
+  color: var(--tgc-button-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+}
+
+.tg-audio-wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  flex: 1;
+}
+
+.tg-audio-bar {
+  width: 2px;
+  border-radius: 1px;
+  background: var(--tgc-hint);
+}
+
+/* Bloco citado dentro da bolha, para respostas. */
+.tg-reply {
+  border-left: 2px solid var(--tgc-reply-bar);
+  padding: 2px 0 2px 8px;
+  margin-bottom: 4px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.tg-reply-sender {
+  color: var(--tgc-link);
+  font-weight: 500;
+}
+
+.tg-reply-text {
+  color: var(--tgc-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Duração sobreposta no canto do vídeo. */
+.tg-media-duration {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
 }

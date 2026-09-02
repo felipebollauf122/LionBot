@@ -1,6 +1,7 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { FeedChannel, FeedMessage } from "@/lib/social-proof/types";
 import { normalizeMedia } from "@/lib/social-proof/media";
+import { normalizeReactions } from "@/lib/social-proof/reactions";
 
 /**
  * Lê o feed público de um bot.
@@ -70,7 +71,7 @@ export async function loadFeed(
       kind: r.kind,
       contentText: r.content_text,
       media: normalizeMedia(r.media, r.media_url, r.media_type),
-      reactions: Array.isArray(r.reactions) ? r.reactions : [],
+      reactions: normalizeReactions(r.reactions),
       replyToText: alvo ? (alvo.content_text as string | null) : null,
       replyToSender: alvo
         ? alvo.sender_kind === "owner"

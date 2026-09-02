@@ -70,7 +70,13 @@ export function MessageEditor({
         <h2 className="text-sm font-semibold text-(--text-primary)">
           Editando mensagem #{index + 1}
         </h2>
-        <button type="button" onClick={onDelete} className="text-(--red)" aria-label="Excluir">
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={saving}
+          className="text-(--red) disabled:opacity-50"
+          aria-label="Excluir"
+        >
           🗑
         </button>
       </div>
@@ -251,32 +257,42 @@ export function MessageEditor({
         </div>
       </div>
 
+      {/* disabled={saving} nos quatro não é estética: é proteção contra ação
+          concorrente sobre a MESMA linha. Sem isto, "Excluir" clicado enquanto
+          "Salvar mensagem" ainda está em voo pode apagar a linha antes do
+          update comitar (a resposta volta "mensagem não encontrada" — confuso,
+          já que o tenant não pediu excluir nada); e "Duplicar" nesse intervalo
+          pode ler a linha antes do update gravar, duplicando o conteúdo ANTIGO. */}
       <div className="grid grid-cols-2 gap-2 border-t border-(--border-subtle) pt-4">
         <button
           type="button"
           onClick={onDuplicate}
-          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary)"
+          disabled={saving}
+          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary) disabled:opacity-50"
         >
           Duplicar
         </button>
         <button
           type="button"
           onClick={onReply}
-          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary)"
+          disabled={saving}
+          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary) disabled:opacity-50"
         >
           Responder
         </button>
         <button
           type="button"
           onClick={onPin}
-          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary)"
+          disabled={saving}
+          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary) disabled:opacity-50"
         >
           Fixar
         </button>
         <button
           type="button"
           onClick={onDelete}
-          className="rounded-lg border border-(--red) py-2 text-sm text-(--red)"
+          disabled={saving}
+          className="rounded-lg border border-(--red) py-2 text-sm text-(--red) disabled:opacity-50"
         >
           Excluir
         </button>

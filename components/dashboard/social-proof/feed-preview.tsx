@@ -8,6 +8,7 @@ import type {
   MessageInput,
 } from "@/lib/social-proof/types";
 import { normalizeMedia } from "@/lib/social-proof/media";
+import { normalizeReactions } from "@/lib/social-proof/reactions";
 import { ChatBackdrop } from "@/components/telegram/chat-backdrop";
 import { ChannelHeader } from "@/components/telegram/channel-header";
 import { PinnedBar } from "@/components/telegram/pinned-bar";
@@ -46,7 +47,7 @@ function toFeedMessage(
     kind: m.kind as FeedMessage["kind"],
     contentText: m.content_text,
     media: normalizeMedia(m.media, m.media_url, m.media_type),
-    reactions: Array.isArray(m.reactions) ? m.reactions : [],
+    reactions: normalizeReactions(m.reactions),
     ...resolverCitacao(m, porId, channel),
     offsetSeconds: m.offset_seconds,
     displayTime: m.display_time,
@@ -102,10 +103,19 @@ export function FeedPreview({
 }) {
   const porId = new Map(messages.map((m) => [m.id, m]));
   const rascunho = draft ? draftToFeedMessage(draft, porId, channel) : null;
-  const lista = [
-    ...messages.map((m) => toFeedMessage(m, porId, channel)),
-    ...(rascunho ? [rascunho] : []),
-  ];
+
+  // Editar uma mensagem existente produz um rascunho COM o id dela. Ele precisa
+  // SUBSTITUIR a original na posição dela — anexar no fim mostrava a mesma
+  // mensagem duas vezes e na ordem errada, embaixo de um título que promete ser
+  // exatamente o que o lead vê.
+  const lista: FeedMessage[] = messages.map((m) =>
+    rascunho && draft?.id === m.id
+      ? { ...rascunho, id: m.id }
+      : toFeedMessage(m, porId, channel),
+  );
+
+  // Rascunho novo (ainda sem id) nasce no fim, que é onde ele apareceria.
+  if (rascunho && !draft?.id) lista.push(rascunho);
 
   const feedChannel: FeedChannel = {
     title: channel.title || "Nome do canal",

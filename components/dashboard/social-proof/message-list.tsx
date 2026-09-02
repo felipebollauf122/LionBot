@@ -22,6 +22,7 @@ export function MessageList({
   messages,
   selectedId,
   pinnedId,
+  disabled,
   onSelect,
   onReorder,
   onDuplicate,
@@ -32,6 +33,13 @@ export function MessageList({
   messages: SocialProofMessage[];
   selectedId: string | null;
   pinnedId: string | null;
+  /**
+   * Verdadeiro durante qualquer Server Action em andamento no composer
+   * (salvar, apagar, etc). Trava o ⋮ e o menu pra impedir uma segunda ação na
+   * MESMA linha antes da primeira terminar — mesma proteção contra ação
+   * concorrente que a v1 tinha só no botão de apagar.
+   */
+  disabled: boolean;
   onSelect: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
   onDuplicate: (id: string) => void;
@@ -105,11 +113,12 @@ export function MessageList({
             <button
               type="button"
               aria-label="Ações da mensagem"
+              disabled={disabled}
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuAberto(menuAberto === m.id ? null : m.id);
               }}
-              className="px-1 text-(--text-muted) hover:text-(--text-primary)"
+              className="px-1 text-(--text-muted) hover:text-(--text-primary) disabled:opacity-50"
             >
               ⋮
             </button>
@@ -146,11 +155,12 @@ export function MessageList({
                     <button
                       key={op.rotulo}
                       type="button"
+                      disabled={disabled}
                       onClick={() => {
                         setMenuAberto(null);
                         op.acao();
                       }}
-                      className={`block w-full px-3 py-2 text-left text-sm hover:bg-(--bg-hover) ${
+                      className={`block w-full px-3 py-2 text-left text-sm hover:bg-(--bg-hover) disabled:opacity-50 ${
                         op.perigo ? "text-(--red)" : "text-(--text-secondary)"
                       }`}
                     >

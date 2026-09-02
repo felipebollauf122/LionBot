@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { SocialProofChannel, SocialProofMessage } from "@/lib/types/database";
 import type { ChannelInput, MessageInput, SenderKind } from "@/lib/social-proof/types";
+import { normalizeReactions } from "@/lib/social-proof/reactions";
 import {
   saveChannel,
   saveMessage,
@@ -43,7 +44,7 @@ function paraInput(m: SocialProofMessage): MessageInput {
     kind: m.kind as MessageInput["kind"],
     content_text: m.content_text,
     media: Array.isArray(m.media) ? m.media : [],
-    reactions: Array.isArray(m.reactions) ? m.reactions : [],
+    reactions: normalizeReactions(m.reactions),
     reply_to_id: m.reply_to_id,
     display_time: m.display_time,
     offset_seconds: m.offset_seconds,
@@ -153,6 +154,7 @@ export function ComposerShell({
             messages={messages}
             selectedId={selecionada}
             pinnedId={pinnedId}
+            disabled={pending}
             onSelect={selecionar}
             onReorder={(ids) => correr(() => reorderMessages(botId, ids), "mensagem")}
             onDuplicate={(id) => correr(() => duplicateMessage(id, botId), "mensagem")}

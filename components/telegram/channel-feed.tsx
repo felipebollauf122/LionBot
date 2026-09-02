@@ -1,4 +1,4 @@
-import type { FeedMessage } from "@/lib/social-proof/types";
+import type { FeedChannel, FeedMessage } from "@/lib/social-proof/types";
 import { groupMessages } from "@/lib/social-proof/grouping";
 import { formatDaySeparator, isSameDay } from "@/lib/social-proof/format";
 import { MessageGroup } from "@/components/telegram/message-group";
@@ -11,7 +11,15 @@ import { DateSeparator } from "@/components/telegram/date-separator";
  * precisa usar o MESMO instante pra todas as mensagens — offsets resolvidos
  * contra "agoras" diferentes produziriam horários incoerentes entre si.
  */
-export function ChannelFeed({ messages, now }: { messages: FeedMessage[]; now: Date }) {
+export function ChannelFeed({
+  messages,
+  channel,
+  now,
+}: {
+  messages: FeedMessage[];
+  channel: FeedChannel;
+  now: Date;
+}) {
   const grouped = groupMessages(messages, now);
 
   return (
@@ -23,7 +31,7 @@ export function ChannelFeed({ messages, now }: { messages: FeedMessage[]; now: D
         return (
           <div key={m.id}>
             {novoDia && <DateSeparator label={formatDaySeparator(m.at, now)} />}
-            <MessageGroup message={m} />
+            <MessageGroup message={m} channel={channel} />
           </div>
         );
       })}

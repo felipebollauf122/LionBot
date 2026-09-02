@@ -35,6 +35,7 @@ export async function uploadMedia(formData: FormData): Promise<{ url: string }> 
   const allowedTypes = [
     "image/jpeg", "image/png", "image/gif", "image/webp",
     "video/mp4", "video/webm", "video/quicktime",
+    "audio/mpeg", "audio/ogg", "audio/mp4", "audio/wav",
   ];
   if (!allowedTypes.includes(file.type)) {
     throw new Error(`Tipo de arquivo não suportado: ${file.type}`);

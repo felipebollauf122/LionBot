@@ -7,12 +7,17 @@ const now = new Date("2026-09-01T15:00:00-03:00");
 function msg(id: string, senderName: string, offsetSeconds: number): FeedMessage {
   return {
     id,
+    senderKind: "member",
     senderName,
     senderAvatarUrl: null,
+    kind: "text",
     contentText: `texto ${id}`,
-    mediaUrl: null,
-    mediaType: null,
+    media: [],
+    reactions: [],
+    replyToText: null,
+    replyToSender: null,
     offsetSeconds,
+    displayTime: null,
     viewsCount: 0,
   };
 }
@@ -94,5 +99,36 @@ describe("groupMessages", () => {
 
   it("nomes que diferem só por espaço em volta contam como o mesmo remetente", () => {
     expect(shape([msg("a", "Ana", 600), msg("b", " Ana ", 580)])).toEqual(["F.", ".L"]);
+  });
+});
+
+describe("groupMessages — identidade da dona", () => {
+  function dona(id: string, senderName: string, offsetSeconds: number): FeedMessage {
+    return { ...msg(id, senderName, offsetSeconds), senderKind: "owner" };
+  }
+
+  it("duas mensagens seguidas da dona agrupam mesmo com senderName diferente", () => {
+    // A dona tira identidade do canal; o senderName da mensagem é ignorado na
+    // renderização, então não pode separar grupos.
+    const out = groupMessages([dona("a", "", 600), dona("b", "sobra antiga", 580)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, false]);
+    expect(out.map((m) => m.isLastOfGroup)).toEqual([false, true]);
+  });
+
+  it("dona e membro com o MESMO nome não agrupam", () => {
+    // Senão um avatar só cobriria dois remetentes que a tela mostra diferentes.
+    const out = groupMessages([dona("a", "Ana", 600), msg("b", "Ana", 580)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, true]);
+    expect(out.map((m) => m.isLastOfGroup)).toEqual([true, true]);
+  });
+
+  it("membro e dona alternando: cada um é seu próprio grupo", () => {
+    const out = groupMessages([msg("a", "Ana", 600), dona("b", "", 580), msg("c", "Ana", 560)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, true, true]);
+  });
+
+  it("a janela de tempo continua valendo para a dona", () => {
+    const out = groupMessages([dona("a", "", 3600), dona("b", "", 3600 - 960)], now);
+    expect(out.map((m) => m.isFirstOfGroup)).toEqual([true, true]);
   });
 });

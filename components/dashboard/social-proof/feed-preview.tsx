@@ -1,107 +1,151 @@
 "use client";
 
 import type { SocialProofMessage } from "@/lib/types/database";
-import type { FeedMessage } from "@/lib/social-proof/types";
-import type { ChannelInput, MessageInput } from "@/lib/social-proof/types";
+import type {
+  ChannelInput,
+  FeedChannel,
+  FeedMessage,
+  MessageInput,
+} from "@/lib/social-proof/types";
+import { normalizeMedia } from "@/lib/social-proof/media";
+import { normalizeReactions } from "@/lib/social-proof/reactions";
 import { ChatBackdrop } from "@/components/telegram/chat-backdrop";
 import { ChannelHeader } from "@/components/telegram/channel-header";
+import { PinnedBar } from "@/components/telegram/pinned-bar";
 import { ChannelFeed } from "@/components/telegram/channel-feed";
 import { ChannelFooter } from "@/components/telegram/channel-footer";
 import "@/components/telegram/theme.css";
 
-function toFeedMessage(m: SocialProofMessage): FeedMessage {
+/** Resolve a citação contra as mensagens já carregadas, como lib/social-proof/feed.ts faz. */
+function resolverCitacao(
+  m: SocialProofMessage,
+  porId: Map<string, SocialProofMessage>,
+  channel: ChannelInput,
+): { replyToText: string | null; replyToSender: string | null } {
+  const alvo = m.reply_to_id ? porId.get(m.reply_to_id) : undefined;
+  if (!alvo) return { replyToText: null, replyToSender: null };
+
+  return {
+    replyToText: alvo.content_text,
+    replyToSender:
+      alvo.sender_kind === "owner"
+        ? channel.owner_name || channel.title
+        : alvo.sender_name,
+  };
+}
+
+function toFeedMessage(
+  m: SocialProofMessage,
+  porId: Map<string, SocialProofMessage>,
+  channel: ChannelInput,
+): FeedMessage {
   return {
     id: m.id,
+    senderKind: m.sender_kind === "owner" ? "owner" : "member",
     senderName: m.sender_name,
     senderAvatarUrl: m.sender_avatar_url,
+    kind: m.kind as FeedMessage["kind"],
     contentText: m.content_text,
-    mediaUrl: m.media_url,
-    mediaType: m.media_type,
+    media: normalizeMedia(m.media, m.media_url, m.media_type),
+    reactions: normalizeReactions(m.reactions),
+    ...resolverCitacao(m, porId, channel),
     offsetSeconds: m.offset_seconds,
+    displayTime: m.display_time,
     viewsCount: m.views_count,
   };
 }
 
-/** A mensagem sendo digitada, mostrada no fim do feed antes de existir no banco. */
-function draftToFeedMessage(d: MessageInput): FeedMessage | null {
+function draftToFeedMessage(
+  d: MessageInput,
+  porId: Map<string, SocialProofMessage>,
+  channel: ChannelInput,
+): FeedMessage | null {
   const temTexto = (d.content_text ?? "").trim() !== "";
-  const temMidia = (d.media_url ?? "").trim() !== "";
+  const temMidia = d.media.length > 0;
   if (!temTexto && !temMidia) return null;
+
+  // Mesma resolução de resolverCitacao, mas a partir do rascunho: é
+  // justamente a mensagem criada por "Responder" que precisa mostrar a
+  // citação antes de existir no banco.
+  const alvo = d.reply_to_id ? porId.get(d.reply_to_id) : undefined;
 
   return {
     id: "__rascunho__",
+    senderKind: d.sender_kind,
     senderName: d.sender_name || "Sem nome",
     senderAvatarUrl: d.sender_avatar_url,
+    kind: d.kind,
     contentText: temTexto ? d.content_text : null,
-    mediaUrl: temMidia ? d.media_url : null,
-    mediaType: temMidia ? d.media_type : null,
+    media: d.media,
+    reactions: d.reactions,
+    replyToText: alvo ? alvo.content_text : null,
+    replyToSender: alvo
+      ? alvo.sender_kind === "owner"
+        ? channel.owner_name || channel.title
+        : alvo.sender_name
+      : null,
     offsetSeconds: d.offset_seconds,
+    displayTime: d.display_time,
     viewsCount: d.views_count,
   };
 }
 
-/**
- * Preview do Mini App dentro do console.
- *
- * Sem .tg-app--fullscreen: o modificador que fixa na viewport fica só no Mini
- * App real. Aqui a moldura tem altura fixa, como a tela de um celular.
- *
- * `now` é criado a cada render, o que é justamente o certo aqui: mexer no
- * campo "há quantos minutos" tem que mudar a hora exibida na hora.
- */
 export function FeedPreview({
   channel,
   messages,
   draft,
+  pinnedText,
 }: {
   channel: ChannelInput;
   messages: SocialProofMessage[];
-  draft: MessageInput;
+  draft: MessageInput | null;
+  pinnedText: string;
 }) {
-  const rascunho = draftToFeedMessage(draft);
-  const lista = [...messages.map(toFeedMessage), ...(rascunho ? [rascunho] : [])];
+  const porId = new Map(messages.map((m) => [m.id, m]));
+  const rascunho = draft ? draftToFeedMessage(draft, porId, channel) : null;
+
+  // Editar uma mensagem existente produz um rascunho COM o id dela. Ele precisa
+  // SUBSTITUIR a original na posição dela — anexar no fim mostrava a mesma
+  // mensagem duas vezes e na ordem errada, embaixo de um título que promete ser
+  // exatamente o que o lead vê.
+  const lista: FeedMessage[] = messages.map((m) =>
+    rascunho && draft?.id === m.id
+      ? { ...rascunho, id: m.id }
+      : toFeedMessage(m, porId, channel),
+  );
+
+  // Rascunho novo (ainda sem id) nasce no fim, que é onde ele apareceria.
+  if (rascunho && !draft?.id) lista.push(rascunho);
+
+  const feedChannel: FeedChannel = {
+    title: channel.title || "Nome do canal",
+    avatarUrl: channel.avatar_url,
+    subscribersLabel: channel.subscribers_label || "0 inscritos",
+    isVerified: channel.is_verified,
+    ownerName: channel.owner_name,
+    ownerAvatarUrl: channel.owner_avatar_url,
+    ownerUsername: channel.owner_username,
+    unreadBadge: channel.unread_badge,
+  };
 
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-(--text-secondary)">
         {channel.is_active
           ? "Prévia — é exatamente isto que o lead vê"
-          : "Prévia — o canal está INATIVO"}
+          : "Prévia — o canal está INATIVO; o lead verá uma página de erro"}
       </h2>
-
-      {/* loadFeed filtra .eq("is_active", true) e a coluna nasce `false`: com
-          o canal desmarcado o lead não vê nada disto, vê 404. A prévia
-          continua visível (é o que o tenant está montando), mas dizer
-          "é exatamente isto que o lead vê" aqui seria mentira. */}
-      {!channel.is_active && (
-        <p className="rounded-lg border border-(--amber) bg-(--amber)/10 px-3 py-2 text-sm text-(--amber)">
-          Isto é só a prévia. Com o canal <strong>inativo</strong>, o lead que tocar
-          no botão recebe uma página de erro — nada deste feed aparece pra ele.
-          Marque <strong>&ldquo;Ativo&rdquo;</strong> na seção Canal e salve pra publicar.
-        </p>
-      )}
 
       <div
         className="tg-app overflow-hidden rounded-[28px] border-4 border-(--border-default)"
         style={{ height: 620, maxWidth: 380, position: "relative" }}
       >
         <ChatBackdrop />
-        <ChannelHeader
-          channel={{
-            title: channel.title || "Nome do canal",
-            avatarUrl: channel.avatar_url,
-            subscribersLabel: channel.subscribers_label || "0 inscritos",
-            isVerified: channel.is_verified,
-          }}
-        />
-        <ChannelFeed messages={lista} now={new Date()} />
+        <ChannelHeader channel={feedChannel} />
+        <PinnedBar text={pinnedText} />
+        <ChannelFeed messages={lista} channel={feedChannel} now={new Date()} />
         <ChannelFooter />
       </div>
-
-      <p className="text-xs text-(--text-muted)">
-        O tema aqui é o escuro padrão do Telegram. No celular do lead, as cores vêm
-        do tema dele.
-      </p>
     </section>
   );
 }

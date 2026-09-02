@@ -1,3 +1,5 @@
+import type { MediaItem, Reaction } from "@/lib/social-proof/types";
+
 // === Enums ===
 export type TransactionStatus = "pending" | "approved" | "refused" | "refunded";
 export type TriggerType = "command" | "first_contact" | "callback" | "payment_event";
@@ -294,6 +296,11 @@ export interface SocialProofChannel {
   subscribers_label: string;
   is_verified: boolean;
   is_active: boolean;
+  owner_name: string;
+  owner_avatar_url: string | null;
+  owner_username: string;
+  pinned_message_id: string | null;
+  unread_badge: number;
   created_at: string;
 }
 
@@ -311,5 +318,13 @@ export interface SocialProofMessage {
   views_count: number;
   position: number;
   is_active: boolean;
+  sender_kind: "owner" | "member";
+  kind: "text" | "photo" | "video" | "audio" | "album";
+  /** jsonb: lista de MediaItem. Ver lib/social-proof/media.ts. */
+  media: MediaItem[];
+  /** jsonb: lista de Reaction. */
+  reactions: Reaction[];
+  reply_to_id: string | null;
+  display_time: string | null;
   created_at: string;
 }

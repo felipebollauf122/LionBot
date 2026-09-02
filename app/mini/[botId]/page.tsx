@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { loadFeed } from "@/lib/social-proof/feed";
 import { ChatBackdrop } from "@/components/telegram/chat-backdrop";
 import { ChannelHeader } from "@/components/telegram/channel-header";
+import { PinnedBar } from "@/components/telegram/pinned-bar";
 import { ChannelFeed } from "@/components/telegram/channel-feed";
 import { ChannelFooter } from "@/components/telegram/channel-footer";
 import { TelegramInit } from "./telegram-init";
@@ -44,7 +45,8 @@ export default async function MiniAppPage({
       <TelegramInit botId={botId} />
       <ChatBackdrop />
       <ChannelHeader channel={feed.channel} />
-      <ChannelFeed messages={feed.messages} now={now} />
+      <PinnedBar text={feed.pinnedText} />
+      <ChannelFeed messages={feed.messages} channel={feed.channel} now={now} />
       <ChannelFooter />
     </div>
   );

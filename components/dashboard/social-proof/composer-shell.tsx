@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { SocialProofChannel, SocialProofMessage } from "@/lib/types/database";
+import { motion, AnimatePresence } from "motion/react";
 import type { ChannelInput, MessageInput, SenderKind } from "@/lib/social-proof/types";
 import { normalizeReactions } from "@/lib/social-proof/reactions";
 import {
@@ -121,30 +122,64 @@ export function ComposerShell({
         </div>
 
         <div className="flex items-center gap-2">
-          <a
+          <motion.a
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             href={`/mini/${botId}`}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg border border-(--border-default) px-3 py-2 text-sm text-(--text-secondary)"
+            className="flex items-center gap-2 rounded-lg border border-(--border-default) px-3 py-2 text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary) hover:bg-(--bg-hover)"
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
             Visualizar Mini App
-          </a>
-          <button
+          </motion.a>
+          <motion.button
+            whileHover={{ scale: pending ? 1 : 1.02 }}
+            whileTap={{ scale: pending ? 1 : 0.98 }}
             type="button"
             onClick={() => correr(() => saveChannel(botId, canal), "canal")}
             disabled={pending}
-            className="rounded-lg bg-(--accent) px-4 py-2 text-sm font-medium text-(--on-accent) disabled:opacity-50"
+            className="relative flex items-center justify-center overflow-hidden rounded-lg bg-(--accent) px-4 py-2 text-sm font-semibold text-(--on-accent) disabled:opacity-80 transition-opacity"
           >
-            {pending ? "Salvando…" : "Salvar alterações"}
-          </button>
+            <AnimatePresence mode="popLayout" initial={false}>
+              {pending ? (
+                <motion.div
+                  key="saving"
+                  initial={{ opacity: 0, y: -15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 15 }}
+                  className="flex items-center gap-2"
+                >
+                  <svg className="h-4 w-4 animate-spin text-(--on-accent)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  Salvando…
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="save"
+                  initial={{ opacity: 0, y: -15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 15 }}
+                >
+                  Salvar alterações
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.button>
         </div>
       </header>
 
-      {erroCanal && (
-        <p className="mb-4 rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">
-          {erroCanal}
-        </p>
-      )}
+      <AnimatePresence>
+        {erroCanal && (
+          <motion.p
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            className="rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red) overflow-hidden"
+          >
+            {erroCanal}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_400px]">
         <div className="space-y-4">
@@ -204,55 +239,76 @@ export function ComposerShell({
           />
           {/* Ações da linha e da composição rápida funcionam sem editor aberto,
               e nesse estado o MessageEditor não existe pra mostrar o erro. */}
-          {!rascunho && erroMensagem && (
-            <p className="mt-3 w-full max-w-[380px] rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">
-              {erroMensagem}
-            </p>
-          )}
+          <AnimatePresence>
+            {!rascunho && erroMensagem && (
+              <motion.p
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                className="w-full max-w-[380px] rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red) overflow-hidden"
+              >
+                {erroMensagem}
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
 
-        {rascunho ? (
-          <MessageEditor
-            value={rascunho}
-            index={indice >= 0 ? indice : messages.length}
-            onChange={setRascunho}
-            saving={pending}
-            error={erroMensagem}
-            onSave={() => correr(() => saveMessage(botId, rascunho), "mensagem")}
-            onDuplicate={() => {
-              if (selecionada) correr(() => duplicateMessage(selecionada, botId), "mensagem");
-            }}
-            onReply={() => {
-              // Responder abre um rascunho NOVO. Sem zerar `selecionada`, o
-              // editor mostra formulário vazio enquanto "Excluir" ainda mira a
-              // mensagem original — e a apaga sem confirmação nenhuma.
-              setRascunho({ ...mensagemVazia(), reply_to_id: selecionada });
-              setSelecionada(null);
-              setErroMensagem(null);
-            }}
-            onPin={() => {
-              if (selecionada) {
-                correr(
-                  () => setPinnedMessage(botId, pinnedId === selecionada ? null : selecionada),
-                  "mensagem",
-                );
-              }
-            }}
-            onDelete={() => {
-              if (!selecionada) {
-                setRascunho(null);
-                return;
-              }
-              correr(() => deleteMessage(selecionada, botId), "mensagem");
-              setSelecionada(null);
-              setRascunho(null);
-            }}
-          />
-        ) : (
-          <aside className="flex items-center justify-center rounded-xl border border-dashed border-(--border-subtle) p-8 text-center text-sm text-(--text-muted)">
-            Selecione ou crie uma mensagem para editar seus detalhes.
-          </aside>
-        )}
+        <AnimatePresence mode="popLayout">
+          {rascunho ? (
+            <motion.div
+              key="editor"
+              initial={{ opacity: 0, scale: 0.95, x: 20 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95, x: 20 }}
+              transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+              className="w-full"
+            >
+              <MessageEditor
+                value={rascunho}
+                index={indice >= 0 ? indice : messages.length}
+                onChange={setRascunho}
+                saving={pending}
+                error={erroMensagem}
+                onSave={() => correr(() => saveMessage(botId, rascunho), "mensagem")}
+                onDuplicate={() => {
+                  if (selecionada) correr(() => duplicateMessage(selecionada, botId), "mensagem");
+                }}
+                onReply={() => {
+                  setRascunho({ ...mensagemVazia(), reply_to_id: selecionada });
+                  setSelecionada(null);
+                  setErroMensagem(null);
+                }}
+                onPin={() => {
+                  if (selecionada) {
+                    correr(
+                      () => setPinnedMessage(botId, pinnedId === selecionada ? null : selecionada),
+                      "mensagem",
+                    );
+                  }
+                }}
+                onDelete={() => {
+                  if (!selecionada) {
+                    setRascunho(null);
+                    return;
+                  }
+                  correr(() => deleteMessage(selecionada, botId), "mensagem");
+                  setSelecionada(null);
+                  setRascunho(null);
+                }}
+              />
+            </motion.div>
+          ) : (
+            <motion.aside
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center justify-center rounded-xl border border-dashed border-(--border-subtle) p-8 text-center text-sm text-(--text-muted) w-full h-fit py-20 bg-(--bg-input)/50"
+            >
+              Selecione ou crie uma mensagem para editar seus detalhes.
+            </motion.aside>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

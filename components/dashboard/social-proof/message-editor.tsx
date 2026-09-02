@@ -2,6 +2,7 @@
 
 import type { MessageInput, MessageKind, SenderKind } from "@/lib/social-proof/types";
 import { MediaPicker } from "@/components/dashboard/social-proof/media-picker";
+import { motion, AnimatePresence } from "motion/react";
 
 const CAMPO =
   "w-full rounded-lg bg-(--bg-input) border border-(--border-default) px-3 py-2 text-sm text-(--text-primary) outline-none focus:border-(--accent)";
@@ -70,22 +71,31 @@ export function MessageEditor({
         <h2 className="text-sm font-semibold text-(--text-primary)">
           Editando mensagem #{index + 1}
         </h2>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
           type="button"
           onClick={onDelete}
           disabled={saving}
-          className="text-(--red) disabled:opacity-50"
+          className="text-(--red) disabled:opacity-50 flex items-center justify-center h-8 w-8 rounded-full hover:bg-(--red)/10 transition-colors"
           aria-label="Excluir"
         >
-          🗑
-        </button>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+        </motion.button>
       </div>
 
-      {error && (
-        <p className="rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">
-          {error}
-        </p>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.p
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            className="rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red) overflow-hidden"
+          >
+            {error}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {/* Enviar como — dois cartões, nunca um select */}
       <div className="space-y-2">
@@ -99,14 +109,23 @@ export function MessageEditor({
               key={op.kind}
               type="button"
               onClick={() => onChange({ ...value, sender_kind: op.kind })}
-              className={`rounded-lg border p-3 text-left ${
+              className={`relative rounded-lg border p-3 text-left transition-colors ${
                 value.sender_kind === op.kind
-                  ? "border-(--accent) bg-(--accent-deep)"
-                  : "border-(--border-default) hover:bg-(--bg-hover)"
+                  ? "border-(--accent)/50 text-(--text-primary)"
+                  : "border-(--border-default) hover:bg-(--bg-hover) text-(--text-secondary)"
               }`}
             >
-              <p className="text-sm font-medium text-(--text-primary)">{op.titulo}</p>
-              <p className="text-xs text-(--text-muted)">{op.sub}</p>
+              {value.sender_kind === op.kind && (
+                <motion.div
+                  layoutId="enviarComoAtivo"
+                  className="absolute inset-0 rounded-lg bg-(--accent-deep) border-2 border-(--accent) pointer-events-none"
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                />
+              )}
+              <div className="relative z-10">
+                <p className={`text-sm font-medium ${value.sender_kind === op.kind ? "text-(--text-primary)" : "text-(--text-primary)"}`}>{op.titulo}</p>
+                <p className={`text-xs ${value.sender_kind === op.kind ? "text-(--text-secondary)" : "text-(--text-muted)"}`}>{op.sub}</p>
+              </div>
             </button>
           ))}
         </div>
@@ -132,16 +151,12 @@ export function MessageEditor({
       {/* Tipo — botões segmentados, nunca um select */}
       <div className="space-y-2">
         <p className="text-xs text-(--text-muted)">Tipo de mensagem</p>
-        <div className="grid grid-cols-5 gap-1 rounded-lg border border-(--border-default) p-1">
+        <div className="relative grid grid-cols-5 gap-1 rounded-lg border border-(--border-default) p-1 bg-(--bg-input)">
           {TIPOS.map((t) => (
             <button
               key={t.kind}
               type="button"
               onClick={() => {
-                // Trocar de tipo apara a mídia para o que o tipo novo aceita.
-                // Sair de "Álbum" com 3 fotos deixaria kind e media divergentes,
-                // e a validação só olha media[0] — a mensagem gravaria com o
-                // rótulo errado na lista.
                 const media =
                   t.kind === "album"
                     ? value.media
@@ -150,12 +165,19 @@ export function MessageEditor({
                       : value.media.filter((m) => m.type === t.kind).slice(0, 1);
                 onChange({ ...value, kind: t.kind, media });
               }}
-              className={`rounded-md py-1.5 text-xs ${
+              className={`relative rounded-md py-1.5 text-xs z-10 transition-colors duration-200 ${
                 value.kind === t.kind
-                  ? "bg-(--accent) text-(--on-accent)"
-                  : "text-(--text-secondary) hover:bg-(--bg-hover)"
+                  ? "text-(--on-accent) font-medium"
+                  : "text-(--text-secondary) hover:text-(--text-primary)"
               }`}
             >
+              {value.kind === t.kind && (
+                <motion.div
+                  layoutId="tipoMensagemAtivo"
+                  className="absolute inset-0 rounded-md bg-(--accent) z-[-1]"
+                  transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                />
+              )}
               {t.label}
             </button>
           ))}
@@ -264,48 +286,84 @@ export function MessageEditor({
           já que o tenant não pediu excluir nada); e "Duplicar" nesse intervalo
           pode ler a linha antes do update gravar, duplicando o conteúdo ANTIGO. */}
       <div className="grid grid-cols-2 gap-2 border-t border-(--border-subtle) pt-4">
-        <button
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           type="button"
           onClick={onDuplicate}
           disabled={saving}
-          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary) disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-overlay) py-2 text-sm font-medium text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) hover:border-(--border-subtle) disabled:opacity-50 transition-colors"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Duplicar
-        </button>
-        <button
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           type="button"
           onClick={onReply}
           disabled={saving}
-          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary) disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-overlay) py-2 text-sm font-medium text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) hover:border-(--border-subtle) disabled:opacity-50 transition-colors"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           Responder
-        </button>
-        <button
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           type="button"
           onClick={onPin}
           disabled={saving}
-          className="rounded-lg border border-(--border-default) py-2 text-sm text-(--text-secondary) disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-overlay) py-2 text-sm font-medium text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) hover:border-(--border-subtle) disabled:opacity-50 transition-colors"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
           Fixar
-        </button>
-        <button
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           type="button"
           onClick={onDelete}
           disabled={saving}
-          className="rounded-lg border border-(--red) py-2 text-sm text-(--red) disabled:opacity-50"
+          className="flex items-center justify-center gap-2 rounded-lg border border-(--red)/30 bg-(--red)/5 py-2 text-sm font-medium text-(--red) hover:bg-(--red)/10 hover:border-(--red)/50 disabled:opacity-50 transition-colors"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
           Excluir
-        </button>
+        </motion.button>
       </div>
 
-      <button
+      <motion.button
+        whileHover={{ scale: saving ? 1 : 1.01 }}
+        whileTap={{ scale: saving ? 1 : 0.98 }}
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="rounded-lg bg-(--accent) py-2.5 text-sm font-medium text-(--on-accent) disabled:opacity-50"
+        className="relative flex items-center justify-center overflow-hidden rounded-lg bg-(--accent) py-2.5 text-sm font-semibold text-(--on-accent) disabled:opacity-80 transition-opacity"
       >
-        {saving ? "Salvando…" : "Salvar mensagem"}
-      </button>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {saving ? (
+            <motion.div
+              key="saving"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="flex items-center gap-2"
+            >
+              <svg className="h-4 w-4 animate-spin text-(--on-accent)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+              Salvando…
+            </motion.div>
+          ) : (
+            <motion.div
+              key="save"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              Salvar mensagem
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.button>
     </aside>
   );
 }

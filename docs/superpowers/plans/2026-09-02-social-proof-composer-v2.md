@@ -1547,6 +1547,7 @@ git commit -m "feat(prova-social): bolhas de reacao, album, audio, resposta e fi
 - Modify: `components/telegram/media-container.tsx`
 - Modify: `components/telegram/message-bubble.tsx`
 - Modify: `components/telegram/message-group.tsx`
+- Modify: `components/telegram/channel-feed.tsx`
 - Modify: `components/telegram/channel-header.tsx`
 - Modify: `tests/lib/social-proof-bubble.test.tsx` (as fixtures da Task 6/7 da v1 precisam dos campos novos)
 
@@ -1556,7 +1557,12 @@ git commit -m "feat(prova-social): bolhas de reacao, album, audio, resposta e fi
   - `<MediaContainer item: MediaItem; hasCaption: boolean />` — assinatura MUDA (era `url`+`type`)
   - `<MessageBubble message: GroupedMessage; channel: FeedChannel />` — ganha `channel`
   - `<MessageGroup message: GroupedMessage; channel: FeedChannel />` — ganha `channel`
+  - `<ChannelFeed messages: FeedMessage[]; channel: FeedChannel; now: Date />` — ganha `channel`
   - `<ChannelHeader channel: FeedChannel />` — mesma assinatura, conteúdo novo
+
+> `channel-feed.tsx` está aqui e não na Task 9 de propósito. `MessageGroup` passa a exigir
+> `channel`, e quem o renderiza é o `ChannelFeed` — deixar a prop para depois faria esta task não
+> compilar, e os testes do Step 2 renderizam `<ChannelFeed channel={...}>`.
 
 - [ ] **Step 1: Atualizar as fixtures do teste existente**
 
@@ -1921,7 +1927,31 @@ export function MessageGroup({
 }
 ```
 
-- [ ] **Step 8: `channel-header.tsx` — seta de voltar e badge**
+- [ ] **Step 8: `channel-feed.tsx` — repassar o canal**
+
+`MessageGroup` agora exige `channel`, então quem o renderiza precisa recebê-lo. Mudar a assinatura:
+
+```tsx
+export function ChannelFeed({
+  messages,
+  channel,
+  now,
+}: {
+  messages: FeedMessage[];
+  channel: FeedChannel;
+  now: Date;
+}) {
+```
+
+e, dentro do `.map`:
+
+```tsx
+            <MessageGroup message={m} channel={channel} />
+```
+
+Acrescentar `FeedChannel` ao import de tipos que já existe no topo do arquivo.
+
+- [ ] **Step 9: `channel-header.tsx` — seta de voltar e badge**
 
 No `<header>`, antes do avatar do canal, inserir:
 
@@ -1950,17 +1980,18 @@ No `<header>`, antes do avatar do canal, inserir:
       </span>
 ```
 
-- [ ] **Step 9: Rodar e ver passar**
+- [ ] **Step 10: Rodar e ver passar**
 
 Run: `npx vitest run tests/lib/social-proof-bubble.test.tsx tests/lib/social-proof-bubble-v2.test.tsx`
 Expected: PASS. O primeiro arquivo cresce de 18 para 27 testes.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add components/telegram/media-container.tsx components/telegram/message-bubble.tsx \
         components/telegram/message-meta.tsx components/telegram/message-group.tsx \
-        components/telegram/channel-header.tsx tests/lib/social-proof-bubble.test.tsx
+        components/telegram/channel-feed.tsx components/telegram/channel-header.tsx \
+        tests/lib/social-proof-bubble.test.tsx
 git commit -m "feat(prova-social): bolha entende dona, album, audio, resposta e reacoes"
 ```
 
@@ -1970,14 +2001,12 @@ git commit -m "feat(prova-social): bolha entende dona, album, audio, resposta e 
 
 **Files:**
 - Modify: `lib/social-proof/feed.ts`
-- Modify: `components/telegram/channel-feed.tsx`
 - Modify: `app/mini/[botId]/page.tsx`
 
 **Interfaces:**
-- Consumes: `normalizeMedia` (Task 2); `FeedChannel`/`FeedMessage` v2 (Task 1); `<PinnedBar>` (Task 7).
+- Consumes: `normalizeMedia` (Task 2); `FeedChannel`/`FeedMessage` v2 (Task 1); `<PinnedBar>` (Task 7); `<ChannelFeed messages channel now />` (Task 8 — a prop `channel` já existe quando esta task roda).
 - Produces:
   - `loadFeed(botId): Promise<{ channel: FeedChannel; messages: FeedMessage[]; pinnedText: string } | null>` — o retorno GANHA `pinnedText`
-  - `<ChannelFeed messages now channel />` — ganha `channel`
 
 - [ ] **Step 1: `feed.ts` — colunas novas, mídia normalizada, resposta e fixada**
 
@@ -2063,31 +2092,7 @@ export async function loadFeed(
 ): Promise<{ channel: FeedChannel; messages: FeedMessage[]; pinnedText: string } | null> {
 ```
 
-- [ ] **Step 2: `channel-feed.tsx` — repassar o canal**
-
-Mudar a assinatura e o `<MessageGroup>`:
-
-```tsx
-export function ChannelFeed({
-  messages,
-  channel,
-  now,
-}: {
-  messages: FeedMessage[];
-  channel: FeedChannel;
-  now: Date;
-}) {
-```
-
-e dentro do `.map`:
-
-```tsx
-            <MessageGroup message={m} channel={channel} />
-```
-
-Acrescentar `FeedChannel` ao import de tipos.
-
-- [ ] **Step 3: `app/mini/[botId]/page.tsx` — renderizar a fixada**
+- [ ] **Step 2: `app/mini/[botId]/page.tsx` — renderizar a fixada**
 
 Acrescentar o import e inserir a barra entre o cabeçalho e o feed:
 
@@ -2102,17 +2107,17 @@ import { PinnedBar } from "@/components/telegram/pinned-bar";
       <ChannelFooter />
 ```
 
-- [ ] **Step 4: Verificar**
+- [ ] **Step 3: Verificar**
 
 Run: `npx tsc --noEmit && npm test && npm run build`
 Expected: typecheck só com os 6 erros de baseline; testes verdes; build passa com `ƒ /mini/[botId]`.
 
 Restarão erros em `composer.tsx` e `feed-preview.tsx`, que as Tasks 12–14 substituem. **Se o build falhar por causa deles**, é esperado nesta task — anote no relatório e siga; a Task 14 fecha.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add lib/social-proof/feed.ts components/telegram/channel-feed.tsx app/mini/\[botId\]/page.tsx
+git add lib/social-proof/feed.ts app/mini/\[botId\]/page.tsx
 git commit -m "feat(prova-social): feed carrega dona, midia em lista, resposta e fixada"
 ```
 
@@ -2534,7 +2539,7 @@ git commit -m "feat(prova-social): actions de duplicar, fixar e reordenar"
 - Produces:
   - `<ChannelCard value: ChannelInput; onChange: (v: ChannelInput) => void />`
   - `<OwnerCard value: ChannelInput; onChange: (v: ChannelInput) => void />`
-  - `<MessageList messages; selectedId; onSelect; onReorder; onDuplicate; onPin; onDelete; onNew />`
+  - `<MessageList messages; selectedId; pinnedId; onSelect; onReorder; onDuplicate; onPin; onDelete; onNew />`
 
 Todos `"use client"`. Usam os tokens do dashboard — são tela de console, não Mini App.
 
@@ -2761,6 +2766,9 @@ export function MessageList({
   pinnedId,
   onSelect,
   onReorder,
+  onDuplicate,
+  onPin,
+  onDelete,
   onNew,
 }: {
   messages: SocialProofMessage[];
@@ -2768,9 +2776,13 @@ export function MessageList({
   pinnedId: string | null;
   onSelect: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
+  onDuplicate: (id: string) => void;
+  onPin: (id: string) => void;
+  onDelete: (id: string) => void;
   onNew: () => void;
 }) {
   const [arrastando, setArrastando] = useState<number | null>(null);
+  const [menuAberto, setMenuAberto] = useState<string | null>(null);
 
   function soltar(destino: number) {
     if (arrastando === null) return;
@@ -2820,6 +2832,56 @@ export function MessageList({
           </div>
 
           <span className="text-xs text-(--text-muted)">{m.views_count}</span>
+
+          {/* Menu da linha. As mesmas ações existem no editor, mas agir direto
+              na linha — sem precisar selecionar antes — é o caminho rápido, e
+              é o que o mockup mostra. */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Ações da mensagem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuAberto(menuAberto === m.id ? null : m.id);
+              }}
+              className="px-1 text-(--text-muted) hover:text-(--text-primary)"
+            >
+              ⋮
+            </button>
+
+            {menuAberto === m.id && (
+              <div
+                className="absolute right-0 top-6 z-10 w-36 overflow-hidden rounded-lg border border-(--border-default) bg-(--bg-overlay)"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {(
+                  [
+                    { rotulo: "Duplicar", acao: () => onDuplicate(m.id), perigo: false },
+                    {
+                      rotulo: pinnedId === m.id ? "Desafixar" : "Fixar",
+                      acao: () => onPin(m.id),
+                      perigo: false,
+                    },
+                    { rotulo: "Excluir", acao: () => onDelete(m.id), perigo: true },
+                  ] as const
+                ).map((op) => (
+                  <button
+                    key={op.rotulo}
+                    type="button"
+                    onClick={() => {
+                      setMenuAberto(null);
+                      op.acao();
+                    }}
+                    className={`block w-full px-3 py-2 text-left text-sm hover:bg-(--bg-hover) ${
+                      op.perigo ? "text-(--red)" : "text-(--text-secondary)"
+                    }`}
+                  >
+                    {op.rotulo}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       ))}
 
@@ -3419,7 +3481,11 @@ export function ComposerShell({
   messages: SocialProofMessage[];
 }) {
   const [pending, start] = useTransition();
-  const [erro, setErro] = useState<string | null>(null);
+  // Dois estados de erro em vez de um: falha ao salvar o canal aparece no
+  // banner do topo, falha ao salvar a mensagem aparece no editor — perto do
+  // botão que a causou. Um banner só empurraria o erro pra longe da ação.
+  const [erroCanal, setErroCanal] = useState<string | null>(null);
+  const [erroMensagem, setErroMensagem] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState<MessageInput | null>(null);
   const [senderRapido, setSenderRapido] = useState<SenderKind>("owner");
@@ -3440,12 +3506,19 @@ export function ComposerShell({
   const pinnedText = messages.find((m) => m.id === pinnedId)?.content_text ?? "";
   const indice = selecionada ? messages.findIndex((m) => m.id === selecionada) : -1;
 
-  /** Roda uma action e mostra o erro dela sem lançar. */
-  function correr(fn: () => Promise<{ ok: true } | { ok: false; error: string }>) {
-    setErro(null);
+  /**
+   * Roda uma action e mostra o erro dela sem lançar.
+   * `onde` escolhe qual superfície recebe a mensagem.
+   */
+  function correr(
+    fn: () => Promise<{ ok: true } | { ok: false; error: string }>,
+    onde: "canal" | "mensagem",
+  ) {
+    const setar = onde === "canal" ? setErroCanal : setErroMensagem;
+    setar(null);
     start(async () => {
       const r = await fn();
-      if (!r.ok) setErro(r.error);
+      if (!r.ok) setar(r.error);
     });
   }
 
@@ -3477,7 +3550,7 @@ export function ComposerShell({
           </a>
           <button
             type="button"
-            onClick={() => correr(() => saveChannel(botId, canal))}
+            onClick={() => correr(() => saveChannel(botId, canal), "canal")}
             disabled={pending}
             className="rounded-lg bg-(--accent) px-4 py-2 text-sm font-medium text-(--on-accent) disabled:opacity-50"
           >
@@ -3486,9 +3559,9 @@ export function ComposerShell({
         </div>
       </header>
 
-      {erro && (
+      {erroCanal && (
         <p className="mb-4 rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">
-          {erro}
+          {erroCanal}
         </p>
       )}
 
@@ -3501,9 +3574,23 @@ export function ComposerShell({
             selectedId={selecionada}
             pinnedId={pinnedId}
             onSelect={selecionar}
-            onReorder={(ids) => correr(() => reorderMessages(botId, ids))}
+            onReorder={(ids) => correr(() => reorderMessages(botId, ids), "mensagem")}
+            onDuplicate={(id) => correr(() => duplicateMessage(id, botId), "mensagem")}
+            // Fixar a que já está fixada desafixa — é o par natural do rótulo
+            // "Desafixar" que a lista mostra nesse caso.
+            onPin={(id) =>
+              correr(() => setPinnedMessage(botId, pinnedId === id ? null : id), "mensagem")
+            }
+            onDelete={(id) => {
+              correr(() => deleteMessage(id, botId), "mensagem");
+              if (selecionada === id) {
+                setSelecionada(null);
+                setRascunho(null);
+              }
+            }}
             onNew={() => {
               setSelecionada(null);
+              setErroMensagem(null);
               setRascunho(mensagemVazia());
             }}
           />
@@ -3521,8 +3608,9 @@ export function ComposerShell({
             onSenderKindChange={setSenderRapido}
             disabled={pending}
             onSend={(text) =>
-              correr(() =>
-                saveMessage(botId, { ...mensagemVazia(senderRapido), content_text: text }),
+              correr(
+                () => saveMessage(botId, { ...mensagemVazia(senderRapido), content_text: text }),
+                "mensagem",
               )
             }
           />
@@ -3534,21 +3622,26 @@ export function ComposerShell({
             index={indice >= 0 ? indice : messages.length}
             onChange={setRascunho}
             saving={pending}
-            error={null}
-            onSave={() => correr(() => saveMessage(botId, rascunho))}
-            onDuplicate={() =>
-              selecionada && correr(() => duplicateMessage(selecionada, botId))
-            }
-            onReply={() =>
-              setRascunho({ ...mensagemVazia(), reply_to_id: selecionada })
-            }
-            onPin={() => selecionada && correr(() => setPinnedMessage(botId, selecionada))}
+            error={erroMensagem}
+            onSave={() => correr(() => saveMessage(botId, rascunho), "mensagem")}
+            onDuplicate={() => {
+              if (selecionada) correr(() => duplicateMessage(selecionada, botId), "mensagem");
+            }}
+            onReply={() => setRascunho({ ...mensagemVazia(), reply_to_id: selecionada })}
+            onPin={() => {
+              if (selecionada) {
+                correr(
+                  () => setPinnedMessage(botId, pinnedId === selecionada ? null : selecionada),
+                  "mensagem",
+                );
+              }
+            }}
             onDelete={() => {
               if (!selecionada) {
                 setRascunho(null);
                 return;
               }
-              correr(() => deleteMessage(selecionada, botId));
+              correr(() => deleteMessage(selecionada, botId), "mensagem");
               setSelecionada(null);
               setRascunho(null);
             }}

@@ -99,11 +99,25 @@ export function FeedPreview({
   messages,
   draft,
   pinnedText,
+  selectedId,
+  disabled,
+  onSelect,
+  onReorder,
+  onDuplicate,
+  onPin,
+  onDelete,
 }: {
   channel: ChannelInput;
   messages: SocialProofMessage[];
   draft: MessageInput | null;
   pinnedText: string;
+  selectedId?: string | null;
+  disabled?: boolean;
+  onSelect?: (id: string) => void;
+  onReorder?: (orderedIds: string[]) => void;
+  onDuplicate?: (id: string) => void;
+  onPin?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const porId = new Map(messages.map((m) => [m.id, m]));
   const rascunho = draft ? draftToFeedMessage(draft, porId, channel) : null;
@@ -147,7 +161,19 @@ export function FeedPreview({
         <ChatBackdrop />
         <ChannelHeader channel={feedChannel} />
         <PinnedBar text={pinnedText} />
-        <ChannelFeed messages={lista} channel={feedChannel} now={new Date()} />
+        <ChannelFeed 
+          messages={lista} 
+          channel={feedChannel} 
+          now={new Date()} 
+          originalIds={messages.map(m => m.id)} // Pass original IDs so we can reorder them
+          selectedId={selectedId}
+          disabled={disabled}
+          onSelect={onSelect}
+          onReorder={onReorder}
+          onDuplicate={onDuplicate}
+          onPin={onPin}
+          onDelete={onDelete}
+        />
         <ChannelFooter />
       </div>
     </section>

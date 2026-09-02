@@ -15,7 +15,6 @@ import {
 } from "@/lib/actions/social-proof-actions";
 import { ChannelCard } from "@/components/dashboard/social-proof/channel-card";
 import { OwnerCard } from "@/components/dashboard/social-proof/owner-card";
-import { MessageList } from "@/components/dashboard/social-proof/message-list";
 import { MessageEditor } from "@/components/dashboard/social-proof/message-editor";
 import { QuickCompose } from "@/components/dashboard/social-proof/quick-compose";
 import { FeedPreview } from "@/components/dashboard/social-proof/feed-preview";
@@ -185,16 +184,19 @@ export function ComposerShell({
         <div className="space-y-4">
           <ChannelCard value={canal} onChange={setCanal} />
           <OwnerCard value={canal} onChange={setCanal} />
-          <MessageList
+        </div>
+
+        <div className="flex flex-col items-center sticky top-6 self-start">
+          <FeedPreview
+            channel={canal}
             messages={messages}
+            draft={rascunho}
+            pinnedText={pinnedText}
             selectedId={selecionada}
-            pinnedId={pinnedId}
             disabled={pending}
             onSelect={selecionar}
             onReorder={(ids) => correr(() => reorderMessages(botId, ids), "mensagem")}
             onDuplicate={(id) => correr(() => duplicateMessage(id, botId), "mensagem")}
-            // Fixar a que já está fixada desafixa — é o par natural do rótulo
-            // "Desafixar" que a lista mostra nesse caso.
             onPin={(id) =>
               correr(() => setPinnedMessage(botId, pinnedId === id ? null : id), "mensagem")
             }
@@ -205,20 +207,6 @@ export function ComposerShell({
                 setRascunho(null);
               }
             }}
-            onNew={() => {
-              setSelecionada(null);
-              setErroMensagem(null);
-              setRascunho(mensagemVazia());
-            }}
-          />
-        </div>
-
-        <div className="flex flex-col items-center sticky top-6 self-start">
-          <FeedPreview
-            channel={canal}
-            messages={messages}
-            draft={rascunho}
-            pinnedText={pinnedText}
           />
           <QuickCompose
             senderKind={senderRapido}
@@ -237,6 +225,19 @@ export function ComposerShell({
               return true;
             }}
           />
+          
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setSelecionada(null);
+              setErroMensagem(null);
+              setRascunho(mensagemVazia());
+            }}
+            className="mt-3 w-full max-w-[380px] rounded-xl border border-dashed border-(--border-default) py-3 text-sm font-medium text-(--text-secondary) hover:border-(--accent) hover:text-(--text-primary) transition-colors bg-(--bg-overlay) disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            + Nova mensagem detalhada
+          </button>
           {/* Ações da linha e da composição rápida funcionam sem editor aberto,
               e nesse estado o MessageEditor não existe pra mostrar o erro. */}
           <AnimatePresence>

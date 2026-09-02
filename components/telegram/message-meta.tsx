@@ -4,7 +4,16 @@ import { formatClock, formatViews } from "@/lib/social-proof/format";
  * Rodapé da bolha: hora e, quando há, o olhinho com a contagem de views.
  * Alinhado à direita e na mesma linha do fim do texto, como no Telegram.
  */
-export function MessageMeta({ at, views }: { at: Date; views: number }) {
+export function MessageMeta({
+  at,
+  views,
+  override,
+}: {
+  at: Date;
+  views: number;
+  /** "HH:MM" fixo pelo tenant. Quando presente, ignora o cálculo do offset. */
+  override?: string | null;
+}) {
   const temViews = views > 0;
 
   return (
@@ -35,7 +44,7 @@ export function MessageMeta({ at, views }: { at: Date; views: number }) {
           <span>{formatViews(views)}</span>
         </>
       )}
-      <span>{formatClock(at)}</span>
+      <span>{override && override.trim() !== "" ? override : formatClock(at)}</span>
     </span>
   );
 }

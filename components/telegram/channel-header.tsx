@@ -22,6 +22,29 @@ export function ChannelHeader({ channel }: { channel: FeedChannel }) {
         flexShrink: 0,
       }}
     >
+      <span
+        aria-hidden
+        style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, color: "var(--tgc-link)" }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {channel.unreadBadge > 0 && (
+          <span
+            style={{
+              background: "var(--tgc-button)",
+              color: "var(--tgc-button-text)",
+              borderRadius: 12,
+              padding: "1px 7px",
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            {channel.unreadBadge}
+          </span>
+        )}
+      </span>
+
       {channel.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img

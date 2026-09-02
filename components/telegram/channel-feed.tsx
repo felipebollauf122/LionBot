@@ -1,17 +1,12 @@
+"use client";
+
 import { useState } from "react";
 import type { FeedChannel, FeedMessage } from "@/lib/social-proof/types";
 import { groupMessages } from "@/lib/social-proof/grouping";
+import { moveItem } from "@/lib/social-proof/reorder";
 import { formatDaySeparator, isSameDay } from "@/lib/social-proof/format";
 import { MessageGroup } from "@/components/telegram/message-group";
 import { DateSeparator } from "@/components/telegram/date-separator";
-
-function moveItem<T>(arr: T[], from: number, to: number): T[] {
-  if (from === to || from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr;
-  const copia = [...arr];
-  const [removido] = copia.splice(from, 1);
-  copia.splice(to, 0, removido);
-  return copia;
-}
 
 export function ChannelFeed({
   messages,

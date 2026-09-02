@@ -37,6 +37,15 @@
   --tgc-reaction-bg: rgba(255, 255, 255, 0.10);
   --tgc-reply-bar: var(--tgc-link);
 
+  /* Afordancias de EDICAO, usadas so pela previa do console. O Mini App publico
+     nunca passa os handlers, entao nada disto aparece pro lead — mas os tokens
+     moram aqui porque quem os desenha vive em components/telegram/, e a regra
+     desse diretorio e nao referenciar token do dashboard. */
+  --tgc-selected: rgba(82, 136, 193, 0.18);
+  --tgc-menu-bg: #1c2733;
+  --tgc-menu-border: rgba(255, 255, 255, 0.10);
+  --tgc-danger: #e5484d;
+
   color: var(--tgc-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;

@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import type { FeedChannel, GroupedMessage } from "@/lib/social-proof/types";
 import { TgAvatar } from "@/components/telegram/avatar";
@@ -47,19 +49,28 @@ export function MessageGroup({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onClick={onClick}
-      className={`relative group ${selected ? "bg-[var(--tgc-accent)]/10" : "hover:bg-black/20"} transition-colors`}
+      className="relative group transition-colors"
       style={{
         display: "flex",
         alignItems: "flex-end",
         gap: 6,
         padding: "4px 8px",
         marginBottom: message.isLastOfGroup ? 8 : 2,
-        cursor: isDraft ? "default" : "pointer",
+        cursor: isDraft ? "default" : onClick ? "pointer" : "default",
         opacity: isDraft ? 0.7 : 1,
+        // --tgc-accent nao existe em theme.css; o realce usa --tgc-selected,
+        // que foi acrescentado la. Sem isso a linha selecionada ficava invisivel.
+        background: selected ? "var(--tgc-selected)" : undefined,
       }}
     >
       <TgAvatar name={sender.name} url={sender.avatarUrl} visible={message.isLastOfGroup} />
-      <div className="flex-1 min-w-0 pointer-events-none">
+      <div
+        className="flex-1 min-w-0"
+        // pointer-events-none so quando a LINHA e clicavel (console). No Mini App
+        // publico nao ha onClick, e desabilitar o ponteiro aqui matava os
+        // controles de video da bolha para o lead.
+        style={{ pointerEvents: onClick ? "none" : undefined }}
+      >
         <MessageBubble message={message} channel={channel} />
       </div>
 
@@ -72,7 +83,8 @@ export function MessageGroup({
               e.stopPropagation();
               setMenuAberto(!menuAberto);
             }}
-            className="p-1.5 rounded-full bg-black/50 text-white hover:bg-black/80 backdrop-blur-md"
+            className="p-1.5 rounded-full backdrop-blur-md"
+            style={{ background: "var(--tgc-veil)", color: "var(--tgc-text)" }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
           </button>
@@ -92,7 +104,8 @@ export function MessageGroup({
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -5 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-8 z-30 w-36 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl"
+                  className="absolute right-0 top-8 z-30 w-36 overflow-hidden rounded-lg border shadow-xl"
+                  style={{ background: "var(--tgc-menu-bg)", borderColor: "var(--tgc-menu-border)" }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {onDuplicate && (
@@ -104,7 +117,8 @@ export function MessageGroup({
                         setMenuAberto(false);
                         onDuplicate();
                       }}
-                      className="block w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      className="block w-full px-3 py-2 text-left text-sm"
+                      style={{ color: "var(--tgc-text)" }}
                     >
                       Duplicar
                     </button>
@@ -118,7 +132,8 @@ export function MessageGroup({
                         setMenuAberto(false);
                         onPin();
                       }}
-                      className="block w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                      className="block w-full px-3 py-2 text-left text-sm"
+                      style={{ color: "var(--tgc-text)" }}
                     >
                       Fixar / Desafixar
                     </button>
@@ -132,7 +147,8 @@ export function MessageGroup({
                         setMenuAberto(false);
                         onDelete();
                       }}
-                      className="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-800 hover:text-red-300"
+                      className="block w-full px-3 py-2 text-left text-sm"
+                      style={{ color: "var(--tgc-danger)" }}
                     >
                       Excluir
                     </button>

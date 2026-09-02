@@ -8,6 +8,15 @@ import { offsetToDate } from "@/lib/social-proof/format";
 export const GROUP_GAP_SECONDS = 900;
 
 function sameSender(a: FeedMessage, b: FeedMessage): boolean {
+  // Remetentes de espécies diferentes nunca agrupam, mesmo com nome igual: a
+  // tela os mostra como pessoas distintas (a dona ganha selo e o avatar do
+  // canal), e um avatar só cobrindo os dois seria mentira visual.
+  if (a.senderKind !== b.senderKind) return false;
+
+  // Mensagens da dona tiram identidade do CANAL — o senderName da mensagem é
+  // ignorado na renderização, então não pode separar grupos aqui.
+  if (a.senderKind === "owner") return true;
+
   return a.senderName.trim() === b.senderName.trim();
 }
 

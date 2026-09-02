@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renameButtonEdges, type ButtonLike, type RenamableEdge } from "@/components/dashboard/flow-builder/flow-utils";
+import { renameButtonEdges, buttonHandleIds, validSourceHandles, type ButtonLike, type RenamableEdge } from "@/components/dashboard/flow-builder/flow-utils";
 
 describe("renameButtonEdges", () => {
   it("moves the edge target (not just the handle label) when a go_to_node button's destination changes", () => {
@@ -102,5 +102,38 @@ describe("renameButtonEdges", () => {
     const result = renameButtonEdges(nodeId, oldButtons, newButtons, edges);
 
     expect(result).toBe(edges);
+  });
+});
+
+describe("buttonHandleIds / validSourceHandles — botões sem callback_data", () => {
+  it("não dá handle de saída pro botão de Mini App (a engine devolve web_app, sem callback_data)", () => {
+    // server/src/engine/nodes/button.ts monta { text, web_app } pro "miniapp",
+    // exatamente como faz { text, url } pro "open_url": nenhum dos dois gera
+    // callback_data, então nenhum update chega ao servidor e uma aresta saindo
+    // daí NUNCA dispararia — o lead toca, o app abre, o fluxo trava.
+    expect(buttonHandleIds({ id: "b1", action: "miniapp", value: "x" }, 0)).toEqual([]);
+    expect(buttonHandleIds({ id: "b1", action: "open_url", value: "x" }, 0)).toEqual([]);
+    // Contraprova: ação comum continua com o seu handle.
+    expect(buttonHandleIds({ id: "b1", action: "callback", value: "x" }, 0)).toEqual(["x"]);
+  });
+
+  it("poda a aresta velha quando um botão vira Mini App (a contagem cai de 1 pra 0)", () => {
+    // Antes da correção "miniapp" devolvia 1 handle: a contagem batia 1→1, o
+    // rename PRESERVAVA a aresta e validSourceHandles ainda a considerava
+    // válida — sobrava uma conexão desenhada que nunca ia disparar.
+    const nodeId = "node1";
+    const oldButtons: ButtonLike[] = [{ id: "b1", action: "callback", value: "x" }];
+    const newButtons: ButtonLike[] = [{ id: "b1", action: "miniapp", value: "x" }];
+    const edges: RenamableEdge[] = [
+      { id: "e1", source: nodeId, sourceHandle: "x", target: "proximo" },
+    ];
+
+    // Contagem 1→0: o rename não tem par pra renomear e devolve tudo intacto.
+    const renamed = renameButtonEdges(nodeId, oldButtons, newButtons, edges);
+    // Quem apaga é a poda — e ela precisa NÃO ver mais o handle "x".
+    const valid = validSourceHandles("button", { buttons: newButtons });
+    expect(valid).not.toBeNull();
+    expect(valid!.has("x")).toBe(false);
+    expect(renamed.filter((e) => !e.sourceHandle || valid!.has(e.sourceHandle))).toHaveLength(0);
   });
 });

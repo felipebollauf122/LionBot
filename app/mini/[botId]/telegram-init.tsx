@@ -9,7 +9,7 @@ import { useEffect } from "react";
  * servidor, e este componente só liga o SDK. Import dinâmico porque
  * @twa-dev/sdk toca em window no topo do módulo e quebraria o SSR.
  */
-export function TelegramInit() {
+export function TelegramInit({ botId }: { botId: string }) {
   useEffect(() => {
     let cancelado = false;
 
@@ -31,12 +31,30 @@ export function TelegramInit() {
         // Versões antigas do cliente não têm esses métodos. O feed continua
         // correto; só a moldura fica na cor padrão.
       }
+
+      // Confirma no servidor que quem abriu veio mesmo de dentro do Telegram
+      // (/api/mini/session valida o HMAC do initData). É deliberadamente
+      // fire-and-forget: o feed já está pintado e NÃO pode depender disto —
+      // esperar traria de volta a tela branca que o SSR existe pra evitar.
+      // Rede caída ou 401 não muda nada na tela, e o catch existe pra não
+      // deixar erro nenhum no console do lead.
+      const initData = WebApp.initData;
+      if (!initData) return; // aberto fora do Telegram: não há o que validar
+      try {
+        await fetch("/api/mini/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botId, initData }),
+        });
+      } catch {
+        // Silêncio proposital.
+      }
     })();
 
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [botId]);
 
   return null;
 }

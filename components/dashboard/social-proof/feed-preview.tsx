@@ -64,8 +64,22 @@ export function FeedPreview({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-(--text-secondary)">
-        Prévia — é exatamente isto que o lead vê
+        {channel.is_active
+          ? "Prévia — é exatamente isto que o lead vê"
+          : "Prévia — o canal está INATIVO"}
       </h2>
+
+      {/* loadFeed filtra .eq("is_active", true) e a coluna nasce `false`: com
+          o canal desmarcado o lead não vê nada disto, vê 404. A prévia
+          continua visível (é o que o tenant está montando), mas dizer
+          "é exatamente isto que o lead vê" aqui seria mentira. */}
+      {!channel.is_active && (
+        <p className="rounded-lg border border-(--amber) bg-(--amber)/10 px-3 py-2 text-sm text-(--amber)">
+          Isto é só a prévia. Com o canal <strong>inativo</strong>, o lead que tocar
+          no botão recebe uma página de erro — nada deste feed aparece pra ele.
+          Marque <strong>&ldquo;Ativo&rdquo;</strong> na seção Canal e salve pra publicar.
+        </p>
+      )}
 
       <div
         className="tg-app overflow-hidden rounded-[28px] border-4 border-(--border-default)"

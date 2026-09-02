@@ -46,5 +46,10 @@ create policy "Tenants can manage own social proof messages"
   on public.social_proof_messages for all
   using (tenant_id = auth.uid() or public.is_admin());
 
+-- channel_id e não bot_id: as duas leituras reais (lib/social-proof/feed.ts e
+-- lib/actions/social-proof-actions.ts) filtram por channel_id. O Postgres não
+-- indexa FK sozinho, então com o índice em bot_id toda abertura do Mini App
+-- caía em seq scan. created_at fecha o índice porque é o desempate do
+-- .order("position") nos dois leitores.
 create index idx_social_proof_messages_feed
-  on public.social_proof_messages (bot_id, is_active, position);
+  on public.social_proof_messages (channel_id, is_active, position, created_at);

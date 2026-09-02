@@ -41,7 +41,6 @@ export function SocialProofComposer({
     media_type: null,
     offset_seconds: 600,
     views_count: 0,
-    position: messages.length + 1,
   });
 
   function salvarCanal() {
@@ -60,7 +59,9 @@ export function SocialProofComposer({
         setErro(r.error);
         return;
       }
-      setNova({ ...nova, content_text: "", media_url: null, media_type: null, position: nova.position + 1 });
+      // Sem `position`: quem numera é a action (max+1 do canal). O contador
+      // que existia aqui colidia depois de apagar uma mensagem do meio.
+      setNova({ ...nova, content_text: "", media_url: null, media_type: null });
     });
   }
 

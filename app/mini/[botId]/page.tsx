@@ -17,7 +17,10 @@ import "@/components/telegram/theme.css";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Canal",
+  // `absolute` porque o template do root layout é "%s · LionBot": um title
+  // string viraria "Canal · LionBot" e entregaria a marca da plataforma
+  // justamente na tela cujo propósito é parecer um canal do Telegram.
+  title: { absolute: "Canal" },
   // Mini App não é página pra buscador: é destino de botão dentro do Telegram.
   robots: { index: false, follow: false },
 };
@@ -38,7 +41,7 @@ export default async function MiniAppPage({
 
   return (
     <div className="tg-app tg-app--fullscreen">
-      <TelegramInit />
+      <TelegramInit botId={botId} />
       <ChatBackdrop />
       <ChannelHeader channel={feed.channel} />
       <ChannelFeed messages={feed.messages} now={now} />

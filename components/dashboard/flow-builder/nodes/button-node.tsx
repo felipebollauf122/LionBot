@@ -92,13 +92,16 @@ export function ButtonNode({ data, selected }: NodeProps) {
                   )}
                   <span className="min-w-0 max-w-full truncate">{btn.text}</span>
                 </div>
-                {!isPayment && btn.action !== "open_url" && (
+                {!isPayment && handles.length > 0 && (
                   // Absoluto na borda direita do NÓ (card + px-4 do BaseNode =
                   // 28px até o centro do ponto), alinhado à altura do botão:
                   // a aresta sai visivelmente DESTE botão, estilo n8n.
-                  // "Abrir URL" fica de fora: a engine nunca gera callback_data
-                  // pra esse botão (o Telegram abre a URL direto no cliente),
-                  // então oferecer um handle aqui só criaria conexão morta.
+                  // A condição é `handles.length > 0` e não uma lista de ações
+                  // repetida aqui: quem decide é buttonHandleIds (a fonte de
+                  // verdade), então "Abrir URL" e "Abrir Mini App" — que a
+                  // engine entrega sem callback_data, e que portanto nunca
+                  // fariam a aresta disparar — ficam de fora sozinhos, e uma
+                  // ação nova sem callback entra pelo mesmo caminho.
                   <Handle
                     type="source"
                     position={Position.Right}

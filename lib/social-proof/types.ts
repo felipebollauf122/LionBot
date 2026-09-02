@@ -54,5 +54,6 @@ export interface MessageInput {
   media_type: "image" | "video" | null;
   offset_seconds: number;
   views_count: number;
-  position: number;
+  // `position` NÃO entra aqui de propósito: quem calcula é a Server Action
+  // (max+1 do canal). Vindo do cliente ela colidia — ver lib/social-proof/position.ts.
 }

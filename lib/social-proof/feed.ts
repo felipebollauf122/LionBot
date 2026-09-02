@@ -19,6 +19,18 @@ export async function loadFeed(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
+  // Bot desativado apaga TODAS as superfícies públicas — app/t/page.tsx e
+  // app/go/route.ts já checam is_active, e sem isto o Mini App era a única que
+  // continuava servindo conteúdo de um bot que o tenant desligou.
+  const { data: bot } = await supabase
+    .from("bots")
+    .select("id")
+    .eq("id", botId)
+    .eq("is_active", true)
+    .single();
+
+  if (!bot) return null;
+
   const { data: canal } = await supabase
     .from("social_proof_channels")
     .select("id,title,avatar_url,subscribers_label,is_verified")
@@ -35,7 +47,12 @@ export async function loadFeed(
     )
     .eq("channel_id", canal.id)
     .eq("is_active", true)
-    .order("position", { ascending: true });
+    // created_at desempata: `position` pode repetir (nada no banco impede), e
+    // ordenar só por ela deixa o Postgres livre pra devolver ordem diferente a
+    // cada requisição — inclusive ordem diferente da que o tenant vê no
+    // composer. O mesmo desempate está em lib/actions/social-proof-actions.ts.
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
 
   return {
     channel: {

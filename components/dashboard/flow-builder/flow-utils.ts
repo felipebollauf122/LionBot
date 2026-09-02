@@ -220,15 +220,19 @@ export interface ButtonLike {
  *
  * - "payment": 2 handles fixos, derivados do id (nunca do value) — bate com
  *   o callback_data que o botão de pagamento gera (button-node.tsx).
- * - "open_url": nenhum handle — o Telegram abre a URL direto no cliente, o
- *   engine nunca gera callback_data pra esse botão.
+ * - "open_url" e "miniapp": nenhum handle — os dois viram botão que o cliente
+ *   do Telegram abre sozinho (url e web_app, respectivamente), e a engine não
+ *   gera callback_data pra nenhum dos dois (server/src/engine/nodes/button.ts).
+ *   Sem callback_data não chega update nenhum ao servidor, então uma aresta
+ *   saindo daí nunca dispararia: o lead tocaria, o app abriria, e o fluxo
+ *   ficaria parado pra sempre.
  * - qualquer outra ação: 1 handle, derivado do value (o que a engine usa de
  *   verdade no callback_data comum — server/src/engine/nodes/button.ts).
  */
 export function buttonHandleIds(b: ButtonLike, index: number): string[] {
   const btnId = String(b.id ?? "").trim() || `btn_idx_${index}`;
   if (b.action === "payment") return [`paid:${btnId}`, `not_paid:${btnId}`];
-  if (b.action === "open_url") return [];
+  if (b.action === "open_url" || b.action === "miniapp") return [];
   const plain = String(b.value ?? "").trim() || String(b.id ?? "").trim() || `btn_idx_${index}`;
   return [plain];
 }

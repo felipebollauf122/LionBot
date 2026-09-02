@@ -1,0 +1,101 @@
+/*
+ * Tokens do clone de canal do Telegram.
+ *
+ * TUDO aqui está sob .tg-app, nada em :root. O Next não descarta a folha de
+ * estilo ao navegar entre rotas (ver 01-app/01-getting-started/11-css.md), e o
+ * escopo é o que garante que essas regras não alcancem nenhuma outra tela mesmo
+ * quando a folha continua carregada.
+ *
+ * Escopo em .tg-app: o layout raiz do app é synthwave (app/globals.css) e nada
+ * dele pode vazar pra cá. Nenhum token do dashboard é referenciado neste arquivo.
+ *
+ * A cor da bolha NÃO é exposta pelo SDK — só bg, text, hint, link, button e
+ * secondary_bg. --tgc-bubble é derivada de secondary_bg com fallback nos valores
+ * do tema oficial. Num tema customizado exótico pode desviar (spec §6).
+ */
+
+.tg-app {
+  --tgc-bg: var(--tg-theme-bg-color, #17212b);
+  --tgc-text: var(--tg-theme-text-color, #ffffff);
+  --tgc-hint: var(--tg-theme-hint-color, #708499);
+  --tgc-link: var(--tg-theme-link-color, #6ab3f3);
+  --tgc-button: var(--tg-theme-button-color, #5288c1);
+  --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
+  --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #232e3c);
+  --tgc-header-bg: var(--tg-theme-header-bg-color, #17212b);
+
+  --tgc-bubble: var(--tg-theme-secondary-bg-color, #182533);
+  --tgc-bubble-radius: 12px;
+  --tgc-bubble-tail-radius: 6px;
+
+  /* Véu escuro sobre o fundo do chat, onde ficam pills e metadados. */
+  --tgc-veil: rgba(0, 0, 0, 0.28);
+
+  color: var(--tgc-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Layout comum ao Mini App e ao preview do composer.
+ * Os tokens acima e este bloco valem nos dois; só o modificador --fullscreen
+ * difere, porque o preview do console NÃO pode cobrir a tela.
+ */
+.tg-app {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tgc-bg);
+}
+
+/*
+ * Só o Mini App de verdade. Separado de .tg-app de propósito: se o
+ * position:fixed estivesse no bloco base, o preview dentro do console cobriria
+ * o dashboard inteiro.
+ *
+ * Altura por --tg-viewport-stable-height, nunca 100vh. No iOS dentro do
+ * Telegram, 100vh conta uma barra de navegador que não existe ali e o rodapé do
+ * feed fica cortado. A variante "stable" não oscila quando o teclado abre.
+ */
+.tg-app--fullscreen {
+  position: fixed;
+  inset: 0;
+  height: var(--tg-viewport-stable-height, 100dvh);
+}
+
+.tg-feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+}
+
+/* A bolha. O rabinho só existe na última mensagem do grupo. */
+.tg-bubble {
+  position: relative;
+  max-width: min(80%, 480px);
+  width: fit-content;
+  padding: 6px 9px 7px;
+  border-radius: var(--tgc-bubble-radius);
+  background: var(--tgc-bubble);
+  font-size: 16px;
+  line-height: 1.3125;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.tg-bubble--tail {
+  border-bottom-left-radius: var(--tgc-bubble-tail-radius);
+}
+
+/* Mídia encostada nas bordas da bolha, como no Telegram. */
+.tg-bubble--media {
+  padding: 3px 3px 7px;
+}
+
+.tg-bubble--media-only {
+  padding: 3px;
+}

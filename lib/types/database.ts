@@ -283,3 +283,32 @@ export interface TrackingEvent {
   sent_to_utmify: boolean;
   created_at: string;
 }
+
+export interface SocialProofChannel {
+  id: string;
+  tenant_id: string;
+  bot_id: string;
+  title: string;
+  avatar_url: string | null;
+  subscribers_label: string;
+  is_verified: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SocialProofMessage {
+  id: string;
+  tenant_id: string;
+  bot_id: string;
+  channel_id: string;
+  sender_name: string;
+  sender_avatar_url: string | null;
+  content_text: string | null;
+  media_url: string | null;
+  media_type: "image" | "video" | null;
+  offset_seconds: number;
+  views_count: number;
+  position: number;
+  is_active: boolean;
+  created_at: string;
+}

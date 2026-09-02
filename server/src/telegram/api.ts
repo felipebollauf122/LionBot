@@ -45,6 +45,14 @@ export interface InlineKeyboardButton {
   callback_data?: string;
   copy_text?: { text: string };
   /**
+   * Abre um Mini App dentro do Telegram (Bot API 6.0+).
+   *
+   * A URL precisa ser HTTPS público. Diferente de `url`, é o `web_app` que faz
+   * o Telegram injetar initData e as variáveis de tema — com `url` o Mini App
+   * vira um site comum num webview, sem tema nativo e sem identificação.
+   */
+  web_app?: { url: string };
+  /**
    * Cor do botão (Bot API 8.x+).
    *   danger  → vermelho
    *   success → verde

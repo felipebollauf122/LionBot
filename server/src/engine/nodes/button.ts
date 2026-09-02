@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NodeContext, NodeResult } from "../types.js";
 import type { InlineKeyboardButton, InlineKeyboardButtonStyle } from "../../telegram/api.js";
+import { config } from "../../config.js";
 import { FacebookCapi } from "../../services/facebook-capi.js";
 import { TiktokEvents } from "../../services/tiktok-events.js";
 import { UtmifyService } from "../../services/utmify.js";
@@ -43,6 +44,17 @@ export async function handleButtonNode(ctx: NodeContext, db?: SupabaseClient): P
       // confiado direto do cliente.
       const btnId = btn.id ?? `btn_idx_${i}`;
       return [{ text: btn.text, callback_data: `${ctx.node.id}:${btnId}`, style }];
+    }
+    // Mini App de prova social. Precisa ser web_app e não url: é o que faz o
+    // Telegram abrir dentro do app, com initData e cores do tema.
+    if (btn.action === "miniapp") {
+      return [
+        {
+          text: btn.text,
+          web_app: { url: `${config.publicAppUrl}/mini/${ctx.lead.bot_id}` },
+          style,
+        },
+      ];
     }
     return [{ text: btn.text, callback_data: `${ctx.node.id}:${btn.value}`, style }];
   });

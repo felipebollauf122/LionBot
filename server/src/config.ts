@@ -16,6 +16,9 @@ export const config = {
   supabaseServiceKey: env("SUPABASE_SERVICE_ROLE_KEY"),
   redisUrl: envOptional("REDIS_URL", "redis://localhost:6379"),
   baseWebhookUrl: env("BASE_WEBHOOK_URL"), // e.g. https://your-domain.com
+  // Domínio público do front (Next.js), onde mora o Mini App de prova social.
+  // Diferente de baseWebhookUrl, que é o domínio DESTE server.
+  publicAppUrl: envOptional("PUBLIC_APP_URL", "https://lionbot.site"),
   telegramApiId: parseInt(envOptional("TELEGRAM_API_ID", "0"), 10),
   telegramApiHash: envOptional("TELEGRAM_API_HASH", ""),
   mtprotoWorkerEnabled: envOptional("MTPROTO_WORKER_ENABLED", "true") === "true",

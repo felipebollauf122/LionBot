@@ -40,7 +40,7 @@ const SALE_TYPES: { value: string; label: string }[] = [
 
 // Actions que o select conhece — qualquer outra (ex: "next" dos botões
 // clonados) ganha uma option própria pra não ser exibida como "Callback".
-const KNOWN_ACTIONS = ["callback", "go_to_node", "open_url", "payment"];
+const KNOWN_ACTIONS = ["callback", "go_to_node", "open_url", "payment", "miniapp"];
 
 // Cor do botão no Telegram (Bot API 8.x+) — não é CSS livre, é um campo
 // nativo do inline keyboard limitado pelo próprio Telegram a esses 3
@@ -158,6 +158,7 @@ export function ButtonConfig({ data, onChange, products, flowNodes = [], enabled
                 <option value="go_to_node">Ir para no</option>
                 <option value="open_url">Abrir URL</option>
                 <option value="payment">💳 Gerar Pagamento (Pix)</option>
+                <option value="miniapp">📣 Abrir Mini App (prova social)</option>
               </select>
               <button
                 onClick={() => removeButton(i)}

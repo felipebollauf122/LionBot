@@ -1,6 +1,6 @@
 "use client";
 
-import type { MessageInput, MessageKind, Reaction, SenderKind } from "@/lib/social-proof/types";
+import type { MessageInput, MessageKind, SenderKind } from "@/lib/social-proof/types";
 import { MediaPicker } from "@/components/dashboard/social-proof/media-picker";
 
 const CAMPO =
@@ -45,17 +45,23 @@ export function MessageEditor({
 }) {
   function setReacao(emoji: string, delta: number) {
     const atual = value.reactions.find((r) => r.emoji === emoji);
-    let novas: Reaction[];
+
     if (atual) {
       const count = Math.max(0, atual.count + delta);
-      novas =
+      const novas =
         count === 0
           ? value.reactions.filter((r) => r.emoji !== emoji)
           : value.reactions.map((r) => (r.emoji === emoji ? { ...r, count } : r));
-    } else {
-      novas = [...value.reactions, { emoji, count: 1 }];
+      onChange({ ...value, reactions: novas });
+      return;
     }
-    onChange({ ...value, reactions: novas });
+
+    // A reação ainda não existe. Só faz sentido criar quando o gesto é de
+    // somar — botão direito (delta negativo) num emoji zerado não tem o que
+    // subtrair, e criar a reação aí seria o oposto do que o botão promete.
+    if (delta <= 0) return;
+
+    onChange({ ...value, reactions: [...value.reactions, { emoji, count: delta }] });
   }
 
   return (

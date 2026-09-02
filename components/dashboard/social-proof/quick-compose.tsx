@@ -19,16 +19,29 @@ export function QuickCompose({
   disabled: boolean;
 }) {
   const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
 
   async function enviar() {
-    if (disabled) return;
+    // Guarda local de reentrância. O `disabled` que vem do shell reflete o
+    // `pending` do useTransition, e este caminho deixou de passar por
+    // startTransition pra poder esperar o resultado — então `pending` não cobre
+    // a janela do saveMessage. Sem esta guarda, dois Enter seguidos em rede
+    // lenta gravam a mensagem duas vezes: o envio rápido nunca tem `id`, então
+    // as duas chamadas caem no insert.
+    if (disabled || enviando) return;
+
     const limpo = texto.trim();
     if (limpo === "") return;
 
-    // Só limpa quando deu certo: limpar antes de saber apagava a mensagem do
-    // tenant em caso de falha, sem ele ter como recuperar o que digitou.
-    const ok = await onSend(limpo);
-    if (ok) setTexto("");
+    setEnviando(true);
+    try {
+      const ok = await onSend(limpo);
+      // Só limpa quando deu certo: limpar antes de saber apagaria o texto do
+      // tenant numa falha, sem ele ter como recuperar.
+      if (ok) setTexto("");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
@@ -68,7 +81,7 @@ export function QuickCompose({
         <button
           type="button"
           onClick={enviar}
-          disabled={disabled}
+          disabled={disabled || enviando}
           className="rounded-lg bg-(--accent) px-3 py-2 text-sm text-(--on-accent) disabled:opacity-50"
           aria-label="Enviar"
         >

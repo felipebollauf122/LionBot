@@ -15,16 +15,20 @@ export function QuickCompose({
 }: {
   senderKind: SenderKind;
   onSenderKindChange: (k: SenderKind) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<boolean>;
   disabled: boolean;
 }) {
   const [texto, setTexto] = useState("");
 
-  function enviar() {
+  async function enviar() {
+    if (disabled) return;
     const limpo = texto.trim();
     if (limpo === "") return;
-    onSend(limpo);
-    setTexto("");
+
+    // Só limpa quando deu certo: limpar antes de saber apagava a mensagem do
+    // tenant em caso de falha, sem ele ter como recuperar o que digitou.
+    const ok = await onSend(limpo);
+    if (ok) setTexto("");
   }
 
   return (
@@ -36,7 +40,7 @@ export function QuickCompose({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              enviar();
+              void enviar();
             }
           }}
           placeholder="Digite sua mensagem..."

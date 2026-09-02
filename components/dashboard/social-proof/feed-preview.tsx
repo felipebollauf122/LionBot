@@ -15,7 +15,29 @@ import { ChannelFeed } from "@/components/telegram/channel-feed";
 import { ChannelFooter } from "@/components/telegram/channel-footer";
 import "@/components/telegram/theme.css";
 
-function toFeedMessage(m: SocialProofMessage): FeedMessage {
+/** Resolve a citação contra as mensagens já carregadas, como lib/social-proof/feed.ts faz. */
+function resolverCitacao(
+  m: SocialProofMessage,
+  porId: Map<string, SocialProofMessage>,
+  channel: ChannelInput,
+): { replyToText: string | null; replyToSender: string | null } {
+  const alvo = m.reply_to_id ? porId.get(m.reply_to_id) : undefined;
+  if (!alvo) return { replyToText: null, replyToSender: null };
+
+  return {
+    replyToText: alvo.content_text,
+    replyToSender:
+      alvo.sender_kind === "owner"
+        ? channel.owner_name || channel.title
+        : alvo.sender_name,
+  };
+}
+
+function toFeedMessage(
+  m: SocialProofMessage,
+  porId: Map<string, SocialProofMessage>,
+  channel: ChannelInput,
+): FeedMessage {
   return {
     id: m.id,
     senderKind: m.sender_kind === "owner" ? "owner" : "member",
@@ -25,18 +47,26 @@ function toFeedMessage(m: SocialProofMessage): FeedMessage {
     contentText: m.content_text,
     media: normalizeMedia(m.media, m.media_url, m.media_type),
     reactions: Array.isArray(m.reactions) ? m.reactions : [],
-    replyToText: null,
-    replyToSender: null,
+    ...resolverCitacao(m, porId, channel),
     offsetSeconds: m.offset_seconds,
     displayTime: m.display_time,
     viewsCount: m.views_count,
   };
 }
 
-function draftToFeedMessage(d: MessageInput): FeedMessage | null {
+function draftToFeedMessage(
+  d: MessageInput,
+  porId: Map<string, SocialProofMessage>,
+  channel: ChannelInput,
+): FeedMessage | null {
   const temTexto = (d.content_text ?? "").trim() !== "";
   const temMidia = d.media.length > 0;
   if (!temTexto && !temMidia) return null;
+
+  // Mesma resolução de resolverCitacao, mas a partir do rascunho: é
+  // justamente a mensagem criada por "Responder" que precisa mostrar a
+  // citação antes de existir no banco.
+  const alvo = d.reply_to_id ? porId.get(d.reply_to_id) : undefined;
 
   return {
     id: "__rascunho__",
@@ -47,8 +77,12 @@ function draftToFeedMessage(d: MessageInput): FeedMessage | null {
     contentText: temTexto ? d.content_text : null,
     media: d.media,
     reactions: d.reactions,
-    replyToText: null,
-    replyToSender: null,
+    replyToText: alvo ? alvo.content_text : null,
+    replyToSender: alvo
+      ? alvo.sender_kind === "owner"
+        ? channel.owner_name || channel.title
+        : alvo.sender_name
+      : null,
     offsetSeconds: d.offset_seconds,
     displayTime: d.display_time,
     viewsCount: d.views_count,
@@ -66,8 +100,12 @@ export function FeedPreview({
   draft: MessageInput | null;
   pinnedText: string;
 }) {
-  const rascunho = draft ? draftToFeedMessage(draft) : null;
-  const lista = [...messages.map(toFeedMessage), ...(rascunho ? [rascunho] : [])];
+  const porId = new Map(messages.map((m) => [m.id, m]));
+  const rascunho = draft ? draftToFeedMessage(draft, porId, channel) : null;
+  const lista = [
+    ...messages.map((m) => toFeedMessage(m, porId, channel)),
+    ...(rascunho ? [rascunho] : []),
+  ];
 
   const feedChannel: FeedChannel = {
     title: channel.title || "Nome do canal",

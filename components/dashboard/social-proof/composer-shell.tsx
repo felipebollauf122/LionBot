@@ -187,13 +187,26 @@ export function ComposerShell({
             senderKind={senderRapido}
             onSenderKindChange={setSenderRapido}
             disabled={pending}
-            onSend={(text) =>
-              correr(
-                () => saveMessage(botId, { ...mensagemVazia(senderRapido), content_text: text }),
-                "mensagem",
-              )
-            }
+            onSend={async (text) => {
+              setErroMensagem(null);
+              const r = await saveMessage(botId, {
+                ...mensagemVazia(senderRapido),
+                content_text: text,
+              });
+              if (!r.ok) {
+                setErroMensagem(r.error);
+                return false;
+              }
+              return true;
+            }}
           />
+          {/* Ações da linha e da composição rápida funcionam sem editor aberto,
+              e nesse estado o MessageEditor não existe pra mostrar o erro. */}
+          {!rascunho && erroMensagem && (
+            <p className="mt-3 w-full max-w-[380px] rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">
+              {erroMensagem}
+            </p>
+          )}
         </div>
 
         {rascunho ? (
@@ -207,7 +220,14 @@ export function ComposerShell({
             onDuplicate={() => {
               if (selecionada) correr(() => duplicateMessage(selecionada, botId), "mensagem");
             }}
-            onReply={() => setRascunho({ ...mensagemVazia(), reply_to_id: selecionada })}
+            onReply={() => {
+              // Responder abre um rascunho NOVO. Sem zerar `selecionada`, o
+              // editor mostra formulário vazio enquanto "Excluir" ainda mira a
+              // mensagem original — e a apaga sem confirmação nenhuma.
+              setRascunho({ ...mensagemVazia(), reply_to_id: selecionada });
+              setSelecionada(null);
+              setErroMensagem(null);
+            }}
             onPin={() => {
               if (selecionada) {
                 correr(

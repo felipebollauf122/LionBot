@@ -1,0 +1,48 @@
+import { notFound } from "next/navigation";
+import { loadFeed } from "@/lib/social-proof/feed";
+import { ChatBackdrop } from "@/components/telegram/chat-backdrop";
+import { ChannelHeader } from "@/components/telegram/channel-header";
+import { ChannelFeed } from "@/components/telegram/channel-feed";
+import { ChannelFooter } from "@/components/telegram/channel-footer";
+import { TelegramInit } from "./telegram-init";
+import "@/components/telegram/theme.css";
+
+/**
+ * Mini App de prova social.
+ *
+ * force-dynamic porque o feed é relativo ao instante em que o lead abre: uma
+ * resposta cacheada congelaria os horários. Válido porque cacheComponents está
+ * desligado em next.config.ts — se alguém ligar, o Next 16 remove este export.
+ */
+export const dynamic = "force-dynamic";
+
+export const metadata = {
+  title: "Canal",
+  // Mini App não é página pra buscador: é destino de botão dentro do Telegram.
+  robots: { index: false, follow: false },
+};
+
+export default async function MiniAppPage({
+  params,
+}: {
+  params: Promise<{ botId: string }>;
+}) {
+  const { botId } = await params;
+  const feed = await loadFeed(botId);
+
+  if (!feed) notFound();
+
+  // Um único "agora" pra todas as mensagens: resolver offsets contra instantes
+  // diferentes produziria horários incoerentes entre si.
+  const now = new Date();
+
+  return (
+    <div className="tg-app tg-app--fullscreen">
+      <TelegramInit />
+      <ChatBackdrop />
+      <ChannelHeader channel={feed.channel} />
+      <ChannelFeed messages={feed.messages} now={now} />
+      <ChannelFooter />
+    </div>
+  );
+}

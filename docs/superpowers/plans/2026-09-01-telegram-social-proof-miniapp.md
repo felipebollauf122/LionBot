@@ -112,8 +112,11 @@ create table public.social_proof_channels (
   unique (bot_id)
 );
 alter table public.social_proof_channels enable row level security;
+-- is_admin() acompanha o padrão da migration 007: o admin da plataforma
+-- gerencia o bot do cliente, e sem isso a aba abriria vazia pra ele.
 create policy "Tenants can manage own social proof channels"
-  on public.social_proof_channels for all using (tenant_id = auth.uid());
+  on public.social_proof_channels for all
+  using (tenant_id = auth.uid() or public.is_admin());
 
 create table public.social_proof_messages (
   id uuid primary key default gen_random_uuid(),
@@ -139,7 +142,8 @@ create table public.social_proof_messages (
 );
 alter table public.social_proof_messages enable row level security;
 create policy "Tenants can manage own social proof messages"
-  on public.social_proof_messages for all using (tenant_id = auth.uid());
+  on public.social_proof_messages for all
+  using (tenant_id = auth.uid() or public.is_admin());
 
 create index idx_social_proof_messages_feed
   on public.social_proof_messages (bot_id, is_active, position);
@@ -2168,6 +2172,7 @@ Criar `lib/actions/social-proof-actions.ts`. Toda recusa prevista volta como `{ 
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isAdmin } from "@/lib/actions/admin-actions";
 import type { SocialProofChannel, SocialProofMessage } from "@/lib/types/database";
 // Os tipos vivem em types.ts: um módulo "use server" só pode exportar funções async.
 import type { ActionResult, ChannelInput, MessageInput } from "@/lib/social-proof/types";
@@ -2197,11 +2202,29 @@ export async function getSocialProof(
   };
 }
 
-/** tenant_id do bot. RLS já garante que só o dono chega aqui. */
+/**
+ * tenant_id a gravar nas linhas novas.
+ *
+ * Normalmente é o próprio usuário. Quando um admin da plataforma está mexendo
+ * no bot de um cliente, é o tenant DO BOT — senão as linhas nasceriam com o
+ * tenant errado e sumiriam da vista do dono. Mesmo desvio de
+ * lib/actions/media-actions.ts:22-29.
+ */
 async function tenantDoBot(botId: string): Promise<string | null> {
   const supabase = await createClient();
-  const { data } = await supabase.from("bots").select("tenant_id").eq("id", botId).single();
-  return (data?.tenant_id as string | undefined) ?? null;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  if (await isAdmin()) {
+    const { data: bot } = await supabase.from("bots").select("tenant_id").eq("id", botId).single();
+    return (bot?.tenant_id as string | undefined) ?? null;
+  }
+
+  // Não-admin: RLS já garante que ele só enxerga o próprio bot.
+  const { data: bot } = await supabase.from("bots").select("tenant_id").eq("id", botId).single();
+  return (bot?.tenant_id as string | undefined) ?? null;
 }
 
 export async function saveChannel(botId: string, input: ChannelInput): Promise<ActionResult> {

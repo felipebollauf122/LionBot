@@ -288,7 +288,35 @@ export async function reorderMessages(
   botId: string,
   orderedIds: string[],
 ): Promise<ActionResult> {
+  if (orderedIds.length === 0) return { ok: true };
+
   const supabase = await createClient();
+
+  // Confere a lista ANTES de escrever qualquer coisa. Uma lista parcial, ou com
+  // id que não é deste bot, faria as posições 1..N colidirem com as posições
+  // antigas das mensagens deixadas de fora — e o loop abaixo não é transacional,
+  // então metade já estaria gravada quando o problema aparecesse.
+  //
+  // A leitura passa pela RLS, então `existentes` já é só o que o tenant enxerga.
+  const { data: existentes, error: erroLeitura } = await supabase
+    .from("social_proof_messages")
+    .select("id")
+    .eq("bot_id", botId);
+
+  if (erroLeitura) {
+    return { ok: false, error: `Não deu pra ler as mensagens: ${erroLeitura.message}` };
+  }
+
+  const doBot = new Set((existentes ?? []).map((m) => m.id as string));
+  const permutacaoCompleta =
+    orderedIds.length === doBot.size && orderedIds.every((id) => doBot.has(id));
+
+  if (!permutacaoCompleta) {
+    return {
+      ok: false,
+      error: "A lista de mensagens mudou. Recarregue a página e tente de novo.",
+    };
+  }
 
   for (let i = 0; i < orderedIds.length; i++) {
     const { error } = await supabase

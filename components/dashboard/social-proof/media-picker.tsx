@@ -12,6 +12,38 @@ function tipoDoArquivo(file: File): MediaItem["type"] | null {
   return null;
 }
 
+/** O que cada tipo de mensagem aceita. Álbum é foto e vídeo — áudio tem tipo próprio. */
+const ACEITA: Record<MessageKind, string> = {
+  text: "image/*,video/*",
+  photo: "image/*",
+  video: "video/*",
+  audio: "audio/*",
+  album: "image/*,video/*",
+};
+
+const ROTULO: Record<MessageKind, string> = {
+  text: "mídia",
+  photo: "foto",
+  video: "vídeo",
+  audio: "áudio",
+  album: "foto ou vídeo",
+};
+
+/** Um item de álbum nunca pode ser áudio; os outros tipos exigem correspondência exata. */
+function tipoPermitido(tipo: MediaItem["type"], kind: MessageKind): boolean {
+  if (kind === "album" || kind === "text") return tipo !== "audio";
+  return tipo === kind;
+}
+
+/**
+ * Tipo de uma URL colada. Para álbum não dá pra saber pelo MIME, então deduz
+ * pela extensão — foto é o padrão, que é o caso comum.
+ */
+function tipoDaUrl(url: string, kind: MessageKind): MediaItem["type"] {
+  if (kind === "photo" || kind === "video" || kind === "audio") return kind;
+  return /\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i.test(url) ? "video" : "photo";
+}
+
 /**
  * Seletor de mídia com os três caminhos do mockup: arrastar-e-soltar, escolher
  * arquivo, e colar URL.
@@ -42,33 +74,45 @@ export function MediaPicker({
     setErro(null);
     setEnviando(true);
 
-    try {
-      const novos: MediaItem[] = [];
-      for (const file of Array.from(files)) {
-        const tipo = tipoDoArquivo(file);
-        if (!tipo) {
-          setErro(`Tipo não suportado: ${file.type || file.name}`);
-          continue;
-        }
+    // Arrastar-e-soltar ignora `multiple` e `accept` do input, então o corte
+    // acontece aqui: sem isso, soltar 5 arquivos no modo foto subiria os 5 pro
+    // Storage e descartaria 4.
+    const lista = multiplo ? Array.from(files) : Array.from(files).slice(0, 1);
+
+    const novos: MediaItem[] = [];
+    const falhas: string[] = [];
+
+    for (const file of lista) {
+      const tipo = tipoDoArquivo(file);
+      if (!tipo || !tipoPermitido(tipo, kind)) {
+        falhas.push(`${file.name}: não é ${ROTULO[kind]}`);
+        continue;
+      }
+
+      try {
         const fd = new FormData();
         fd.append("file", file);
         const { url: enviado } = await uploadMedia(fd);
         novos.push({ url: enviado, type: tipo });
+      } catch (e) {
+        // try/catch POR ARQUIVO, não em volta do laço: o que já subiu está no
+        // Storage de verdade, e descartar por causa de um erro posterior
+        // deixaria arquivo órfão sem o tenant saber.
+        falhas.push(`${file.name}: ${e instanceof Error ? e.message : "falha no upload"}`);
       }
-      if (novos.length > 0) onChange(multiplo ? [...media, ...novos] : [novos[0]]);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha no upload.");
-    } finally {
-      setEnviando(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
+
+    if (novos.length > 0) onChange(multiplo ? [...media, ...novos] : [novos[0]]);
+    if (falhas.length > 0) setErro(falhas.join(" · "));
+
+    setEnviando(false);
+    if (inputRef.current) inputRef.current.value = "";
   }
 
   function adicionarUrl() {
     const limpa = url.trim();
     if (limpa === "") return;
-    const tipo: MediaItem["type"] =
-      kind === "audio" ? "audio" : kind === "video" ? "video" : "photo";
+    const tipo = tipoDaUrl(limpa, kind);
     onChange(multiplo ? [...media, { url: limpa, type: tipo }] : [{ url: limpa, type: tipo }]);
     setUrl("");
   }
@@ -113,7 +157,7 @@ export function MediaPicker({
           }`}
         >
           <span className="text-(--text-muted)">
-            {enviando ? "Enviando…" : "Arraste foto ou vídeo aqui"}
+            {enviando ? "Enviando…" : `Arraste ${ROTULO[kind]} aqui`}
           </span>
           <span className="text-(--text-ghost)">ou</span>
           <button
@@ -129,7 +173,7 @@ export function MediaPicker({
             type="file"
             hidden
             multiple={multiplo}
-            accept="image/*,video/*,audio/*"
+            accept={ACEITA[kind]}
             onChange={(e) => void receber(e.target.files)}
           />
         </div>

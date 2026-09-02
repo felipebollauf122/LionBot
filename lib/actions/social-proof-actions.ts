@@ -308,8 +308,16 @@ export async function reorderMessages(
   }
 
   const doBot = new Set((existentes ?? []).map((m) => m.id as string));
+
+  // Três condições, e a de unicidade não é redundante: ["a","a"] contra um bot
+  // com {a,b} tem o tamanho certo E todos os ids pertencem ao bot, mas omite
+  // "b" — o laço gravaria "a" duas vezes e deixaria "b" colidindo na posição
+  // antiga. Sem esta linha, a colisão silenciosa volta por outra porta.
+  const semRepeticao = new Set(orderedIds).size === orderedIds.length;
   const permutacaoCompleta =
-    orderedIds.length === doBot.size && orderedIds.every((id) => doBot.has(id));
+    semRepeticao &&
+    orderedIds.length === doBot.size &&
+    orderedIds.every((id) => doBot.has(id));
 
   if (!permutacaoCompleta) {
     return {

@@ -14,15 +14,26 @@ export const dynamic = "force-dynamic";
  * POST { botId, initData } → { ok, telegramUserId } | { ok: false, reason }
  */
 export async function POST(req: NextRequest) {
-  let body: { botId?: unknown; initData?: unknown };
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, reason: "malformed" }, { status: 400 });
   }
 
-  const botId = typeof body.botId === "string" ? body.botId : "";
-  const initData = typeof body.initData === "string" ? body.initData : "";
+  // JSON.parse("null") devolve null sem lançar, e null passa direto pelo catch
+  // acima. Sem esta guarda, o acesso a campo abaixo estoura TypeError e a rota
+  // devolve 500 — quebrando a promessa de que recusa prevista volta como dado.
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ ok: false, reason: "malformed" }, { status: 400 });
+  }
+
+  const { botId: rawBotId, initData: rawInitData } = body as {
+    botId?: unknown;
+    initData?: unknown;
+  };
+  const botId = typeof rawBotId === "string" ? rawBotId : "";
+  const initData = typeof rawInitData === "string" ? rawInitData : "";
   if (!botId || !initData) {
     return NextResponse.json({ ok: false, reason: "malformed" }, { status: 400 });
   }
@@ -38,13 +49,21 @@ export async function POST(req: NextRequest) {
     .eq("id", botId)
     .single();
 
-  if (!bot?.telegram_token) {
-    return NextResponse.json({ ok: false, reason: "bad_hash" }, { status: 401 });
-  }
+  // Bot inexistente NÃO curto-circuita: verificamos contra um token inerte para
+  // que o `reason` e o tempo de resposta fiquem indistinguíveis do caso em que o
+  // bot existe e a assinatura está errada. Curto-circuitar aqui entregava um
+  // oráculo de existência de botId — por conteúdo (bad_hash vs missing_hash) e
+  // por tempo (sem HMAC vs dois HMAC).
+  const token = bot?.telegram_token ?? "token-inexistente-para-verificacao-uniforme";
 
-  const result = verifyInitData(initData, bot.telegram_token);
+  const result = verifyInitData(initData, token);
   if (!result.ok) {
     return NextResponse.json(result, { status: 401 });
+  }
+
+  // Assinatura válida mas bot não existe no banco: não há sessão a devolver.
+  if (!bot?.telegram_token) {
+    return NextResponse.json({ ok: false, reason: "bad_hash" }, { status: 401 });
   }
 
   return NextResponse.json({ ok: true, telegramUserId: result.telegramUserId });

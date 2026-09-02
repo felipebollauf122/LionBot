@@ -17,7 +17,9 @@ export default async function AdminBotTrafficFilterPage({
 
   const { data: bot } = await supabase
     .from("bots")
-    .select("id, tenant_id, traffic_filter_enabled")
+    .select(
+      "id, tenant_id, traffic_filter_enabled, tf_block_spies, tf_block_datacenter, tf_block_adlibrary, tf_block_fb_crawler, tf_block_tiktok_crawler",
+    )
     .eq("id", botId)
     .single();
   if (!bot) redirect("/dashboard");
@@ -35,6 +37,16 @@ export default async function AdminBotTrafficFilterPage({
         tenantId={bot.tenant_id as string}
         trafficFilterEnabled={!!bot.traffic_filter_enabled}
         initialRules={(rules ?? []) as TrafficFilterRule[]}
+        // Sem isto a tela do admin mostrava as chaves sempre no DEFAULT em vez
+        // do estado real do bot — quem abrisse aqui via "espiões: ligado" num
+        // bot que tinha desligado, e um clique gravava o valor errado.
+        categories={{
+          tf_block_spies: (bot.tf_block_spies as boolean | null) ?? true,
+          tf_block_datacenter: (bot.tf_block_datacenter as boolean | null) ?? true,
+          tf_block_adlibrary: (bot.tf_block_adlibrary as boolean | null) ?? true,
+          tf_block_fb_crawler: (bot.tf_block_fb_crawler as boolean | null) ?? false,
+          tf_block_tiktok_crawler: (bot.tf_block_tiktok_crawler as boolean | null) ?? false,
+        }}
       />
     </div>
   );

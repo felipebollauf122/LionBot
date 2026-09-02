@@ -84,6 +84,7 @@ export interface Bot {
   tf_block_datacenter: boolean;
   tf_block_adlibrary: boolean;
   tf_block_fb_crawler: boolean;
+  tf_block_tiktok_crawler: boolean;
   slug_gate_enabled: boolean;
   slug_hash: string | null;
   slug_plain: string | null;

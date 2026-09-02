@@ -66,6 +66,62 @@ export function isFbCrawler(userAgent: string | null): boolean {
   return FB_CRAWLER_UAS.some((c) => ua.includes(c));
 }
 
+/**
+ * Robô da ByteDance/TikTok — o equivalente ao revisor do Facebook. Rasteja a
+ * landing quando o anúncio entra em revisão e quando o link é postado.
+ *
+ * A lista é DELIBERADAMENTE de tokens específicos de robô. O token solto
+ * "bytedance" NÃO pode entrar: o webview in-app do TikTok (comprador real,
+ * onde o clique pago abre) manda `BytedanceWebview/... musical_ly_...` no
+ * User-Agent — casar "bytedance" barraria justamente o comprador. O guard
+ * TIKTOK_HUMAN_UAS abaixo é a rede de segurança pra isso.
+ *
+ * Ao contrário dos 3 UAs do Facebook (documentados pela Meta), estes vêm de
+ * observação de log/fontes de terceiros — a ByteDance não publica lista
+ * oficial. Se aparecer um UA novo de robô, dá pra bloquear/liberar na mão
+ * pelas regras avançadas (match_type user_agent) sem mexer no código.
+ */
+const TIKTOK_CRAWLER_UAS = [
+  "bytespider",
+  "tiktokspider",
+  "tiktokbot",
+  "bytedance-crawler",
+  "bytedance-security",
+];
+
+/**
+ * Marcas do app/webview do TikTok — HUMANO, nunca robô. Se qualquer uma
+ * aparece no UA, isTiktokCrawler devolve false mesmo que algum token de
+ * crawler case por acidente. Comprador antes de tudo (fail-open).
+ */
+const TIKTOK_HUMAN_UAS = ["bytedancewebview", "musical_ly", "musically", "trill_", "aweme"];
+
+/** True se o User-Agent é de um robô da ByteDance/TikTok (e não do app real). */
+export function isTiktokCrawler(userAgent: string | null): boolean {
+  if (!userAgent) return false;
+  const ua = userAgent.toLowerCase();
+  if (TIKTOK_HUMAN_UAS.some((h) => ua.includes(h))) return false;
+  return TIKTOK_CRAWLER_UAS.some((c) => ua.includes(c));
+}
+
+/**
+ * Referers das vitrines onde CONCORRENTE espia anúncio alheio — Meta e TikTok.
+ * `ads/library` = Biblioteca de Anúncios do Facebook; `library.tiktok.com` =
+ * Commercial Content Library; `creativecenter` = TikTok Creative Center (aba
+ * "Top Ads", que é literalmente um catálogo de anúncios de terceiros).
+ *
+ * NÃO inclui adsmanager/business manager de propósito: de lá quem clica é o
+ * PRÓPRIO dono testando o link do anúncio, não um espião.
+ */
+const AD_LIBRARY_REFERERS = ["ads/library", "library.tiktok.com", "creativecenter"];
+
+/** True se o referer veio de uma vitrine de espiar anúncio (FB ou TikTok). */
+export function isAdLibraryReferer(referer: string | null): boolean {
+  if (!referer) return false;
+  const ref = referer.toLowerCase();
+  return AD_LIBRARY_REFERERS.some((d) => ref.includes(d));
+}
+
 /** Referers de onde um clique real de anúncio do FB/IG costuma vir. */
 const FB_REFERERS = ["facebook.com", "l.facebook.com", "lm.facebook.com", "fb.me", "instagram.com", "l.instagram.com"];
 
@@ -150,10 +206,11 @@ export function isLikelyRealTtclid(ttclid: string | null, referer: string | null
  * pedaço do "default por sinal". Default = comportamento clássico.
  */
 export interface TrafficCategories {
-  blockSpies: boolean;       // humano sem fbclid (espião)
-  blockDatacenter: boolean;  // IP de datacenter/VPN/proxy
-  blockAdLibrary: boolean;   // veio da Ad Library do Facebook
-  blockFbCrawler: boolean;   // robô revisor do FB (cloaking — default desligado)
+  blockSpies: boolean;          // humano sem fbclid/ttclid (espião)
+  blockDatacenter: boolean;     // IP de datacenter/VPN/proxy
+  blockAdLibrary: boolean;      // veio da Ad Library do FB / Creative Center do TikTok
+  blockFbCrawler: boolean;      // robô revisor do FB (cloaking — default desligado)
+  blockTiktokCrawler: boolean;  // robô da ByteDance/TikTok (cloaking — default desligado)
 }
 
 const DEFAULT_CATEGORIES: TrafficCategories = {
@@ -161,6 +218,7 @@ const DEFAULT_CATEGORIES: TrafficCategories = {
   blockDatacenter: true,
   blockAdLibrary: true,
   blockFbCrawler: false,
+  blockTiktokCrawler: false,
 };
 
 /**
@@ -186,6 +244,15 @@ export function evaluateRules(
     return categories.blockFbCrawler ? "block" : "allow";
   }
 
+  // Robô da ByteDance/TikTok: mesma lógica, chave própria. Sem isto o revisor
+  // do TikTok caía no blockSpies (não traz ttclid nenhum) e via a landing de
+  // venda em vez da página real — cloaking involuntário, ou seja, anúncio
+  // reprovado sem o dono nunca ter pedido isso. Default da flag = false =
+  // robô PASSA, igual ao do Facebook.
+  if (isTiktokCrawler(s.userAgent)) {
+    return categories.blockTiktokCrawler ? "block" : "allow";
+  }
+
   if (active.some((r) => r.list === "allow" && ruleMatches(r, s))) return "allow";
   if (active.some((r) => r.list === "block" && ruleMatches(r, s))) return "block";
 
@@ -199,7 +266,7 @@ export function evaluateRules(
 
   // Default por sinal — cada categoria pode ser desligada pelo usuário:
   if (categories.blockDatacenter && s.isHosting) return "block";
-  if (categories.blockAdLibrary && s.referer && s.referer.toLowerCase().includes("ads/library")) return "block";
+  if (categories.blockAdLibrary && isAdLibraryReferer(s.referer)) return "block";
   if (categories.blockSpies) {
     if (!s.userAgent) return "block";   // sem UA = suspeito
     return "block";                     // humano sem fbclid = espião

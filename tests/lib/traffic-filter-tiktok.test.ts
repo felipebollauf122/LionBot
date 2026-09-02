@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { evaluateRules, isLikelyRealTtclid, type TrafficSignals } from "@/lib/traffic-filter/match";
+import {
+  evaluateRules,
+  isLikelyRealTtclid,
+  isTiktokCrawler,
+  isAdLibraryReferer,
+  type TrafficSignals,
+} from "@/lib/traffic-filter/match";
 import type { TrafficFilterRule } from "@/lib/types/database";
 
 /**
@@ -26,7 +32,7 @@ const FB_CRAWLER_SEEDS: TrafficFilterRule[] = ["facebookexternalhit", "facebookc
 );
 
 // Todas as categorias ligadas — o cenário que hoje derruba o clique do TikTok.
-const ALL_ON = { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false };
+const ALL_ON = { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false, blockTiktokCrawler: false };
 
 // ttclid real de campanha (formato observado: prefixo `E.C.P.` + ~300 chars
 // base64-url com pontos). É o valor que o TikTok anexa no link do anúncio.
@@ -101,7 +107,7 @@ describe("clique pago do TikTok (?ttclid=) no filtro de tráfego", () => {
       userAgent: "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
     };
     expect(
-      evaluateRules(crawlerWithTtclid, FB_CRAWLER_SEEDS, { ...ALL_ON, blockFbCrawler: true }),
+      evaluateRules(crawlerWithTtclid, FB_CRAWLER_SEEDS, { ...ALL_ON, blockFbCrawler: true, blockTiktokCrawler: false }),
     ).toBe("block");
     expect(evaluateRules(crawlerWithTtclid, FB_CRAWLER_SEEDS, ALL_ON)).toBe("allow");
   });
@@ -173,5 +179,118 @@ describe("regressão: o caminho do fbclid não mudou", () => {
 
   it("espião sem fbclid E sem ttclid → block (igual antes)", () => {
     expect(evaluateRules(base, FB_CRAWLER_SEEDS, ALL_ON)).toBe("block");
+  });
+});
+
+/**
+ * Robô revisor do TikTok (ByteDance). Antes desta chave ele não tinha
+ * tratamento nenhum: rasteja a landing SEM ttclid, caía no blockSpies e via a
+ * LionBotSalesPage — cloaking involuntário, anúncio reprovado sem o dono ter
+ * ligado nada. Espelha o tratamento do crawler do Facebook.
+ */
+describe("robô revisor do TikTok (ByteDance)", () => {
+  const CRAWLER_UAS = [
+    "Mozilla/5.0 (Linux; Android 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 (compatible; Bytespider; spider-feedback@bytedance.com)",
+    "Mozilla/5.0 (compatible;TikTokSpider;bytespider@bytedance.com)",
+    "TikTokBot/1.0",
+    "Bytedance-security/1.0",
+  ];
+
+  const crawlerSignals = (userAgent: string): TrafficSignals => ({
+    ip: "110.249.201.10",
+    userAgent,
+    referer: null,
+    fbclid: null,
+    ttclid: null, // o robô NUNCA traz click id — é isso que o derrubava no blockSpies
+    asn: "AS132203",
+    isHosting: true, // e ele vem de datacenter, o que também o derrubaria
+  });
+
+  it("passa por padrão (flag desligada) mesmo sem ttclid e vindo de datacenter", () => {
+    for (const ua of CRAWLER_UAS) {
+      expect(evaluateRules(crawlerSignals(ua), [], { ...ALL_ON, blockTiktokCrawler: false })).toBe("allow");
+    }
+  });
+
+  it("é bloqueado quando o dono liga a flag (cloaking explícito)", () => {
+    for (const ua of CRAWLER_UAS) {
+      expect(evaluateRules(crawlerSignals(ua), [], { ...ALL_ON, blockTiktokCrawler: true })).toBe("block");
+    }
+  });
+
+  it("a flag do TikTok não mexe no crawler do Facebook (e vice-versa)", () => {
+    const fbCrawler = crawlerSignals("facebookexternalhit/1.1");
+    // só a do TikTok ligada → o robô do FB continua passando
+    expect(evaluateRules(fbCrawler, [], { ...ALL_ON, blockTiktokCrawler: true, blockFbCrawler: false })).toBe("allow");
+    // só a do FB ligada → o Bytespider continua passando
+    expect(
+      evaluateRules(crawlerSignals(CRAWLER_UAS[0]), [], { ...ALL_ON, blockFbCrawler: true, blockTiktokCrawler: false }),
+    ).toBe("allow");
+  });
+
+  it("isTiktokCrawler NÃO casa o app/webview do TikTok (comprador real)", () => {
+    const humanUas = [
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) AppleWebKit/605.1.15 BytedanceWebview/d8a21c musical_ly_31.5.0 JsSdk/2.0",
+      "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36 trill_2022803040 BytedanceWebview/d8a21c",
+      "com.zhiliaoapp.musically/2023805040 (Linux; U; Android 13)",
+    ];
+    for (const ua of humanUas) expect(isTiktokCrawler(ua)).toBe(false);
+  });
+
+  it("o comprador do webview com ttclid real continua passando com TUDO ligado", () => {
+    // o cenário que o guard TIKTOK_HUMAN_UAS existe pra proteger
+    expect(evaluateRules(tiktokClick, FB_CRAWLER_SEEDS, { ...ALL_ON, blockTiktokCrawler: true })).toBe("allow");
+  });
+
+  it("UA vazio/ausente não vira robô do TikTok por acidente", () => {
+    expect(isTiktokCrawler(null)).toBe(false);
+    expect(isTiktokCrawler("")).toBe(false);
+    expect(isTiktokCrawler("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126")).toBe(false);
+  });
+});
+
+/**
+ * Vitrines de espiar anúncio: a categoria blockAdLibrary só conhecia a Ad
+ * Library do Facebook ("ads/library"). O concorrente que espia pelo Creative
+ * Center / Commercial Content Library do TikTok entrava direto.
+ */
+describe("blockAdLibrary cobre as vitrines do TikTok também", () => {
+  const spy = (referer: string): TrafficSignals => ({
+    ip: "203.0.113.55",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126",
+    referer,
+    fbclid: null,
+    ttclid: null,
+    asn: "AS15169",
+    isHosting: false, // isola o sinal: quem tem que barrar é o referer
+  });
+
+  it("reconhece as três vitrines (FB Ad Library, TikTok Commercial Content Library, Creative Center)", () => {
+    const referers = [
+      "https://www.facebook.com/ads/library/?id=123",
+      "https://library.tiktok.com/ads/detail?ad_id=123",
+      "https://ads.tiktok.com/business/creativecenter/topads/pt",
+    ];
+    for (const ref of referers) {
+      expect(isAdLibraryReferer(ref)).toBe(true);
+      expect(evaluateRules(spy(ref), [], { ...ALL_ON, blockAdLibrary: true })).toBe("block");
+    }
+  });
+
+  it("desligar a categoria libera as vitrines do TikTok igual às do FB", () => {
+    // sem outro sinal de bloqueio e com blockSpies desligado, passa
+    const cats = { ...ALL_ON, blockAdLibrary: false, blockSpies: false };
+    expect(evaluateRules(spy("https://library.tiktok.com/ads/detail?ad_id=1"), [], cats)).toBe("allow");
+  });
+
+  it("referer normal do TikTok (clique orgânico) NÃO é vitrine de espionagem", () => {
+    expect(isAdLibraryReferer("https://www.tiktok.com/@perfil/video/123")).toBe(false);
+    expect(isAdLibraryReferer(null)).toBe(false);
+  });
+
+  it("o painel do próprio dono (adsmanager) não é tratado como espião", () => {
+    // quem clica de lá é o dono testando o link, não concorrente
+    expect(isAdLibraryReferer("https://ads.tiktok.com/i18n/perf/creative?aadvid=123")).toBe(false);
+    expect(isAdLibraryReferer("https://business.facebook.com/adsmanager/manage/ads")).toBe(false);
   });
 });

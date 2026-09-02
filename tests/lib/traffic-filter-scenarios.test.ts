@@ -108,6 +108,7 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
       blockDatacenter: true,
       blockAdLibrary: true,
       blockFbCrawler: false,
+      blockTiktokCrawler: false,
     });
     expect(verdict).toBe("allow");
   });
@@ -124,11 +125,11 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
     };
     // datacenter desligado, mas blockSpies ligado → ainda cai como espião sem fbclid.
     expect(
-      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: false, blockAdLibrary: true, blockFbCrawler: false }),
+      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: false, blockAdLibrary: true, blockFbCrawler: false, blockTiktokCrawler: false }),
     ).toBe("block");
     // datacenter E espiões desligados → passa.
     expect(
-      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: false, blockDatacenter: false, blockAdLibrary: true, blockFbCrawler: false }),
+      evaluateRules(datacenter, FB_CRAWLER_SEEDS, { blockSpies: false, blockDatacenter: false, blockAdLibrary: true, blockFbCrawler: false, blockTiktokCrawler: false }),
     ).toBe("allow");
   });
 
@@ -145,16 +146,16 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
     // SEM nenhuma regra no banco — a classe é decidida só pela flag.
     // Chave desligada (padrão) → o crawler vê a página real.
     expect(
-      evaluateRules(fbCrawler, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false }),
+      evaluateRules(fbCrawler, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false, blockTiktokCrawler: false }),
     ).toBe("allow");
     // Chave ligada → o crawler é bloqueado (cloaking), mesmo com blockSpies ligado.
     expect(
-      evaluateRules(fbCrawler, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true }),
+      evaluateRules(fbCrawler, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true, blockTiktokCrawler: false }),
     ).toBe("block");
     // Vale pros 3 user-agents da classe:
     for (const ua of ["facebookcatalog/1.0", "meta-externalagent/1.1"]) {
       expect(
-        evaluateRules({ ...fbCrawler, userAgent: ua }, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true }),
+        evaluateRules({ ...fbCrawler, userAgent: ua }, [], { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true, blockTiktokCrawler: false }),
       ).toBe("block");
     }
   });
@@ -174,11 +175,11 @@ describe("Cenários E2E do filtro de tráfego (com seeds do crawler FB)", () => 
     };
     // FB_CRAWLER_SEEDS tem a regra ALLOW do crawler. Mesmo assim, flag ligada → block.
     expect(
-      evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true }),
+      evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: true, blockTiktokCrawler: false }),
     ).toBe("block");
     // Flag desligada → allow (a seed nem importa mais).
     expect(
-      evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false }),
+      evaluateRules(fbCrawler, FB_CRAWLER_SEEDS, { blockSpies: true, blockDatacenter: true, blockAdLibrary: true, blockFbCrawler: false, blockTiktokCrawler: false }),
     ).toBe("allow");
   });
 

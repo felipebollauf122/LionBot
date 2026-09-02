@@ -29,6 +29,7 @@ interface TrafficFilterManagerProps {
     tf_block_datacenter: boolean;
     tf_block_adlibrary: boolean;
     tf_block_fb_crawler: boolean;
+    tf_block_tiktok_crawler: boolean;
   };
   /** chave secreta (slug) — proteção final */
   slugGate?: {
@@ -42,7 +43,7 @@ const CATEGORY_DEFS: { key: TrafficCategoryKey; title: string; desc: string }[] 
   {
     key: "tf_block_spies",
     title: "Bloquear espiões (sem clique no anúncio)",
-    desc: "Quem abre o link sem ter clicado no seu anúncio cai na página de venda. Recomendado ligado.",
+    desc: "Quem abre o link sem ter clicado no seu anúncio (sem fbclid do Meta nem ttclid do TikTok) cai na página de venda. Recomendado ligado.",
   },
   {
     key: "tf_block_datacenter",
@@ -51,8 +52,8 @@ const CATEGORY_DEFS: { key: TrafficCategoryKey; title: string; desc: string }[] 
   },
   {
     key: "tf_block_adlibrary",
-    title: "Bloquear quem vem da Biblioteca de Anúncios",
-    desc: "Quem chega pela Ad Library do Facebook (gente bisbilhotando seus anúncios).",
+    title: "Bloquear quem vem da Biblioteca de Anúncios (FB e TikTok)",
+    desc: "Quem chega pela Biblioteca de Anúncios do Facebook ou pelo Creative Center / Commercial Content Library do TikTok (gente bisbilhotando seus anúncios).",
   },
 ];
 
@@ -68,6 +69,36 @@ const MATCH_TYPE_PLACEHOLDER: Record<TrafficFilterMatchType, string> = {
   user_agent: "facebookexternalhit",
   referer: "ads/library",
   asn: "AS15169",
+};
+
+/**
+ * Robôs revisores, um por rede. Cada um é uma chave liga/desliga própria
+ * (colunas tf_block_fb_crawler / tf_block_tiktok_crawler) e DESLIGADA por
+ * padrão — bloquear o revisor é cloaking e reprova o anúncio. Duas chaves
+ * separadas porque quem roda só TikTok não deve mexer na do Meta e vice-versa.
+ */
+type CrawlerNetwork = "fb" | "tiktok";
+
+const CRAWLER_DEFS: Record<
+  CrawlerNetwork,
+  { key: TrafficCategoryKey; title: string; network: string; bots: string; blockedDesc: string; safeDesc: string }
+> = {
+  fb: {
+    key: "tf_block_fb_crawler",
+    title: "Bloquear o robô revisor do Facebook",
+    network: "Facebook",
+    bots: "facebookexternalhit, facebookcatalog, meta-externalagent",
+    blockedDesc: "⚠ Bloqueado — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta.",
+    safeDesc: "⚠ Cuidado: bloquear o revisor do FB é cloaking e pode reprovar seu anúncio. Deixe desligado salvo se souber o que faz.",
+  },
+  tiktok: {
+    key: "tf_block_tiktok_crawler",
+    title: "Bloquear o robô revisor do TikTok",
+    network: "TikTok",
+    bots: "Bytespider, TikTokSpider, TikTokBot",
+    blockedDesc: "⚠ Bloqueado — isto é cloaking; o TikTok pode reprovar o anúncio e banir a conta.",
+    safeDesc: "⚠ Cuidado: bloquear o robô da ByteDance é cloaking e pode reprovar seu anúncio. O app do TikTok (comprador real) continua passando normalmente.",
+  },
 };
 
 /** Regra do crawler revisor do FB. Vem na allowlist por padrão; pode ser movida
@@ -98,6 +129,7 @@ export function TrafficFilterManager({
     tf_block_datacenter: categories?.tf_block_datacenter ?? true,
     tf_block_adlibrary: categories?.tf_block_adlibrary ?? true,
     tf_block_fb_crawler: categories?.tf_block_fb_crawler ?? false,
+    tf_block_tiktok_crawler: categories?.tf_block_tiktok_crawler ?? false,
   });
   const [catBusy, setCatBusy] = useState<TrafficCategoryKey | null>(null);
 
@@ -114,14 +146,18 @@ export function TrafficFilterManager({
   // Per-row pending state
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
-  // Modal de confirmação ao bloquear o crawler do FB (substitui o window.confirm).
-  const [showCrawlerModal, setShowCrawlerModal] = useState(false);
+  // Modal de confirmação ao bloquear um robô revisor (substitui o window.confirm).
+  // Guarda QUAL rede está sendo bloqueada (o texto do modal muda) ou null.
+  const [crawlerModal, setCrawlerModal] = useState<CrawlerNetwork | null>(null);
 
   const allowRules = initialRules.filter((r) => r.list === "allow");
   const blockRules = initialRules.filter((r) => r.list === "block");
 
-  // Crawler do FB: agora é uma categoria como as outras (flag tf_block_fb_crawler).
-  const crawlerBlocked = cats.tf_block_fb_crawler;
+  // Crawlers: cada rede é uma categoria como as outras (flags tf_block_*_crawler).
+  const crawlerBlocked: Record<CrawlerNetwork, boolean> = {
+    fb: cats.tf_block_fb_crawler,
+    tiktok: cats.tf_block_tiktok_crawler,
+  };
 
   const handleCategory = (key: TrafficCategoryKey, next: boolean) => {
     setCats((c) => ({ ...c, [key]: next })); // optimistic
@@ -139,19 +175,21 @@ export function TrafficFilterManager({
     });
   };
 
-  // Ligar a chave do crawler = bloquear o robô do FB = cloaking. Abre o modal
-  // de confirmação ao LIGAR; desligar é seguro e aplica direto.
-  const handleCrawlerToggle = () => {
-    if (!crawlerBlocked) {
-      setShowCrawlerModal(true); // vai bloquear → confirma no modal
+  // Ligar a chave = bloquear o robô revisor daquela rede = cloaking. Abre o
+  // modal de confirmação ao LIGAR; desligar é seguro e aplica direto.
+  const handleCrawlerToggle = (network: CrawlerNetwork) => {
+    if (!crawlerBlocked[network]) {
+      setCrawlerModal(network); // vai bloquear → confirma no modal
     } else {
-      handleCategory("tf_block_fb_crawler", false); // desbloquear é seguro
+      handleCategory(CRAWLER_DEFS[network].key, false); // desbloquear é seguro
     }
   };
 
   const confirmCrawlerBlock = () => {
-    setShowCrawlerModal(false);
-    handleCategory("tf_block_fb_crawler", true);
+    if (!crawlerModal) return;
+    const key = CRAWLER_DEFS[crawlerModal].key;
+    setCrawlerModal(null);
+    handleCategory(key, true);
   };
 
   const handleToggleMaster = () => {
@@ -455,29 +493,32 @@ export function TrafficFilterManager({
               );
             })}
 
-            {/* Crawler do Facebook — 4ª chave, igual às outras. Os 3 user-agents
-                (facebookexternalhit/facebookcatalog/meta-externalagent) são uma
-                classe só. Desligado (permitido) por padrão; aviso de cloaking. */}
-            <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle)">
-              <div className="min-w-0">
-                <p className="text-foreground text-sm font-medium">Bloquear o robô revisor do Facebook</p>
-                <p className="text-(--text-muted) text-xs mt-0.5">
-                  {crawlerBlocked
-                    ? "⚠ Bloqueado — isto é cloaking; o Facebook pode reprovar o anúncio e banir a conta."
-                    : "⚠ Cuidado: bloquear o revisor do FB é cloaking e pode reprovar seu anúncio. Deixe desligado salvo se souber o que faz."}
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={crawlerBlocked}
-                disabled={catBusy === "tf_block_fb_crawler" || isPending}
-                onClick={handleCrawlerToggle}
-                className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${crawlerBlocked ? "bg-(--red)" : "bg-white/10"}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${crawlerBlocked ? "translate-x-5" : ""}`} />
-              </button>
-            </div>
+            {/* Robôs revisores — uma chave por rede (Meta e TikTok). Cada rede
+                trata seus user-agents como uma classe só. Desligadas
+                (robô permitido) por padrão; cada uma avisa do cloaking. */}
+            {(["fb", "tiktok"] as CrawlerNetwork[]).map((network) => {
+              const def = CRAWLER_DEFS[network];
+              const blocked = crawlerBlocked[network];
+              return (
+                <div key={network} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-(--border-subtle)">
+                  <div className="min-w-0">
+                    <p className="text-foreground text-sm font-medium">{def.title}</p>
+                    <p className="text-(--text-muted) text-xs mt-0.5">{blocked ? def.blockedDesc : def.safeDesc}</p>
+                    <p className="text-(--text-ghost) text-[10px] mt-1 font-mono">{def.bots}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={blocked}
+                    disabled={catBusy === def.key || isPending}
+                    onClick={() => handleCrawlerToggle(network)}
+                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${blocked ? "bg-(--red)" : "bg-white/10"}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${blocked ? "translate-x-5" : ""}`} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           {/* Avançado: regras manuais por IP/ASN (escondido por padrão) */}
@@ -544,14 +585,14 @@ export function TrafficFilterManager({
         </div>
       )}
 
-      {/* ── Modal: confirmar bloqueio do crawler do FB (cloaking) ───────────── */}
-      {showCrawlerModal && (
+      {/* ── Modal: confirmar bloqueio do robô revisor (cloaking) ───────────── */}
+      {crawlerModal && (
         <div
           className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           role="dialog"
           aria-modal="true"
           aria-labelledby="crawler-modal-title"
-          onClick={() => setShowCrawlerModal(false)}
+          onClick={() => setCrawlerModal(null)}
         >
           <div
             className="relative w-full max-w-md rounded-2xl border border-(--red)/25 overflow-hidden animate-in zoom-in-95 duration-200"
@@ -578,7 +619,7 @@ export function TrafficFilterManager({
               </div>
 
               <h2 id="crawler-modal-title" className="text-foreground font-bold text-lg tracking-tight">
-                Bloquear o robô do Facebook?
+                Bloquear o robô do {CRAWLER_DEFS[crawlerModal].network}?
               </h2>
               <p className="text-(--red) text-xs font-bold uppercase tracking-wider mt-1">
                 Risco de banimento
@@ -586,16 +627,17 @@ export function TrafficFilterManager({
 
               <div className="mt-4 space-y-3 text-sm leading-relaxed text-(--text-secondary)">
                 <p>
-                  O robô revisor da Meta vai cair na <b className="text-foreground">página de venda</b> em vez da página
-                  real do seu bot.
+                  O robô revisor do {CRAWLER_DEFS[crawlerModal].network} vai cair na{" "}
+                  <b className="text-foreground">página de venda</b> em vez da página real do seu bot.
                 </p>
                 <div
                   className="rounded-xl p-3 border border-(--red)/20"
                   style={{ background: "color-mix(in srgb, var(--red) 8%, transparent)" }}
                 >
                   <p className="text-(--text-muted) text-xs">
-                    Isso é <b className="text-(--red)">cloaking</b>: o Facebook vê uma página diferente da que o usuário vê.
-                    O resultado é o anúncio <b className="text-foreground">reprovado</b> e a conta sob risco de
+                    Isso é <b className="text-(--red)">cloaking</b>: o {CRAWLER_DEFS[crawlerModal].network} vê uma
+                    página diferente da que o usuário vê. O resultado é o anúncio{" "}
+                    <b className="text-foreground">reprovado</b> e a conta sob risco de
                     <b className="text-foreground"> banimento</b>.
                   </p>
                 </div>
@@ -608,7 +650,7 @@ export function TrafficFilterManager({
               <div className="flex gap-3 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowCrawlerModal(false)}
+                  onClick={() => setCrawlerModal(null)}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-foreground border border-(--border-default) hover:bg-white/5 transition-colors"
                 >
                   Cancelar

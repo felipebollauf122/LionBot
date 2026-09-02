@@ -172,6 +172,7 @@ export default async function TrackingPage({ searchParams }: TrackingPageProps) 
         blockDatacenter: typedBot.tf_block_datacenter ?? true,
         blockAdLibrary: typedBot.tf_block_adlibrary ?? true,
         blockFbCrawler: typedBot.tf_block_fb_crawler ?? false,
+        blockTiktokCrawler: typedBot.tf_block_tiktok_crawler ?? false,
       },
     });
     if (verdict === "block") {

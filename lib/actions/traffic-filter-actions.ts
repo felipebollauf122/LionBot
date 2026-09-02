@@ -126,7 +126,8 @@ export type TrafficCategoryKey =
   | "tf_block_spies"
   | "tf_block_datacenter"
   | "tf_block_adlibrary"
-  | "tf_block_fb_crawler";
+  | "tf_block_fb_crawler"
+  | "tf_block_tiktok_crawler";
 
 export async function setTrafficCategory(
   botId: string,

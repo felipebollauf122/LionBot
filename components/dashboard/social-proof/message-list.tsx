@@ -44,9 +44,15 @@ export function MessageList({
 
   function soltar(destino: number) {
     if (arrastando === null) return;
+
     const nova = moveItem(messages, arrastando, destino);
+    const mudou = nova.some((m, i) => m.id !== messages[i].id);
     setArrastando(null);
-    onReorder(nova.map((m) => m.id));
+
+    // moveItem devolve a lista intacta quando from === to ou o índice é
+    // inválido. Sem esta checagem, largar a mensagem no mesmo lugar gravaria
+    // no banco à toa.
+    if (mudou) onReorder(nova.map((m) => m.id));
   }
 
   return (
@@ -67,6 +73,7 @@ export function MessageList({
           key={m.id}
           draggable
           onDragStart={() => setArrastando(i)}
+          onDragEnd={() => setArrastando(null)}
           onDragOver={(e) => e.preventDefault()}
           onDrop={() => soltar(i)}
           onClick={() => onSelect(m.id)}
@@ -108,36 +115,50 @@ export function MessageList({
             </button>
 
             {menuAberto === m.id && (
-              <div
-                className="absolute right-0 top-6 z-10 w-36 overflow-hidden rounded-lg border border-(--border-default) bg-(--bg-overlay)"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {(
-                  [
-                    { rotulo: "Duplicar", acao: () => onDuplicate(m.id), perigo: false },
-                    {
-                      rotulo: pinnedId === m.id ? "Desafixar" : "Fixar",
-                      acao: () => onPin(m.id),
-                      perigo: false,
-                    },
-                    { rotulo: "Excluir", acao: () => onDelete(m.id), perigo: true },
-                  ] as const
-                ).map((op) => (
-                  <button
-                    key={op.rotulo}
-                    type="button"
-                    onClick={() => {
-                      setMenuAberto(null);
-                      op.acao();
-                    }}
-                    className={`block w-full px-3 py-2 text-left text-sm hover:bg-(--bg-hover) ${
-                      op.perigo ? "text-(--red)" : "text-(--text-secondary)"
-                    }`}
-                  >
-                    {op.rotulo}
-                  </button>
-                ))}
-              </div>
+              <>
+                {/* Camada invisível que fecha o menu no primeiro clique fora.
+                    Sem ela o menu, que é absoluto e tem ~120px, cobre 1 ou 2
+                    linhas abaixo: um clique mirando a linha coberta pode
+                    acertar "Excluir" de OUTRA mensagem. */}
+                <div
+                  className="fixed inset-0 z-20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuAberto(null);
+                  }}
+                />
+
+                <div
+                  className="absolute right-0 top-6 z-30 w-36 overflow-hidden rounded-lg border border-(--border-default) bg-(--bg-overlay)"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {(
+                    [
+                      { rotulo: "Duplicar", acao: () => onDuplicate(m.id), perigo: false },
+                      {
+                        rotulo: pinnedId === m.id ? "Desafixar" : "Fixar",
+                        acao: () => onPin(m.id),
+                        perigo: false,
+                      },
+                      { rotulo: "Excluir", acao: () => onDelete(m.id), perigo: true },
+                    ] as const
+                  ).map((op) => (
+                    <button
+                      key={op.rotulo}
+                      type="button"
+                      onClick={() => {
+                        setMenuAberto(null);
+                        op.acao();
+                      }}
+                      className={`block w-full px-3 py-2 text-left text-sm hover:bg-(--bg-hover) ${
+                        op.perigo ? "text-(--red)" : "text-(--text-secondary)"
+                      }`}
+                    >
+                      {op.rotulo}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

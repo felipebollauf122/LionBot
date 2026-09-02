@@ -13,8 +13,11 @@ create table public.social_proof_channels (
   unique (bot_id)
 );
 alter table public.social_proof_channels enable row level security;
+-- is_admin() acompanha o padrão da migration 007: o admin da plataforma
+-- gerencia o bot do cliente, e sem isso a aba abriria vazia pra ele.
 create policy "Tenants can manage own social proof channels"
-  on public.social_proof_channels for all using (tenant_id = auth.uid());
+  on public.social_proof_channels for all
+  using (tenant_id = auth.uid() or public.is_admin());
 
 create table public.social_proof_messages (
   id uuid primary key default gen_random_uuid(),
@@ -40,7 +43,8 @@ create table public.social_proof_messages (
 );
 alter table public.social_proof_messages enable row level security;
 create policy "Tenants can manage own social proof messages"
-  on public.social_proof_messages for all using (tenant_id = auth.uid());
+  on public.social_proof_messages for all
+  using (tenant_id = auth.uid() or public.is_admin());
 
 create index idx_social_proof_messages_feed
   on public.social_proof_messages (bot_id, is_active, position);

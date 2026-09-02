@@ -62,7 +62,11 @@ function draftToFeedMessage(
 ): FeedMessage | null {
   const temTexto = (d.content_text ?? "").trim() !== "";
   const temMidia = d.media.length > 0;
-  if (!temTexto && !temMidia) return null;
+  
+  // Se está vazio mas é uma resposta a outra mensagem, ou é uma mensagem existente que foi apagada no rascunho,
+  // nós retornamos o rascunho para que a bolha (mesmo que vazia ou contendo apenas a citação) apareça
+  // na prévia e o usuário tenha o feedback visual.
+  if (!temTexto && !temMidia && !d.reply_to_id && !d.id) return null;
 
   // Mesma resolução de resolverCitacao, mas a partir do rascunho: é
   // justamente a mensagem criada por "Responder" que precisa mostrar a
@@ -129,7 +133,7 @@ export function FeedPreview({
   };
 
   return (
-    <section className="space-y-2">
+    <section className="space-y-2 w-full flex flex-col items-center">
       <h2 className="text-sm font-semibold text-(--text-secondary)">
         {channel.is_active
           ? "Prévia — é exatamente isto que o lead vê"
@@ -137,8 +141,8 @@ export function FeedPreview({
       </h2>
 
       <div
-        className="tg-app w-full overflow-hidden rounded-[40px] border-[6px] border-(--border-default) shadow-2xl relative bg-black mx-auto"
-        style={{ aspectRatio: "9/19.5", maxWidth: 360, maxHeight: "calc(100vh - 180px)" }}
+        className="tg-app w-full overflow-hidden rounded-[32px] border-[6px] border-(--border-default) shadow-2xl relative bg-black mx-auto flex flex-col"
+        style={{ height: "calc(100vh - 240px)", minHeight: 600, maxHeight: 850, maxWidth: 380 }}
       >
         <ChatBackdrop />
         <ChannelHeader channel={feedChannel} />

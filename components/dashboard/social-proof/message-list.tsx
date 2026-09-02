@@ -104,10 +104,17 @@ export function MessageList({
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-(--text-primary)">
-                {m.sender_kind === "owner" ? "Dona" : m.sender_name || "Membro"}
-                <span className="text-(--text-muted)"> · {ROTULO_TIPO[m.kind] ?? m.kind}</span>
-                {pinnedId === m.id && <span className="ml-2 text-[10px] uppercase tracking-wider font-semibold rounded bg-(--amber-muted) text-(--amber) px-1.5 py-0.5">fixada</span>}
+              <p className="truncate text-sm text-(--text-primary) flex items-center gap-1.5">
+                <span>{m.sender_kind === "owner" ? "Dona" : m.sender_name || "Membro"}</span>
+                <span className="text-(--text-muted) flex items-center gap-1">
+                  · {ROTULO_TIPO[m.kind] ?? m.kind}
+                  {m.reply_to_id && (
+                    <span className="opacity-70 flex items-center" title="É uma resposta">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                    </span>
+                  )}
+                </span>
+                {pinnedId === m.id && <span className="text-[10px] uppercase tracking-wider font-semibold rounded bg-(--amber-muted) text-(--amber) px-1.5 py-0.5 ml-0.5">fixada</span>}
               </p>
               <p className="text-xs text-(--text-muted)">
                 há {Math.round(m.offset_seconds / 60)} min

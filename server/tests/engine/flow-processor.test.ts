@@ -334,6 +334,7 @@ describe("auto-delete por bloco", () => {
   const NOW = new Date("2026-01-01T00:00:00.000Z");
   let processor: FlowProcessor;
   let insertedRows: Record<string, unknown>[];
+  let scheduled: { data: Record<string, unknown>; delaySeconds: number }[];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -341,6 +342,7 @@ describe("auto-delete por bloco", () => {
     vi.setSystemTime(NOW);
     flowByIdCache.clear();
     insertedRows = [];
+    scheduled = [];
 
     // Só a fila de deleção toca o banco neste cenário — qualquer outra tabela
     // é bug no teste e deve estourar, não passar batido.
@@ -349,7 +351,11 @@ describe("auto-delete por bloco", () => {
       return {
         insert: (rows: Record<string, unknown>[]) => {
           insertedRows.push(...rows);
-          return Promise.resolve({ error: null });
+          const data = rows.map((r, i) => ({
+            id: `row-${insertedRows.length - rows.length + i}`,
+            message_id: r.message_id,
+          }));
+          return { select: () => Promise.resolve({ data, error: null }) };
         },
       };
     });
@@ -362,7 +368,13 @@ describe("auto-delete por bloco", () => {
     processor = new FlowProcessor(
       mockDb as any,
       mockLeadService as any,
-      mockQueue as any,
+      {
+        ...mockQueue,
+        addMessageDeletionJob: (data: Record<string, unknown>, delaySeconds: number) => {
+          scheduled.push({ data, delaySeconds });
+          return Promise.resolve();
+        },
+      } as any,
       { gateway: {} as any, gatewayKind: "sigilopay", baseWebhookUrl: "https://example.com" },
     );
   });
@@ -433,5 +445,42 @@ describe("auto-delete por bloco", () => {
 
     expect(insertedRows).toHaveLength(1);
     expect(delayOf(insertedRows[0])).toBe(15 * 60);
+  });
+
+  it("agenda a deleção no Redis com o delay exato, não só na tabela", async () => {
+    await processor.executeFlow(flowWith(10) as any, makeLead(), mockTelegram as any, 12345);
+
+    // A tabela continua sendo o registro; o job é quem apaga na hora certa.
+    expect(insertedRows).toHaveLength(1);
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0].delaySeconds).toBe(10);
+    expect(scheduled[0].data).toMatchObject({
+      queueRowId: "row-0",
+      chatId: 12345,
+      messageId: 900,
+    });
+  });
+
+  it("agenda um job por mensagem quando o bloco envia várias", async () => {
+    const flow = flowWith(10);
+    // Nó que devolve 2 message_ids (ex.: pagamento com QR + texto).
+    (flow.flow_data.nodes[1] as any).type = "text";
+    await processor.executeFlow(flow as any, makeLead(), mockTelegram as any, 12345);
+
+    expect(scheduled.map((s) => s.delaySeconds)).toEqual(Array(insertedRows.length).fill(10));
+  });
+
+  it("não deixa de gravar na tabela se o Redis falhar ao agendar", async () => {
+    const boom = new FlowProcessor(
+      mockDb as any,
+      mockLeadService as any,
+      { ...mockQueue, addMessageDeletionJob: () => Promise.reject(new Error("redis down")) } as any,
+      { gateway: {} as any, gatewayKind: "sigilopay", baseWebhookUrl: "https://example.com" },
+    );
+
+    await boom.executeFlow(flowWith(10) as any, makeLead(), mockTelegram as any, 12345);
+
+    // Sem o job, a rede de segurança (poller) ainda acha a linha pela tabela.
+    expect(insertedRows).toHaveLength(1);
   });
 });

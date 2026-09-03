@@ -45,6 +45,19 @@ interface DelayQueue {
     tenantId: string;
     chatId: number;
   }, delaySeconds: number): Promise<void>;
+  /**
+   * Agenda a deleção de UMA mensagem com o delay exato (Redis/BullMQ).
+   *
+   * Opcional de propósito: se o caller não passar (ou o Redis cair), a linha
+   * na `message_delete_queue` continua lá e o poller de segurança apaga
+   * depois — degrada para "atrasado", nunca para "não apaga".
+   */
+  addMessageDeletionJob?(data: {
+    queueRowId: string;
+    botToken: string;
+    chatId: number;
+    messageId: number;
+  }, delaySeconds: number): Promise<void>;
 }
 
 export class FlowProcessor {
@@ -234,8 +247,9 @@ export class FlowProcessor {
    * Queue a message for deletion after `delaySeconds` seconds.
    *
    * Em SEGUNDOS (não minutos) porque o auto-delete por bloco deixa o usuário
-   * escolher tempos abaixo de 1 minuto. O poller roda a cada 30s, então a
-   * deleção real acontece com até ~30s de atraso — o painel avisa disso.
+   * escolher tempos abaixo de 1 minuto. Grava a linha na tabela (registro) e
+   * agenda um job com o delay exato — quem cumpre o tempo é o job; a varredura
+   * da tabela é só rede de segurança (ver workers/message-deletion.ts).
    */
   private async queueMessageDeletion(
     botId: string,
@@ -248,15 +262,41 @@ export class FlowProcessor {
     const deleteAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
     // Insert em lote: um nó que manda várias mensagens fazia N round-trips
     // sequenciais aqui, cada um segurando o avanço pro próximo nó do flow.
-    await this.db.from("message_delete_queue").insert(
-      messageIds.map((messageId) => ({
-        bot_id: botId,
-        bot_token: botToken,
-        chat_id: chatId,
-        message_id: messageId,
-        delete_at: deleteAt,
-        status: "pending",
-      })),
+    const { data: rows, error } = await this.db
+      .from("message_delete_queue")
+      .insert(
+        messageIds.map((messageId) => ({
+          bot_id: botId,
+          bot_token: botToken,
+          chat_id: chatId,
+          message_id: messageId,
+          delete_at: deleteAt,
+          status: "pending",
+        })),
+      )
+      .select("id, message_id");
+
+    if (error || !rows) {
+      console.error("[auto-delete] Falha ao gravar na message_delete_queue:", error);
+      return;
+    }
+
+    // Agenda cada deleção no Redis com o delay exato. É ISTO que cumpre o
+    // tempo escolhido no bloco — a tabela sozinha só seria varrida pelo
+    // poller de segurança, cuja resolução é grosseira demais pra segundos.
+    await Promise.all(
+      (rows as { id: string; message_id: number }[]).map((row) =>
+        this.delayQueue
+          .addMessageDeletionJob?.(
+            { queueRowId: row.id, botToken, chatId, messageId: row.message_id },
+            delaySeconds,
+          )
+          // Redis fora do ar não pode derrubar o flow nem perder a mensagem:
+          // a linha já está gravada e o poller de segurança pega depois.
+          .catch((err: unknown) =>
+            console.error(`[auto-delete] Falha ao agendar deleção da linha ${row.id}:`, err),
+          ),
+      ),
     );
   }
 

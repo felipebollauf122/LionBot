@@ -57,14 +57,11 @@ describe("AutoDeleteConfig", () => {
     expect(onChange).toHaveBeenCalledWith({ text: "oi" });
   });
 
-  it("avisa da precisão de ~30s só quando o tempo escolhido é curto", () => {
-    const { rerender } = render(
-      <AutoDeleteConfig data={{ auto_delete_seconds: 10, auto_delete_unit: "seconds" }} onChange={vi.fn()} />,
-    );
-    expect(screen.getByText(/precisão de ~30s/i)).toBeInTheDocument();
+  it("não promete imprecisão: a deleção é agendada com o tempo exato", () => {
+    render(<AutoDeleteConfig data={{ auto_delete_seconds: 10, auto_delete_unit: "seconds" }} onChange={vi.fn()} />);
 
-    rerender(<AutoDeleteConfig data={{ auto_delete_seconds: 300, auto_delete_unit: "minutes" }} onChange={vi.fn()} />);
-    expect(screen.queryByText(/precisão de ~30s/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/precisão/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/10s/)).toBeInTheDocument();
   });
 
   it("não fecha a seção quando o usuário apaga o campo de duração pra redigitar", () => {

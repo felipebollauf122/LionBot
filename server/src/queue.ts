@@ -8,6 +8,12 @@ import { LeadService } from "./services/lead-service.js";
 import { ensureBotPaymentKeys } from "./services/bot-loader.js";
 import { buildGateway } from "./services/gateway-factory.js";
 import { botCache, flowByIdCache } from "./cache.js";
+import {
+  runMessageDeletion,
+  processOverdueDeletions,
+  type MessageDeletionData,
+  type MessageDeletionDeps,
+} from "./workers/message-deletion.js";
 
 import type { Flow } from "./engine/flow-processor.js";
 import { processRemarketing } from "./workers/remarketing-worker.js";
@@ -111,42 +117,44 @@ export async function addPurchaseEmailTimeoutJob(
   });
 }
 
-/**
- * Process pending message deletions from the message_delete_queue.
- * Called on interval — picks up messages where delete_at has passed.
- */
-async function processMessageDeletions(): Promise<void> {
-  const now = new Date().toISOString();
+// Auto-delete: uma mensagem, um job, com o delay exato escolhido no bloco.
+export const messageDeletionQueue = new Queue<MessageDeletionData>("message-deletion", {
+  connection,
+});
 
-  const { data: messages, error } = await supabase
-    .from("message_delete_queue")
-    .select("*")
-    .eq("status", "pending")
-    .lte("delete_at", now)
-    .limit(50);
+export async function addMessageDeletionJob(
+  data: MessageDeletionData,
+  delaySeconds: number,
+): Promise<void> {
+  await messageDeletionQueue.add("delete-message", data, {
+    delay: delaySeconds * 1000,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+    // A tabela `message_delete_queue` é o registro auditável; o job já cumpriu
+    // o papel dele quando terminou, então não precisa ficar ocupando o Redis.
+    removeOnComplete: true,
+    removeOnFail: 100,
+  });
+}
 
-  if (error || !messages || messages.length === 0) return;
+const messageDeletionDeps: MessageDeletionDeps = {
+  db: supabase,
+  deleteMessage: (botToken, chatId, messageId) =>
+    new TelegramApi(botToken).deleteMessage(chatId, messageId),
+};
 
-  console.log(`[black-delete] Processing ${messages.length} pending deletions`);
+// Rede de segurança: uma varredura por vez. `setInterval` não espera a
+// execução anterior, e sem esta trava duas varreduras concorrentes pegavam as
+// mesmas linhas `pending` e apagavam a mesma mensagem duas vezes.
+let overdueSweepRunning = false;
 
-  for (const msg of messages) {
-    const telegram = new TelegramApi(msg.bot_token);
-    const success = await telegram.deleteMessage(msg.chat_id, msg.message_id);
-
-    if (success) {
-      await supabase
-        .from("message_delete_queue")
-        .update({ status: "deleted" })
-        .eq("id", msg.id);
-    } else {
-      await supabase
-        .from("message_delete_queue")
-        .update({
-          status: "failed",
-          error_message: "Failed to delete message via Telegram API",
-        })
-        .eq("id", msg.id);
-    }
+async function sweepOverdueDeletions(): Promise<void> {
+  if (overdueSweepRunning) return;
+  overdueSweepRunning = true;
+  try {
+    await processOverdueDeletions(messageDeletionDeps);
+  } finally {
+    overdueSweepRunning = false;
   }
 }
 
@@ -188,7 +196,7 @@ export function startWorkers(): void {
       const processor = new FlowProcessor(
         supabase,
         leadService,
-        { addDelayedJob },
+        { addDelayedJob, addMessageDeletionJob },
         { gateway, gatewayKind, baseWebhookUrl: config.baseWebhookUrl, botPaymentConfig: freshBot },
       );
 
@@ -259,7 +267,7 @@ export function startWorkers(): void {
       const processor = new FlowProcessor(
         supabase,
         leadService,
-        { addDelayedJob },
+        { addDelayedJob, addMessageDeletionJob },
         { gateway, gatewayKind, baseWebhookUrl: config.baseWebhookUrl, botPaymentConfig: freshBot },
       );
 
@@ -314,16 +322,27 @@ export function startWorkers(): void {
     },
   );
 
-  // Black flow message deletion — poll every 30 seconds
-  setInterval(() => {
-    processMessageDeletions().catch((err) =>
-      console.error("[black-delete] Error:", err)
-    );
-  }, 30_000);
+  // Auto-delete das mensagens — é este worker que cumpre o tempo escolhido no
+  // bloco, disparando no instante agendado em vez de esperar uma varredura.
+  new Worker<MessageDeletionData>(
+    "message-deletion",
+    async (job: Job<MessageDeletionData>) => {
+      await runMessageDeletion(messageDeletionDeps, job.data);
+    },
+    { connection, concurrency: 10 },
+  );
 
-  // Run once at startup to catch any overdue deletions
-  processMessageDeletions().catch((err) =>
-    console.error("[black-delete] Startup error:", err)
+  // Rede de segurança do auto-delete — a cada 60s, só pro que ficou para trás
+  // (Redis reiniciado, job perdido, servidor fora do ar na hora marcada).
+  setInterval(() => {
+    sweepOverdueDeletions().catch((err) =>
+      console.error("[auto-delete] Erro na rede de segurança:", err)
+    );
+  }, 60_000);
+
+  // Uma vez no boot, pra recuperar o que venceu enquanto o servidor esteve fora
+  sweepOverdueDeletions().catch((err) =>
+    console.error("[auto-delete] Erro na rede de segurança (boot):", err)
   );
 
   // Remarketing worker — poll every 60 seconds.

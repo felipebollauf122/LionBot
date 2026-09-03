@@ -7,7 +7,7 @@ import { TrackingService } from "../services/tracking-service.js";
 import { FacebookCapi } from "../services/facebook-capi.js";
 import { TiktokEvents } from "../services/tiktok-events.js";
 import { UtmifyService } from "../services/utmify.js";
-import { addDelayedJob } from "../queue.js";
+import { addDelayedJob, addMessageDeletionJob } from "../queue.js";
 import { ensureBotPaymentKeys } from "../services/bot-loader.js";
 import { buildGateway } from "../services/gateway-factory.js";
 import { isBlacklisted } from "../services/blacklist.js";
@@ -252,7 +252,7 @@ export async function handleTelegramWebhook(req: Request, res: Response): Promis
     const typedBot = await ensureBotPaymentKeys(botId, bot);
     const telegram = new TelegramApi(typedBot.telegram_token, { protectContent: typedBot.protect_content });
     const { gateway, kind: gatewayKind } = buildGateway(typedBot);
-    const processor = new FlowProcessor(supabase, leadService, { addDelayedJob }, {
+    const processor = new FlowProcessor(supabase, leadService, { addDelayedJob, addMessageDeletionJob }, {
       gateway,
       gatewayKind,
       baseWebhookUrl: config.baseWebhookUrl,

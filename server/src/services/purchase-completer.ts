@@ -8,7 +8,7 @@ import { TiktokEvents } from "./tiktok-events.js";
 import { UtmifyService } from "./utmify.js";
 import { TrackingService } from "./tracking-service.js";
 import { productLabelForExternal } from "./external-product-label.js";
-import { addDelayedJob } from "../queue.js";
+import { addDelayedJob, addMessageDeletionJob } from "../queue.js";
 import { config } from "../config.js";
 import { flowByIdCache } from "../cache.js";
 import type { Flow } from "../engine/flow-processor.js";
@@ -313,7 +313,7 @@ export async function completePurchase(
   // jeito que handleCallbackQuery já faz (flow-processor.ts).
   const telegram = new TelegramApi(bot.telegram_token, { protectContent: bot.protect_content });
   const { gateway, kind: gatewayKind } = buildGateway(bot);
-  const processor = new FlowProcessor(db, leadService, { addDelayedJob }, {
+  const processor = new FlowProcessor(db, leadService, { addDelayedJob, addMessageDeletionJob }, {
     gateway,
     gatewayKind,
     baseWebhookUrl: config.baseWebhookUrl,

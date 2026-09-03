@@ -14,9 +14,6 @@ interface AutoDeleteConfigProps {
   onChange: (data: Record<string, unknown>) => void;
 }
 
-/** O poller de deleção roda a cada 30s — abaixo disso o tempo é aproximado. */
-const IMPRECISE_BELOW_SECONDS = 60;
-
 const UNIT_LABELS: Record<AutoDeleteUnit, string> = {
   seconds: "Segundos",
   minutes: "Minutos",
@@ -131,7 +128,6 @@ export function AutoDeleteConfig({ data, onChange }: AutoDeleteConfigProps) {
             {seconds > 0 ? (
               <>
                 Apagada <span className="stat-value">{formatAutoDelete(seconds)}</span> depois do envio.
-                {seconds < IMPRECISE_BELOW_SECONDS && " Precisão de ~30s (a fila de deleção é checada periodicamente)."}
                 {" "}Sobrepõe o auto-delete do fluxo neste bloco.
               </>
             ) : (

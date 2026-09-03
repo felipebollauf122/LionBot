@@ -12,12 +12,25 @@ import { useEffect } from "react";
 export function TelegramInit({ botId }: { botId: string }) {
   useEffect(() => {
     let cancelado = false;
+    let disposeThemeListener: (() => void) | undefined;
 
     void (async () => {
       const WebApp = (await import("@twa-dev/sdk")).default;
       if (cancelado) return;
 
-      document.documentElement.dataset.tgColorScheme = WebApp.colorScheme === "light" ? "light" : "dark";
+      const app = document.querySelector<HTMLElement>(".tg-app--fullscreen");
+      const isIphone = WebApp.platform === "ios";
+      app?.classList.toggle("tg-app--iphone", isIphone);
+      app?.classList.toggle("tg-app--android", !isIphone);
+      app?.setAttribute("data-telegram-platform", isIphone ? "iphone" : "android");
+
+      const syncColorScheme = () => {
+        document.documentElement.dataset.tgColorScheme =
+          WebApp.colorScheme === "light" ? "light" : "dark";
+      };
+      syncColorScheme();
+      WebApp.onEvent("themeChanged", syncColorScheme);
+      disposeThemeListener = () => WebApp.offEvent("themeChanged", syncColorScheme);
 
       WebApp.ready();
       WebApp.expand();
@@ -55,6 +68,7 @@ export function TelegramInit({ botId }: { botId: string }) {
 
     return () => {
       cancelado = true;
+      disposeThemeListener?.();
     };
   }, [botId]);
 

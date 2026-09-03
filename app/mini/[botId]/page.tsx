@@ -44,10 +44,20 @@ export default async function MiniAppPage({
     <div className="tg-app tg-app--fullscreen tg-app--android">
       <TelegramInit botId={botId} />
       <ChatBackdrop />
-      <ChannelHeader channel={feed.channel} device="android" />
+      <div className="tg-platform-only--iphone">
+        <ChannelHeader channel={feed.channel} device="iphone" />
+      </div>
+      <div className="tg-platform-only--android">
+        <ChannelHeader channel={feed.channel} device="android" />
+      </div>
       <PinnedBar text={feed.pinnedText} />
       <ChannelFeed messages={feed.messages} channel={feed.channel} now={now} />
-      <ChannelFooter device="android" />
+      <div className="tg-platform-only--iphone">
+        <ChannelFooter device="iphone" />
+      </div>
+      <div className="tg-platform-only--android">
+        <ChannelFooter device="android" />
+      </div>
     </div>
   );
 }

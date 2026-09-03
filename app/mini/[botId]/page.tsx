@@ -41,13 +41,13 @@ export default async function MiniAppPage({
   const now = new Date();
 
   return (
-    <div className="tg-app tg-app--fullscreen">
+    <div className="tg-app tg-app--fullscreen tg-app--android">
       <TelegramInit botId={botId} />
       <ChatBackdrop />
-      <ChannelHeader channel={feed.channel} />
+      <ChannelHeader channel={feed.channel} device="android" />
       <PinnedBar text={feed.pinnedText} />
       <ChannelFeed messages={feed.messages} channel={feed.channel} now={now} />
-      <ChannelFooter />
+      <ChannelFooter device="android" />
     </div>
   );
 }

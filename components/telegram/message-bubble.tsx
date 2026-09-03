@@ -12,7 +12,7 @@ import { resolveSender } from "@/lib/social-proof/sender";
  * A bolha. Sempre alinhada à esquerda — o Mini App simula um canal de
  * terceiros, então nunca existe mensagem "própria" do lead.
  *
- * O rabinho aparece só na última mensagem do grupo. O selo "Dona do canal"
+ * O rabinho aparece só na última mensagem do grupo. O selo "admin"
  * fica à direita do nome, como no mockup.
  */
 export function MessageBubble({

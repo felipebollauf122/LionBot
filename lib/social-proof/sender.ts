@@ -3,17 +3,17 @@ import type { FeedChannel, FeedMessage } from "@/lib/social-proof/types";
 export interface ResolvedSender {
   name: string;
   avatarUrl: string | null;
-  /** "Dona do canal" quando a mensagem é da dona; null para membro. */
+  /** "admin" quando a mensagem é da identidade administradora; null para membro. */
   badge: string | null;
 }
 
-const SELO_DONA = "Dona do canal";
+const SELO_ADMIN = "admin";
 
 /**
  * Decide quem aparece enviando a mensagem.
  *
- * A dona é uma identidade do CANAL, não da mensagem: no mockup o canal é
- * "teste" com avatar de lobo e a dona é "Daniel" com avatar próprio. Por isso
+ * O admin é uma identidade do CANAL, não da mensagem: o canal pode ter um
+ * avatar diferente da identidade administradora. Por isso
  * mensagens com sender_kind "owner" ignoram sender_name/sender_avatar_url —
  * elas existem só para os membros.
  *
@@ -23,7 +23,7 @@ const SELO_DONA = "Dona do canal";
 export function resolveSender(message: FeedMessage, channel: FeedChannel): ResolvedSender {
   if (message.senderKind === "owner") {
     const nome = channel.ownerName.trim() || channel.title.trim() || "Canal";
-    return { name: nome, avatarUrl: channel.ownerAvatarUrl, badge: SELO_DONA };
+    return { name: nome, avatarUrl: channel.ownerAvatarUrl, badge: SELO_ADMIN };
   }
 
   return {

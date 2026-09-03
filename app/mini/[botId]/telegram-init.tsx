@@ -17,6 +17,8 @@ export function TelegramInit({ botId }: { botId: string }) {
       const WebApp = (await import("@twa-dev/sdk")).default;
       if (cancelado) return;
 
+      document.documentElement.dataset.tgColorScheme = WebApp.colorScheme === "light" ? "light" : "dark";
+
       WebApp.ready();
       WebApp.expand();
 

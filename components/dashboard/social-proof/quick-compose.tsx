@@ -73,7 +73,7 @@ export function QuickCompose({
                   transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
                 />
               )}
-              {k === "owner" ? "Dona" : "Membro"}
+              {k === "owner" ? "admin" : "Membro"}
             </button>
           ))}
         </div>

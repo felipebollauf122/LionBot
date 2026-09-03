@@ -1,17 +1,7 @@
 /*
- * Tokens do clone de canal do Telegram.
- *
- * TUDO aqui está sob .tg-app, nada em :root. O Next não descarta a folha de
- * estilo ao navegar entre rotas (ver 01-app/01-getting-started/11-css.md), e o
- * escopo é o que garante que essas regras não alcancem nenhuma outra tela mesmo
- * quando a folha continua carregada.
- *
- * Escopo em .tg-app: o layout raiz do app é synthwave (app/globals.css) e nada
- * dele pode vazar pra cá. Nenhum token do dashboard é referenciado neste arquivo.
- *
- * A cor da bolha NÃO é exposta pelo SDK — só bg, text, hint, link, button e
- * secondary_bg. --tgc-bubble é derivada de secondary_bg com fallback nos valores
- * do tema oficial. Num tema customizado exótico pode desviar (spec §6).
+ * Visual tokens for the Telegram channel clone.
+ * Everything is scoped to .tg-app so the dashboard theme never leaks into the
+ * Mini App or its composer preview.
  */
 
 .tg-app {
@@ -23,60 +13,452 @@
   --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
   --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #232e3c);
   --tgc-header-bg: var(--tg-theme-header-bg-color, #17212b);
-
+  --tgc-android-header: #5688b0;
   --tgc-bubble: var(--tg-theme-secondary-bg-color, #182533);
-  --tgc-bubble-radius: 12px;
-  --tgc-bubble-tail-radius: 6px;
-
-  /* Véu escuro sobre o fundo do chat, onde ficam pills e metadados. */
   --tgc-veil: rgba(0, 0, 0, 0.28);
-
-  /* Superfícies das bolhas novas. Derivadas, porque o SDK não expõe nenhuma
-     delas — mesma limitação já documentada para --tgc-bubble. */
   --tgc-pinned-bg: rgba(0, 0, 0, 0.22);
-  --tgc-reaction-bg: rgba(255, 255, 255, 0.10);
+  --tgc-reaction-bg: rgba(255, 255, 255, 0.1);
   --tgc-reply-bar: var(--tgc-link);
-
-  /* Afordancias de EDICAO, usadas so pela previa do console. O Mini App publico
-     nunca passa os handlers, entao nada disto aparece pro lead — mas os tokens
-     moram aqui porque quem os desenha vive em components/telegram/, e a regra
-     desse diretorio e nao referenciar token do dashboard. */
   --tgc-selected: rgba(82, 136, 193, 0.18);
   --tgc-menu-bg: #1c2733;
-  --tgc-menu-border: rgba(255, 255, 255, 0.10);
+  --tgc-menu-border: rgba(255, 255, 255, 0.1);
   --tgc-danger: #e5484d;
+  --tgc-admin: #43b581;
+  --tgc-admin-bg: rgba(67, 181, 129, 0.16);
+  --tgc-verified-check: #ffffff;
+  --tgc-wallpaper: url("/telegram-design/wallpaper-dark.jpg");
 
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background: var(--tgc-bg);
   color: var(--tgc-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
 }
 
-/*
- * Layout comum ao Mini App e ao preview do composer.
- * Os tokens acima e este bloco valem nos dois; só o modificador --fullscreen
- * difere, porque o preview do console NÃO pode cobrir a tela.
- */
-.tg-app {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--tgc-bg);
+.tg-app--light {
+  --tgc-bg: var(--tg-theme-bg-color, #d7efc6);
+  --tgc-text: var(--tg-theme-text-color, #111111);
+  --tgc-hint: var(--tg-theme-hint-color, #85919b);
+  --tgc-link: var(--tg-theme-link-color, #2a83bd);
+  --tgc-button: var(--tg-theme-button-color, #8fc35f);
+  --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
+  --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #ffffff);
+  --tgc-header-bg: var(--tg-theme-header-bg-color, #ffffff);
+  --tgc-bubble: #ffffff;
+  --tgc-veil: rgba(45, 101, 50, 0.22);
+  --tgc-pinned-bg: rgba(255, 255, 255, 0.84);
+  --tgc-reaction-bg: rgba(55, 133, 188, 0.1);
+  --tgc-menu-bg: #ffffff;
+  --tgc-menu-border: rgba(0, 0, 0, 0.1);
+  --tgc-admin: #299b64;
+  --tgc-admin-bg: rgba(41, 155, 100, 0.12);
+  --tgc-wallpaper: url("/telegram-design/wallpaper-light.jpg");
+  color-scheme: light;
 }
 
-/*
- * Só o Mini App de verdade. Separado de .tg-app de propósito: se o
- * position:fixed estivesse no bloco base, o preview dentro do console cobriria
- * o dashboard inteiro.
- *
- * Altura por --tg-viewport-stable-height, nunca 100vh. No iOS dentro do
- * Telegram, 100vh conta uma barra de navegador que não existe ali e o rodapé do
- * feed fica cortado. A variante "stable" não oscila quando o teclado abre.
- */
+.tg-app--dark {
+  color-scheme: dark;
+}
+
+html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
+  --tgc-bg: var(--tg-theme-bg-color, #d7efc6);
+  --tgc-text: var(--tg-theme-text-color, #111111);
+  --tgc-hint: var(--tg-theme-hint-color, #85919b);
+  --tgc-link: var(--tg-theme-link-color, #2a83bd);
+  --tgc-button: var(--tg-theme-button-color, #8fc35f);
+  --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
+  --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #ffffff);
+  --tgc-header-bg: var(--tg-theme-header-bg-color, #ffffff);
+  --tgc-bubble: #ffffff;
+  --tgc-veil: rgba(45, 101, 50, 0.22);
+  --tgc-pinned-bg: rgba(255, 255, 255, 0.84);
+  --tgc-reaction-bg: rgba(55, 133, 188, 0.1);
+  --tgc-menu-bg: #ffffff;
+  --tgc-menu-border: rgba(0, 0, 0, 0.1);
+  --tgc-admin: #299b64;
+  --tgc-admin-bg: rgba(41, 155, 100, 0.12);
+  --tgc-wallpaper: url("/telegram-design/wallpaper-light.jpg");
+  color-scheme: light;
+}
+
 .tg-app--fullscreen {
   position: fixed;
   inset: 0;
   height: var(--tg-viewport-stable-height, 100dvh);
+}
+
+.tg-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 43px;
+  margin-bottom: 8px;
+}
+
+.tg-preview-toolbar__title {
+  margin: 0;
+  color: var(--text-primary, #e7e9ee);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.tg-preview-toolbar__hint {
+  margin: 2px 0 0;
+  color: var(--text-muted, #8b91a1);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.tg-preview-toolbar__controls,
+.tg-preview-segmented,
+.tg-preview-theme {
+  display: flex;
+  align-items: center;
+}
+
+.tg-preview-toolbar__controls {
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tg-preview-segmented,
+.tg-preview-theme {
+  padding: 3px;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: var(--bg-input, rgba(255, 255, 255, 0.04));
+}
+
+.tg-preview-segmented button,
+.tg-preview-theme button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text-muted, #8b91a1);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.tg-preview-segmented button {
+  padding: 0 9px;
+}
+
+.tg-preview-theme button {
+  width: 30px;
+  padding: 0;
+}
+
+.tg-preview-segmented button:hover,
+.tg-preview-theme button:hover {
+  color: var(--text-primary, #e7e9ee);
+}
+
+.tg-preview-segmented button.is-active,
+.tg-preview-theme button.is-active {
+  color: var(--text-primary, #e7e9ee);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+
+.tg-preview-segmented button:focus-visible,
+.tg-preview-theme button:focus-visible,
+.tg-footer-circle:focus-visible,
+.tg-mute-pill:focus-visible {
+  outline: 2px solid #67b7ff;
+  outline-offset: 2px;
+}
+
+.tg-preview-device {
+  overflow: hidden;
+  background: #000000;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
+}
+
+.tg-preview-device--iphone {
+  border: 5px solid #aeb8bb;
+  border-radius: 31px;
+}
+
+.tg-preview-device--android {
+  border: 4px solid #26323b;
+  border-radius: 20px;
+}
+
+.tg-chat-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: var(--tgc-bg);
+  background-image: var(--tgc-wallpaper);
+  background-size: cover;
+  background-position: center;
+}
+
+.tg-preview-status {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: 27px;
+  padding: 4px 14px 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.tg-preview-status--iphone {
+  color: var(--tgc-text);
+  background: transparent;
+}
+
+.tg-preview-status--android {
+  color: #ffffff;
+  background: var(--tgc-android-header);
+}
+
+.tg-status-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tg-battery {
+  display: inline-flex;
+  align-items: center;
+  width: 22px;
+  height: 11px;
+  padding: 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+
+.tg-battery::after {
+  content: "";
+  width: 2px;
+  height: 5px;
+  margin-left: 2px;
+  border-radius: 0 2px 2px 0;
+  background: currentColor;
+}
+
+.tg-battery span {
+  display: block;
+  width: 13px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.tg-channel-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tg-channel-header--iphone {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 7px 10px 10px;
+  background: transparent;
+}
+
+.tg-channel-header--android {
+  gap: 10px;
+  padding: 8px 11px;
+  color: #ffffff;
+  background: var(--tgc-android-header);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.tg-channel-header__back {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tg-channel-header--iphone .tg-channel-header__back {
+  gap: 4px;
+  min-width: 76px;
+  height: 48px;
+  padding: 0 10px 0 6px;
+  color: var(--tgc-text);
+  background: color-mix(in srgb, var(--tgc-bg) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
+  border-radius: 28px;
+  backdrop-filter: blur(12px);
+}
+
+.tg-channel-header--android .tg-channel-header__back {
+  width: 25px;
+  color: #ffffff;
+}
+
+.tg-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 35px;
+  height: 27px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: var(--tgc-text);
+  background: color-mix(in srgb, var(--tgc-text) 11%, transparent);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tg-channel-avatar {
+  display: block;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.tg-channel-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tgc-button-text);
+  background: var(--tgc-button);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.tg-channel-header__copy {
+  min-width: 0;
+}
+
+.tg-channel-header--iphone .tg-channel-header__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 12px;
+  text-align: center;
+  background: color-mix(in srgb, var(--tgc-bg) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
+  border-radius: 28px;
+  backdrop-filter: blur(12px);
+}
+
+.tg-channel-header--android .tg-channel-header__copy {
+  flex: 1;
+}
+
+.tg-channel-header__title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tg-channel-header--iphone .tg-channel-header__title {
+  justify-content: center;
+}
+
+.tg-channel-header__title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tg-channel-header__subscribers {
+  overflow: hidden;
+  color: var(--tgc-hint);
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tg-channel-header--android .tg-channel-header__subscribers {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.tg-channel-header__ios-avatar,
+.tg-channel-header__overflow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tg-channel-header__ios-avatar {
+  padding: 1px;
+  border: 2px solid color-mix(in srgb, var(--tgc-text) 35%, transparent);
+  border-radius: 50%;
+}
+
+.tg-channel-header__overflow {
+  width: 24px;
+  color: #ffffff;
+}
+
+.tg-verified-icon {
+  flex-shrink: 0;
+  color: #3fa9f5;
+}
+
+.tg-pinned {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  color: var(--tgc-text);
+  background: var(--tgc-pinned-bg);
+  border-left: 3px solid var(--tgc-link);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.tg-app--iphone .tg-pinned {
+  margin: 0 10px 3px;
+  border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
+  border-left: 3px dashed var(--tgc-link);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+}
+
+.tg-pinned-title {
+  color: var(--tgc-link);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tg-pinned-text {
+  overflow: hidden;
+  color: var(--tgc-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .tg-feed {
@@ -88,13 +470,22 @@
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
 }
 
-/* A bolha. O rabinho só existe na última mensagem do grupo. */
+.tg-feed::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tg-feed::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tgc-text) 22%, transparent);
+}
+
 .tg-bubble {
   position: relative;
-  max-width: min(80%, 480px);
   width: fit-content;
+  max-width: min(86%, 480px);
   padding: 6px 9px 7px;
-  border-radius: var(--tgc-bubble-radius);
+  border-radius: 12px;
+  color: var(--tgc-text);
   background: var(--tgc-bubble);
   font-size: 16px;
   line-height: 1.3125;
@@ -103,10 +494,9 @@
 }
 
 .tg-bubble--tail {
-  border-bottom-left-radius: var(--tgc-bubble-tail-radius);
+  border-bottom-left-radius: 6px;
 }
 
-/* Mídia encostada nas bordas da bolha, como no Telegram. */
 .tg-bubble--media {
   padding: 3px 3px 7px;
 }
@@ -115,41 +505,20 @@
   padding: 3px;
 }
 
-/* Barra de mensagem fixada, logo abaixo do cabeçalho do canal. */
-.tg-pinned {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--tgc-pinned-bg);
-  border-left: 3px solid var(--tgc-link);
-  font-size: 14px;
-  line-height: 1.25;
-}
-
-.tg-pinned-title {
-  color: var(--tgc-link);
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.tg-pinned-text {
-  color: var(--tgc-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Selo "Dona do canal" — alinhado à direita no cabeçalho da bolha. */
 .tg-owner-badge {
-  margin-left: auto;
-  padding-left: 12px;
-  color: var(--tgc-hint);
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 7px;
+  padding: 1px 6px 2px;
+  border-radius: 999px;
+  color: var(--tgc-admin);
+  background: var(--tgc-admin-bg);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
-/* Linha de reações sob o conteúdo da bolha. */
 .tg-reactions {
   display: flex;
   flex-wrap: wrap;
@@ -168,13 +537,12 @@
   line-height: 1.4;
 }
 
-/* Grade de álbum. 2 itens = 2 colunas; 3 ou 4 = 2x2 com o primeiro largo. */
 .tg-album {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
-  border-radius: calc(var(--tgc-bubble-radius) - 3px);
   overflow: hidden;
+  border-radius: 9px;
 }
 
 .tg-album-item {
@@ -185,13 +553,12 @@
 
 .tg-album-item img,
 .tg-album-item video {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
 }
 
-/* Bolha de áudio: play + onda + duração. */
 .tg-audio {
   display: flex;
   align-items: center;
@@ -201,25 +568,25 @@
 }
 
 .tg-audio-play {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--tgc-button);
-  color: var(--tgc-button-text);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  color: var(--tgc-button-text);
+  background: var(--tgc-button);
   border: none;
+  border-radius: 50%;
   cursor: pointer;
 }
 
 .tg-audio-wave {
   display: flex;
   align-items: center;
+  flex: 1;
   gap: 2px;
   height: 24px;
-  flex: 1;
 }
 
 .tg-audio-bar {
@@ -228,11 +595,10 @@
   background: var(--tgc-hint);
 }
 
-/* Bloco citado dentro da bolha, para respostas. */
 .tg-reply {
-  border-left: 2px solid var(--tgc-reply-bar);
-  padding: 2px 0 2px 8px;
   margin-bottom: 4px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--tgc-reply-bar);
   font-size: 14px;
   line-height: 1.2;
 }
@@ -243,21 +609,176 @@
 }
 
 .tg-reply-text {
+  overflow: hidden;
   color: var(--tgc-hint);
   white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Duração sobreposta no canto do vídeo. */
 .tg-media-duration {
   position: absolute;
   left: 6px;
   bottom: 6px;
   padding: 1px 6px;
-  border-radius: 10px;
+  color: #ffffff;
   background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  border-radius: 10px;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.tg-channel-footer {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.tg-channel-footer--iphone {
+  padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+  background: transparent;
+}
+
+.tg-ios-footer-actions {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 14px;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.tg-footer-circle,
+.tg-mute-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  color: var(--tgc-text);
+  background: color-mix(in srgb, var(--tgc-bg) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tgc-text) 7%, transparent);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+}
+
+.tg-footer-circle {
+  width: 48px;
+}
+
+.tg-mute-pill {
+  gap: 7px;
+  width: 100%;
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.tg-ios-home-indicator {
+  width: 104px;
+  height: 4px;
+  margin: 10px auto 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tgc-text) 72%, transparent);
+}
+
+.tg-channel-footer--android {
+  background: var(--tgc-secondary-bg);
+  border-top: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
+}
+
+.tg-android-footer-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 62px;
+  color: var(--tgc-link);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tg-system-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 26px;
+  color: #70757a;
+  background: #f0f0f0;
+}
+
+.tg-system-nav__recent,
+.tg-system-nav__back {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.tg-system-nav__recent::before {
+  content: "";
+  position: absolute;
+  inset: 1px 4px;
+  border-right: 3px solid currentColor;
+  border-left: 3px solid currentColor;
+  border-radius: 2px;
+}
+
+.tg-system-nav__home {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border: 2px solid currentColor;
+  border-radius: 7px;
+}
+
+.tg-system-nav__back::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  width: 11px;
+  height: 11px;
+  border-bottom: 3px solid currentColor;
+  border-left: 3px solid currentColor;
+  transform: rotate(45deg);
+}
+
+@media (max-width: 520px) {
+  .tg-app--iphone .tg-channel-header--iphone {
+    gap: 5px;
+    padding-inline: 7px;
+  }
+
+  .tg-app--iphone .tg-channel-header--iphone .tg-channel-header__back {
+    min-width: 62px;
+    padding-inline: 4px 7px;
+  }
+
+  .tg-app--iphone .tg-channel-header--iphone .tg-unread-badge {
+    min-width: 27px;
+    padding-inline: 5px;
+  }
+
+  .tg-app--iphone .tg-channel-header--iphone .tg-channel-header__copy {
+    padding-inline: 7px;
+  }
+
+  .tg-ios-footer-actions {
+    gap: 9px;
+  }
+}
+
+@media (max-width: 640px) {
+  .tg-preview-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .tg-preview-toolbar__hint {
+    display: none;
+  }
+
+  .tg-preview-toolbar__controls {
+    justify-content: space-between;
+    width: 100%;
+  }
 }

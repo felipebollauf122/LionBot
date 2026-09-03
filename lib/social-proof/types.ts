@@ -11,7 +11,7 @@ export interface Reaction {
   count: number;
 }
 
-/** Quem aparece enviando: a dona do canal ou um membro qualquer. */
+/** Quem aparece enviando: o admin do canal ou um membro qualquer. */
 export type SenderKind = "owner" | "member";
 
 /** Os cinco botões de "Tipo de mensagem" do editor. */
@@ -23,7 +23,7 @@ export interface FeedChannel {
   avatarUrl: string | null;
   subscribersLabel: string;
   isVerified: boolean;
-  /** Identidade da dona — separada do canal (o canal pode ter outro avatar). */
+  /** Identidade do admin — separada do canal (o canal pode ter outro avatar). */
   ownerName: string;
   ownerAvatarUrl: string | null;
   ownerUsername: string;

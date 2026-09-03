@@ -127,7 +127,7 @@ export function MessageEditor({
         <p className="text-xs text-(--text-muted)">Enviar como</p>
         <div className="grid grid-cols-2 gap-2">
           {([
-            { kind: "owner" as SenderKind, titulo: "Dona do canal", sub: "Aparece como a dona" },
+            { kind: "owner" as SenderKind, titulo: "admin", sub: "Aparece como admin" },
             { kind: "member" as SenderKind, titulo: "Membro", sub: "Aparece como membro" },
           ]).map((op) => (
             <button

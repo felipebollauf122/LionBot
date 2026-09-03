@@ -7,17 +7,5 @@
  * que fundo liso.
  */
 export function ChatBackdrop() {
-  return (
-    <div
-      aria-hidden
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 0,
-        background: "var(--tgc-bg)",
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.035' stroke-width='1.5'%3E%3Ccircle cx='30' cy='30' r='11'/%3E%3Ccircle cx='90' cy='90' r='11'/%3E%3Cpath d='M60 8c6 8 6 16 0 24-6 8-6 16 0 24'/%3E%3Cpath d='M12 72c8 6 16 6 24 0'/%3E%3Cpath d='M84 36c8 6 16 6 24 0'/%3E%3C/g%3E%3C/svg%3E")`,
-        backgroundSize: "120px 120px",
-      }}
-    />
-  );
+  return <div aria-hidden className="tg-chat-backdrop" />;
 }

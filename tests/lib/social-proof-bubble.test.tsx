@@ -192,7 +192,7 @@ describe("ChannelFeed — remetente e conteúdo v2", () => {
       />,
     );
     expect(screen.getByText("Daniel")).toBeInTheDocument();
-    expect(screen.getByText("Dona do canal")).toBeInTheDocument();
+    expect(screen.getByText("admin")).toBeInTheDocument();
   });
 
   it("mensagem de membro não ganha selo", () => {

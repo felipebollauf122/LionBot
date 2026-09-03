@@ -51,8 +51,8 @@ describe("resolveSender", () => {
     expect(out.avatarUrl).toBe("daniel.png");
   });
 
-  it("dona ganha o selo 'Dona do canal'", () => {
-    expect(resolveSender(msg({ senderKind: "owner" }), canal).badge).toBe("Dona do canal");
+  it("admin ganha o selo 'admin'", () => {
+    expect(resolveSender(msg({ senderKind: "owner" }), canal).badge).toBe("admin");
   });
 
   it("membro nunca ganha selo", () => {

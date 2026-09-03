@@ -6,9 +6,8 @@ const CAMPO =
   "w-full rounded-lg bg-(--bg-input) border border-(--border-default) px-3 py-2 text-sm text-(--text-primary) outline-none focus:border-(--accent)";
 
 /**
- * Identidade da dona — separada do canal de propósito: no mockup o canal tem
- * avatar de lobo e a dona tem o próprio. Mensagens marcadas como "Dona do
- * canal" usam estes campos, não os da mensagem.
+ * Identidade do admin — separada do canal de propósito. Mensagens marcadas
+ * como admin usam estes campos, não os da mensagem.
  */
 export function OwnerCard({
   value,
@@ -20,7 +19,7 @@ export function OwnerCard({
   return (
     <section className="rounded-xl border border-(--border-subtle) p-4 space-y-3">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-(--text-muted)">
-        Identidade da dona
+        Identidade do admin
       </h2>
 
       <div className="flex items-center gap-3">
@@ -34,7 +33,7 @@ export function OwnerCard({
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-semibold text-(--text-primary)">
-            {value.owner_name || "Nome da dona"}
+            {value.owner_name || "Nome do admin"}
           </p>
           <p className="truncate text-sm text-(--text-muted)">
             @{value.owner_username || "usuario"}
@@ -44,7 +43,7 @@ export function OwnerCard({
 
       <input
         className={CAMPO}
-        placeholder="Nome da dona"
+        placeholder="Nome do admin"
         value={value.owner_name}
         onChange={(e) => onChange({ ...value, owner_name: e.target.value })}
       />

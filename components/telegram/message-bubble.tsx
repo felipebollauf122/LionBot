@@ -14,7 +14,8 @@ import { resolveSender } from "@/lib/social-proof/sender";
  * A bolha. Sempre alinhada à esquerda — o Mini App simula um canal de
  * terceiros, então nunca existe mensagem "própria" do lead.
  *
- * Cantos seguem a posição no grupo, como no Telegram: o canto superior
+ * O selo "admin" fica encostado à direita da linha do nome, como o rótulo de
+ * administrador do Telegram. Cantos seguem a posição no grupo: o canto superior
  * esquerdo só é grande na primeira mensagem, o inferior esquerdo só ganha
  * rabinho na última; entre elas os dois ficam pequenos. O selo "admin" fica à
  * direita do nome.

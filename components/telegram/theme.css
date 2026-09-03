@@ -796,6 +796,8 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
 .tg-bubble__head {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   padding: 0;
 }
 
@@ -827,7 +829,7 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: 6px;
+  margin-left: auto;
   padding: 1px 6px 2px;
   border-radius: 999px;
   color: var(--tgc-admin);

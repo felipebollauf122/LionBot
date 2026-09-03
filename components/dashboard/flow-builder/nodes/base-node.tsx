@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { NODE_META, handleStyle, isNodeIncomplete } from "../flow-utils";
+import { NODE_META, handleStyle, isNodeIncomplete, formatAutoDelete } from "../flow-utils";
 
 /** var(--cyan) → var(--cyan-glow, var(--cyan)); qualquer outro valor passa direto. */
 function glowOf(color: string): string {
@@ -55,6 +55,11 @@ export function BaseNode({ type, data, selected = false, color, label, className
   const meta = NODE_META[type];
   const c = color ?? meta?.color ?? "var(--text-secondary)";
   const incomplete = isNodeIncomplete(type, data);
+  // Auto-delete configurado no painel: mostrado no card pra dar pra ver, de
+  // relance no canvas, quais blocos somem sozinhos.
+  const autoDelete = typeof data.auto_delete_seconds === "number"
+    ? formatAutoDelete(data.auto_delete_seconds)
+    : "";
   // Seleção ganha da borda de incompleto; o dot âmbar continua visível.
   const dashed = Boolean(incomplete) && !selected;
 
@@ -104,10 +109,25 @@ export function BaseNode({ type, data, selected = false, color, label, className
         <span className="text-[0.6875rem] font-bold uppercase tracking-wide" style={{ color: c }}>
           {label ?? meta?.label ?? type}
         </span>
-        {incomplete && (
-          <span className="ml-auto pl-2 shrink-0 inline-flex items-center" title={incomplete}>
-            <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--amber)" }} />
-            <span className="sr-only">{incomplete}</span>
+        {(autoDelete || incomplete) && (
+          <span className="ml-auto pl-2 shrink-0 inline-flex items-center gap-1.5">
+            {autoDelete && (
+              <span
+                className="inline-flex items-center gap-1 text-[0.625rem] font-semibold text-(--text-muted)"
+                title={`Mensagem apagada ${autoDelete} após o envio`}
+              >
+                <svg aria-hidden="true" focusable="false" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+                {autoDelete}
+              </span>
+            )}
+            {incomplete && (
+              <span className="inline-flex items-center" title={incomplete}>
+                <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--amber)" }} />
+                <span className="sr-only">{incomplete}</span>
+              </span>
+            )}
           </span>
         )}
       </div>

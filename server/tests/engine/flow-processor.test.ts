@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock the queue module to avoid pulling in config (env vars), BullMQ and a
 // real Redis connection at import time. The flow-processor → payment-button
@@ -327,5 +327,111 @@ describe("FlowProcessor", () => {
 
       expect(mockTelegram.sendMessage).not.toHaveBeenCalledWith({ chatId: 12345, text: "Pagamento confirmado" });
     });
+  });
+});
+
+describe("auto-delete por bloco", () => {
+  const NOW = new Date("2026-01-01T00:00:00.000Z");
+  let processor: FlowProcessor;
+  let insertedRows: Record<string, unknown>[];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    flowByIdCache.clear();
+    insertedRows = [];
+
+    // Só a fila de deleção toca o banco neste cenário — qualquer outra tabela
+    // é bug no teste e deve estourar, não passar batido.
+    mockDb.from.mockImplementation((table: string) => {
+      if (table !== "message_delete_queue") throw new Error(`unexpected table: ${table}`);
+      return {
+        insert: (rows: Record<string, unknown>[]) => {
+          insertedRows.push(...rows);
+          return Promise.resolve({ error: null });
+        },
+      };
+    });
+
+    // Sem message_id de volta, o nó não devolve messageIds e não há o que deletar.
+    mockTelegram.sendMessage.mockImplementation(() =>
+      Promise.resolve({ message_id: 900 + insertedRows.length }),
+    );
+
+    processor = new FlowProcessor(
+      mockDb as any,
+      mockLeadService as any,
+      mockQueue as any,
+      { gateway: {} as any, gatewayKind: "sigilopay", baseWebhookUrl: "https://example.com" },
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    mockDb.from.mockReset();
+    mockTelegram.sendMessage.mockReset();
+  });
+
+  /** Segundos entre o `delete_at` da linha enfileirada e o "agora" congelado. */
+  function delayOf(row: Record<string, unknown>): number {
+    return (new Date(String(row.delete_at)).getTime() - NOW.getTime()) / 1000;
+  }
+
+  function flowWith(autoDeleteSeconds?: number) {
+    const flow = makeFlow();
+    (flow.flow_data.nodes[1] as any).data.auto_delete_seconds = autoDeleteSeconds;
+    // Só o primeiro nó de texto interessa aqui — o segundo fica sem config.
+    flow.flow_data.edges = [{ id: "e1", source: "trigger-1", target: "text-1" }];
+    return flow;
+  }
+
+  it("enfileira a deleção do bloco configurado num fluxo comum", async () => {
+    await processor.executeFlow(flowWith(30) as any, makeLead(), mockTelegram as any, 12345);
+
+    expect(insertedRows).toHaveLength(1);
+    expect(delayOf(insertedRows[0])).toBe(30);
+    expect(insertedRows[0]).toMatchObject({ bot_id: "bot-1", chat_id: 12345, status: "pending" });
+  });
+
+  it("não enfileira nada quando o bloco não tem auto-delete e o fluxo também não", async () => {
+    await processor.executeFlow(flowWith(undefined) as any, makeLead(), mockTelegram as any, 12345);
+
+    expect(insertedRows).toHaveLength(0);
+  });
+
+  it("mantém os 15min do black flow no bloco sem auto-delete próprio", async () => {
+    await processor.executeFlow(flowWith(undefined) as any, makeLead(), mockTelegram as any, 12345, undefined, true);
+
+    expect(insertedRows).toHaveLength(1);
+    expect(delayOf(insertedRows[0])).toBe(15 * 60);
+  });
+
+  it("o tempo do bloco tem precedência sobre o do black flow", async () => {
+    await processor.executeFlow(flowWith(45) as any, makeLead(), mockTelegram as any, 12345, undefined, true);
+
+    expect(insertedRows).toHaveLength(1);
+    expect(delayOf(insertedRows[0])).toBe(45);
+  });
+
+  it("o tempo do bloco tem precedência sobre o deleteAfterMinutes do fluxo", async () => {
+    await processor.executeFlow(flowWith(45) as any, makeLead(), mockTelegram as any, 12345, undefined, false, 120);
+
+    expect(insertedRows).toHaveLength(1);
+    expect(delayOf(insertedRows[0])).toBe(45);
+  });
+
+  it("aplica o deleteAfterMinutes do fluxo em minutos, não em segundos", async () => {
+    await processor.executeFlow(flowWith(undefined) as any, makeLead(), mockTelegram as any, 12345, undefined, false, 2);
+
+    expect(insertedRows).toHaveLength(1);
+    expect(delayOf(insertedRows[0])).toBe(120);
+  });
+
+  it("ignora valor inválido no bloco e cai na regra do fluxo", async () => {
+    await processor.executeFlow(flowWith(-5) as any, makeLead(), mockTelegram as any, 12345, undefined, true);
+
+    expect(insertedRows).toHaveLength(1);
+    expect(delayOf(insertedRows[0])).toBe(15 * 60);
   });
 });

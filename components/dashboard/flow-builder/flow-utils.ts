@@ -351,3 +351,51 @@ export function validSourceHandles(
       return null;
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Auto-delete por bloco
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Teto de 24h — o mesmo limite do auto-delete por fluxo (1440 min). */
+export const AUTO_DELETE_MAX_SECONDS = 86400;
+
+export const AUTO_DELETE_UNITS = {
+  seconds: 1,
+  minutes: 60,
+  hours: 3600,
+} as const;
+
+export type AutoDeleteUnit = keyof typeof AUTO_DELETE_UNITS;
+
+/** Só os blocos que ENVIAM mensagem — nos outros o auto-delete não teria efeito. */
+export const AUTO_DELETE_TYPES = new Set([
+  "text",
+  "image",
+  "video",
+  "audio",
+  "button",
+  "input",
+  "payment_button",
+  "unmapped",
+]);
+
+/**
+ * Normaliza o par duração+unidade escolhido no painel para segundos — a forma
+ * que vai gravada em `node.data.auto_delete_seconds` e que a engine consome.
+ * Qualquer entrada inválida (0, negativa, NaN, unidade desconhecida) significa
+ * "desligado" e vira 0.
+ */
+export function autoDeleteSeconds(amount: number, unit: string): number {
+  const multiplier = AUTO_DELETE_UNITS[unit as AutoDeleteUnit];
+  if (!multiplier) return 0;
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.min(Math.floor(amount * multiplier), AUTO_DELETE_MAX_SECONDS);
+}
+
+/** Rótulo curto ("45s", "5min", "2h") pro badge do card e pro hint do painel. */
+export function formatAutoDelete(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}min`;
+  return `${seconds}s`;
+}

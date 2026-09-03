@@ -14,8 +14,10 @@ import {
 } from "../services/gateway-factory.js";
 import { flowCache, flowByIdCache, remarketingFlowByIdCache } from "../cache.js";
 import { logEvent } from "../services/lead-messages.js";
+import { resolveAutoDeleteSeconds } from "./auto-delete.js";
 
-const BLACK_DELETE_DELAY_MINUTES = 15;
+/** Black flow apaga tudo 15 minutos depois do envio (padrão histórico). */
+const BLACK_DELETE_DELAY_SECONDS = 15 * 60;
 
 export interface Flow {
   id: string;
@@ -229,17 +231,21 @@ export class FlowProcessor {
   }
 
   /**
-   * Queue a message for deletion after `delayMinutes` minutes.
+   * Queue a message for deletion after `delaySeconds` seconds.
+   *
+   * Em SEGUNDOS (não minutos) porque o auto-delete por bloco deixa o usuário
+   * escolher tempos abaixo de 1 minuto. O poller roda a cada 30s, então a
+   * deleção real acontece com até ~30s de atraso — o painel avisa disso.
    */
   private async queueMessageDeletion(
     botId: string,
     botToken: string,
     chatId: number,
     messageIds: number[],
-    delayMinutes: number,
+    delaySeconds: number,
   ): Promise<void> {
     if (messageIds.length === 0) return;
-    const deleteAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+    const deleteAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
     // Insert em lote: um nó que manda várias mensagens fazia N round-trips
     // sequenciais aqui, cada um segurando o avanço pro próximo nó do flow.
     await this.db.from("message_delete_queue").insert(
@@ -323,8 +329,13 @@ export class FlowProcessor {
         remarketingSendId ?? null,
       );
 
-      // Queue black flow messages for deletion (apenas em flows visuais black)
-      if (isBlack && result.messageIds) {
+      // Auto-delete do Pix: tempo configurado no próprio bloco de pagamento e,
+      // sem ele, o padrão do black flow (flows visuais black).
+      const deletionDelay = resolveAutoDeleteSeconds(
+        ctx.node.data,
+        isBlack ? BLACK_DELETE_DELAY_SECONDS : null,
+      );
+      if (deletionDelay && result.messageIds) {
         const botId = await resolveBotId();
         if (botId) {
           await this.queueMessageDeletion(
@@ -332,7 +343,7 @@ export class FlowProcessor {
             telegram.botToken,
             chatId,
             result.messageIds,
-            BLACK_DELETE_DELAY_MINUTES,
+            deletionDelay,
           );
         }
       }
@@ -353,6 +364,10 @@ export class FlowProcessor {
   /**
    * Execute a flow. If isBlack=true, messages are queued for deletion after 15min (black flow default).
    * If deleteAfterMinutes is provided, overrides isBlack and uses that delay instead.
+   *
+   * Qualquer uma dessas duas regras vale como PADRÃO do fluxo: um bloco com
+   * auto-delete próprio (`node.data.auto_delete_seconds`, configurado no
+   * editor) tem precedência sobre ela.
    */
   async executeFlow(
     flow: Flow,
@@ -364,11 +379,11 @@ export class FlowProcessor {
     deleteAfterMinutes?: number | null,
     persistPosition: boolean = true,
   ): Promise<{ blocked?: boolean }> {
-    const deletionDelay =
+    const flowDeletionDelaySeconds =
       deleteAfterMinutes && deleteAfterMinutes > 0
-        ? deleteAfterMinutes
+        ? deleteAfterMinutes * 60
         : isBlack
-        ? BLACK_DELETE_DELAY_MINUTES
+        ? BLACK_DELETE_DELAY_SECONDS
         : null;
     // Blindagem (bug black flow): flow_data pode vir null/corrompido ou sem nós.
     // Antes isso virava crash (destructuring de null) ou silêncio total. Agora
@@ -435,14 +450,16 @@ export class FlowProcessor {
         return { blocked: true };
       }
 
-      // Auto-delete: black flow (15min) or explicit deleteAfterMinutes
-      if (deletionDelay && result.messageIds) {
+      // Auto-delete: tempo do próprio bloco (editor) e, sem ele, o padrão do
+      // fluxo — black flow (15min) ou deleteAfterMinutes do remarketing.
+      const nodeDeletionDelay = resolveAutoDeleteSeconds(node.data, flowDeletionDelaySeconds);
+      if (nodeDeletionDelay && result.messageIds) {
         await this.queueMessageDeletion(
           flow.bot_id,
           telegram.botToken,
           chatId,
           result.messageIds,
-          deletionDelay,
+          nodeDeletionDelay,
         );
       }
 
@@ -653,7 +670,7 @@ export class FlowProcessor {
                 telegram.botToken,
                 chatId,
                 [sent.message_id],
-                BLACK_DELETE_DELAY_MINUTES,
+                BLACK_DELETE_DELAY_SECONDS,
               );
             }
             return;
@@ -823,7 +840,7 @@ export class FlowProcessor {
             : "📱 QR Code Pix — escaneie com o app do seu banco",
         });
         if (isBlack && msg) {
-          await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, [msg.message_id], BLACK_DELETE_DELAY_MINUTES);
+          await this.queueMessageDeletion(bot.id, telegram.botToken, chatId, [msg.message_id], BLACK_DELETE_DELAY_SECONDS);
         }
       } else {
         await telegram.sendMessage({

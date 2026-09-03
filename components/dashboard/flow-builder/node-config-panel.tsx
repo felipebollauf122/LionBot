@@ -2,7 +2,8 @@
 
 import { useEffect, useId, useState } from "react";
 import type { Node } from "@xyflow/react";
-import { NODE_META } from "./flow-utils";
+import { NODE_META, AUTO_DELETE_TYPES } from "./flow-utils";
+import { AutoDeleteConfig } from "./config-forms/auto-delete-config";
 import { TriggerConfig } from "./config-forms/trigger-config";
 import { TextConfig } from "./config-forms/text-config";
 import { ImageConfig } from "./config-forms/image-config";
@@ -191,6 +192,15 @@ export function NodeConfigPanel({
       {/* Config form */}
       <div className="flex-1 px-4 pt-4 pb-4">
         {configForms[node.type ?? ""]}
+
+        {/* Auto-delete — só nos blocos que enviam mensagem; nos outros
+            (delay/condição/ação/gatilho) não haveria o que apagar. */}
+        {AUTO_DELETE_TYPES.has(node.type ?? "") && (
+          <>
+            <div className="divider my-4" />
+            <AutoDeleteConfig key={node.id} data={node.data} onChange={handleChange} />
+          </>
+        )}
       </div>
 
       {/* Ações do bloco (duplicar/excluir) */}

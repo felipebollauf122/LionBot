@@ -147,16 +147,16 @@ export function FeedPreview({
   };
 
   return (
-    <section className="space-y-2 w-full flex flex-col items-center">
-      <h2 className="text-sm font-semibold text-(--text-secondary)">
+    <section className="w-full flex flex-col items-center h-full min-h-0">
+      <h2 className="text-sm font-semibold text-(--text-secondary) shrink-0 mb-2">
         {channel.is_active
           ? "Prévia — é exatamente isto que o lead vê"
           : "Prévia — o canal está INATIVO; o lead verá uma página de erro"}
       </h2>
 
       <div
-        className="tg-app w-full overflow-hidden rounded-[32px] border-[6px] border-(--border-default) shadow-2xl relative bg-black mx-auto flex flex-col"
-        style={{ height: "calc(100vh - 240px)", minHeight: 600, maxHeight: 850, maxWidth: 380 }}
+        className="tg-app w-full overflow-hidden rounded-[32px] border-[6px] border-(--border-default) shadow-2xl relative bg-black mx-auto flex flex-col flex-1 min-h-0"
+        style={{ maxWidth: 380 }}
       >
         <ChatBackdrop />
         <ChannelHeader channel={feedChannel} />

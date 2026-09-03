@@ -5,7 +5,7 @@
  *   (campos {{campaign.name}} etc. são preenchidos pelo Facebook na hora do clique).
  * - SEM Utmify: link limpo, só o bot.
  *
- * `origin` é o domínio público (ex: https://lionbot.site). No cliente,
+ * `origin` é o domínio público (ex: https://lionbot.online). No cliente,
  * passe window.location.origin.
  */
 /**

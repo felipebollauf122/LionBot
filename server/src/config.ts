@@ -18,7 +18,7 @@ export const config = {
   baseWebhookUrl: env("BASE_WEBHOOK_URL"), // e.g. https://your-domain.com
   // Domínio público do front (Next.js), onde mora o Mini App de prova social.
   // Diferente de baseWebhookUrl, que é o domínio DESTE server.
-  publicAppUrl: envOptional("PUBLIC_APP_URL", "https://lionbot.site"),
+  publicAppUrl: envOptional("PUBLIC_APP_URL", "https://lionbot.online"),
   telegramApiId: parseInt(envOptional("TELEGRAM_API_ID", "0"), 10),
   telegramApiHash: envOptional("TELEGRAM_API_HASH", ""),
   mtprotoWorkerEnabled: envOptional("MTPROTO_WORKER_ENABLED", "true") === "true",

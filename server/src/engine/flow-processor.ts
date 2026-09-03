@@ -57,6 +57,8 @@ interface DelayQueue {
     botToken: string;
     chatId: number;
     messageId: number;
+    sentAt: number;
+    targetSeconds: number;
   }, delaySeconds: number): Promise<void>;
 }
 
@@ -259,7 +261,11 @@ export class FlowProcessor {
     delaySeconds: number,
   ): Promise<void> {
     if (messageIds.length === 0) return;
-    const deleteAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+    // O relógio começa AQUI — logo que o nó terminou de enviar. Tudo que vier
+    // depois no fluxo (outros blocos, delays, a pausa nos botões) não desloca
+    // esse instante.
+    const sentAt = Date.now();
+    const deleteAt = new Date(sentAt + delaySeconds * 1000).toISOString();
     // Insert em lote: um nó que manda várias mensagens fazia N round-trips
     // sequenciais aqui, cada um segurando o avanço pro próximo nó do flow.
     const { data: rows, error } = await this.db
@@ -284,12 +290,25 @@ export class FlowProcessor {
     // Agenda cada deleção no Redis com o delay exato. É ISTO que cumpre o
     // tempo escolhido no bloco — a tabela sozinha só seria varrida pelo
     // poller de segurança, cuja resolução é grosseira demais pra segundos.
+    //
+    // O delay do job é contado a partir de AGORA, mas o alvo do usuário é
+    // contado a partir do envio: desconta o que o INSERT acima consumiu, senão
+    // a latência do banco empurraria a deleção pra frente.
+    const remainingSeconds = Math.max(0, delaySeconds - (Date.now() - sentAt) / 1000);
+
     await Promise.all(
       (rows as { id: string; message_id: number }[]).map((row) =>
         this.delayQueue
           .addMessageDeletionJob?.(
-            { queueRowId: row.id, botToken, chatId, messageId: row.message_id },
-            delaySeconds,
+            {
+              queueRowId: row.id,
+              botToken,
+              chatId,
+              messageId: row.message_id,
+              sentAt,
+              targetSeconds: delaySeconds,
+            },
+            remainingSeconds,
           )
           // Redis fora do ar não pode derrubar o flow nem perder a mensagem:
           // a linha já está gravada e o poller de segurança pega depois.

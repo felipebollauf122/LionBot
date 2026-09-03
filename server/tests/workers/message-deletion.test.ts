@@ -127,3 +127,35 @@ describe("processOverdueDeletions (rede de segurança)", () => {
     expect(deleteMessage).not.toHaveBeenCalled();
   });
 });
+
+describe("diagnóstico do atraso real", () => {
+  it("mede quanto a deleção atrasou em relação ao alvo e registra no log", async () => {
+    const db = makeDb();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runMessageDeletion({ db: db as never, deleteMessage: vi.fn().mockResolvedValue(true) }, {
+      queueRowId: "row-1",
+      botToken: "tok",
+      chatId: 55,
+      messageId: 900,
+      // Enviada há 12s, com alvo de 10s: atrasou 2s.
+      sentAt: Date.now() - 12_000,
+      targetSeconds: 10,
+    });
+
+    const linha = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes("row-1"));
+    expect(linha).toMatch(/alvo 10s/);
+    expect(linha).toMatch(/real 12(\.\d)?s/);
+    log.mockRestore();
+  });
+
+  it("não quebra quando o job foi agendado por uma versão antiga, sem os campos de medição", async () => {
+    const db = makeDb();
+
+    await runMessageDeletion({ db: db as never, deleteMessage: vi.fn().mockResolvedValue(true) }, {
+      queueRowId: "row-1", botToken: "tok", chatId: 55, messageId: 900,
+    });
+
+    expect(db.updates[0].values).toMatchObject({ status: "deleted" });
+  });
+});

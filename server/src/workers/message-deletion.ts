@@ -19,6 +19,14 @@ export interface MessageDeletionData {
   botToken: string;
   chatId: number;
   messageId: number;
+  /**
+   * Instante em que a mensagem foi enviada (epoch ms) e o tempo pedido no
+   * bloco. Servem só pra medir, no log, o atraso REAL entre envio e deleção —
+   * é o que distingue "o agendamento está errado" de "o worker demorou".
+   * Opcionais: jobs agendados por versões anteriores não os têm.
+   */
+  sentAt?: number;
+  targetSeconds?: number;
 }
 
 export interface MessageDeletionDeps {
@@ -45,6 +53,13 @@ export async function runMessageDeletion(
   data: MessageDeletionData,
 ): Promise<void> {
   const ok = await deps.deleteMessage(data.botToken, data.chatId, data.messageId);
+
+  if (data.sentAt && data.targetSeconds) {
+    const real = (Date.now() - data.sentAt) / 1000;
+    console.log(
+      `[auto-delete] ${data.queueRowId} msg=${data.messageId} alvo ${data.targetSeconds}s, real ${real.toFixed(1)}s${ok ? "" : " (falhou)"}`,
+    );
+  }
 
   if (ok) {
     await deps.db

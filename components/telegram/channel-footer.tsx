@@ -26,22 +26,10 @@ function VolumeOffIcon() {
   );
 }
 
-function SystemNavBar() {
-  return (
-    <div className="tg-system-nav" aria-hidden>
-      <span className="tg-system-nav__recent" />
-      <span className="tg-system-nav__home" />
-      <span className="tg-system-nav__back" />
-    </div>
-  );
-}
-
 export function ChannelFooter({
   device = "android",
-  preview = false,
 }: {
   device?: TelegramDevice;
-  preview?: boolean;
 }) {
   return (
     <footer className={`tg-channel-footer tg-channel-footer--${device}`}>
@@ -61,8 +49,6 @@ export function ChannelFooter({
       ) : (
         <div className="tg-android-footer-action">SILENCIAR</div>
       )}
-      {device === "iphone" && preview && <div className="tg-ios-home-indicator" aria-hidden />}
-      {device === "android" && preview && <SystemNavBar />}
     </footer>
   );
 }

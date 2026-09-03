@@ -186,7 +186,7 @@ export function FeedPreview({
         style={{ maxWidth: device === "iphone" ? 380 : 390 }}
       >
         <ChatBackdrop />
-        <ChannelHeader channel={feedChannel} device={device} preview />
+        <ChannelHeader channel={feedChannel} device={device} />
         <PinnedBar text={pinnedText} />
         <ChannelFeed 
           messages={lista} 
@@ -201,7 +201,7 @@ export function FeedPreview({
           onPin={onPin}
           onDelete={onDelete}
         />
-        <ChannelFooter device={device} preview />
+        <ChannelFooter device={device} />
       </div>
     </section>
   );

@@ -458,6 +458,9 @@ describe("auto-delete por bloco", () => {
       queueRowId: "row-0",
       chatId: 12345,
       messageId: 900,
+      // Marca o instante do ENVIO: é a partir daqui que o tempo do bloco conta.
+      sentAt: NOW.getTime(),
+      targetSeconds: 10,
     });
   });
 
@@ -482,5 +485,45 @@ describe("auto-delete por bloco", () => {
 
     // Sem o job, a rede de segurança (poller) ainda acha a linha pela tabela.
     expect(insertedRows).toHaveLength(1);
+  });
+
+  it("desconta o tempo gasto gravando no banco — o alvo é o envio, não o insert", async () => {
+    // Insert lento: 2s se passam entre a mídia sair e o job ser agendado.
+    mockDb.from.mockImplementation((table: string) => {
+      if (table !== "message_delete_queue") throw new Error(`unexpected table: ${table}`);
+      return {
+        insert: (rows: Record<string, unknown>[]) => {
+          insertedRows.push(...rows);
+          const data = rows.map((r, i) => ({ id: `row-${i}`, message_id: r.message_id }));
+          vi.setSystemTime(new Date(NOW.getTime() + 2000));
+          return { select: () => Promise.resolve({ data, error: null }) };
+        },
+      };
+    });
+
+    await processor.executeFlow(flowWith(10) as any, makeLead(), mockTelegram as any, 12345);
+
+    // 10s a partir do envio = 8s a partir de agora.
+    expect(scheduled[0].delaySeconds).toBe(8);
+    // O alvo declarado continua sendo o que o usuário configurou.
+    expect(scheduled[0].data).toMatchObject({ targetSeconds: 10, sentAt: NOW.getTime() });
+  });
+
+  it("agenda imediatamente se o banco demorou mais que o próprio tempo do bloco", async () => {
+    mockDb.from.mockImplementation((table: string) => {
+      if (table !== "message_delete_queue") throw new Error(`unexpected table: ${table}`);
+      return {
+        insert: (rows: Record<string, unknown>[]) => {
+          insertedRows.push(...rows);
+          const data = rows.map((r, i) => ({ id: `row-${i}`, message_id: r.message_id }));
+          vi.setSystemTime(new Date(NOW.getTime() + 30_000));
+          return { select: () => Promise.resolve({ data, error: null }) };
+        },
+      };
+    });
+
+    await processor.executeFlow(flowWith(10) as any, makeLead(), mockTelegram as any, 12345);
+
+    expect(scheduled[0].delaySeconds).toBe(0);
   });
 });

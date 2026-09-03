@@ -92,6 +92,19 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   height: var(--tg-viewport-stable-height, 100dvh);
 }
 
+.tg-platform-only--iphone {
+  display: none;
+}
+
+.tg-platform-only--android,
+.tg-app--iphone .tg-platform-only--iphone {
+  display: contents;
+}
+
+.tg-app--iphone .tg-platform-only--android {
+  display: none;
+}
+
 .tg-preview-toolbar {
   display: flex;
   align-items: center;
@@ -210,63 +223,6 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   background-position: center;
 }
 
-.tg-preview-status {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  height: 27px;
-  padding: 4px 14px 0;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.tg-preview-status--iphone {
-  color: var(--tgc-text);
-  background: transparent;
-}
-
-.tg-preview-status--android {
-  color: #ffffff;
-  background: var(--tgc-android-header);
-}
-
-.tg-status-icons {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tg-battery {
-  display: inline-flex;
-  align-items: center;
-  width: 22px;
-  height: 11px;
-  padding: 1px;
-  border: 1.5px solid currentColor;
-  border-radius: 3px;
-}
-
-.tg-battery::after {
-  content: "";
-  width: 2px;
-  height: 5px;
-  margin-left: 2px;
-  border-radius: 0 2px 2px 0;
-  background: currentColor;
-}
-
-.tg-battery span {
-  display: block;
-  width: 13px;
-  height: 100%;
-  border-radius: 1px;
-  background: currentColor;
-}
-
 .tg-channel-header {
   position: relative;
   z-index: 2;
@@ -299,9 +255,10 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
 
 .tg-channel-header--iphone .tg-channel-header__back {
   gap: 4px;
-  min-width: 76px;
+  width: fit-content;
+  min-width: 0;
   height: 48px;
-  padding: 0 10px 0 6px;
+  padding: 0 9px;
   color: var(--tgc-text);
   background: color-mix(in srgb, var(--tgc-bg) 62%, transparent);
   border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
@@ -672,14 +629,6 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   font-weight: 500;
 }
 
-.tg-ios-home-indicator {
-  width: 104px;
-  height: 4px;
-  margin: 10px auto 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--tgc-text) 72%, transparent);
-}
-
 .tg-channel-footer--android {
   background: var(--tgc-secondary-bg);
   border-top: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
@@ -696,52 +645,6 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   letter-spacing: 0.04em;
 }
 
-.tg-system-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  height: 26px;
-  color: #70757a;
-  background: #f0f0f0;
-}
-
-.tg-system-nav__recent,
-.tg-system-nav__back {
-  position: relative;
-  display: block;
-  width: 18px;
-  height: 18px;
-}
-
-.tg-system-nav__recent::before {
-  content: "";
-  position: absolute;
-  inset: 1px 4px;
-  border-right: 3px solid currentColor;
-  border-left: 3px solid currentColor;
-  border-radius: 2px;
-}
-
-.tg-system-nav__home {
-  display: block;
-  width: 24px;
-  height: 24px;
-  border: 2px solid currentColor;
-  border-radius: 7px;
-}
-
-.tg-system-nav__back::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: 5px;
-  width: 11px;
-  height: 11px;
-  border-bottom: 3px solid currentColor;
-  border-left: 3px solid currentColor;
-  transform: rotate(45deg);
-}
-
 @media (max-width: 520px) {
   .tg-app--iphone .tg-channel-header--iphone {
     gap: 5px;
@@ -749,8 +652,7 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   }
 
   .tg-app--iphone .tg-channel-header--iphone .tg-channel-header__back {
-    min-width: 62px;
-    padding-inline: 4px 7px;
+    padding-inline: 7px;
   }
 
   .tg-app--iphone .tg-channel-header--iphone .tg-unread-badge {

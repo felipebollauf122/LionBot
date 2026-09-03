@@ -1,50 +1,56 @@
 import { formatClock, formatViews } from "@/lib/social-proof/format";
+import { EyeIcon } from "@/components/telegram/icons";
+
+export type MetaVariant = "corner" | "overlay" | "line" | "inline";
 
 /**
- * Rodapé da bolha: hora e, quando há, o olhinho com a contagem de views.
- * Alinhado à direita e na mesma linha do fim do texto, como no Telegram.
+ * Rodapé da bolha: olhinho com views (quando há) e hora.
+ *
+ * - `corner`: canto inferior direito do texto, como o Telegram desenha.
+ * - `overlay`: pílula translúcida sobre a mídia, para mensagem só de mídia.
+ * - `line`: linha própria alinhada à direita (depois das reações / áudio).
+ * - `inline`: sem posicionamento, para quem monta o layout por fora.
  */
 export function MessageMeta({
   at,
   views,
   override,
+  variant = "inline",
 }: {
   at: Date;
   views: number;
   /** "HH:MM" fixo pelo tenant. Quando presente, ignora o cálculo do offset. */
   override?: string | null;
+  variant?: MetaVariant;
 }) {
   const temViews = views > 0;
+  const hora = override && override.trim() !== "" ? override : formatClock(at);
 
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        float: "right",
-        marginLeft: 8,
-        marginTop: 4,
-        color: "var(--tgc-hint)",
-        fontSize: 12,
-        lineHeight: 1,
-        whiteSpace: "nowrap",
-      }}
-    >
+  const inner = (
+    <span className={`tg-meta${variant === "line" ? "" : ` tg-meta--${variant}`}`}>
       {temViews && (
         <>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            />
-            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
-          </svg>
+          <EyeIcon className="tg-meta__eye" />
           <span>{formatViews(views)}</span>
         </>
       )}
-      <span>{override && override.trim() !== "" ? override : formatClock(at)}</span>
+      <span>{hora}</span>
     </span>
   );
+
+  if (variant === "line") return <div className="tg-meta--line">{inner}</div>;
+  return inner;
+}
+
+/**
+ * Largura aproximada que o meta ocupa, para reservar espaço no fim da
+ * última linha do texto. Superestimar 2-3px é inofensivo; subestimar faz a
+ * hora cobrir a última palavra.
+ */
+export function estimateMetaWidth(views: number, override?: string | null): number {
+  const hora = override && override.trim() !== "" ? override : "00:00";
+  const porChar = 6.8;
+  let w = hora.length * porChar + 8;
+  if (views > 0) w += 16 + 5 + formatViews(views).length * porChar + 5;
+  return Math.ceil(w);
 }

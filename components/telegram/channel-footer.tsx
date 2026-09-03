@@ -1,31 +1,15 @@
 import type { TelegramDevice } from "@/components/telegram/channel-header";
+import { GiftIcon, SearchIcon } from "@/components/telegram/icons";
 
-function GiftIcon() {
-  return (
-    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M3 10h18v11H3zM2 7h20v3H2zM12 7v14M12 7H8.5A2.5 2.5 0 1 1 11 4.5V7ZM12 7h3.5A2.5 2.5 0 1 0 13 4.5V7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" strokeWidth="1.9" />
-      <path d="m16 16 5 5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function VolumeOffIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 9v6h4l5 4V5L8 9H4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="m18 9 4 6m0-6-4 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
+/**
+ * Rodapé decorativo do canal.
+ *
+ * iPhone: presente · "Silenciar" · lupa, três peças de vidro de 40px
+ * flutuando sobre o chat, como no iOS 26. A pílula do meio tem largura fixa
+ * (165px na print), não estica até os círculos.
+ *
+ * Android: faixa opaca de 50dp com "SILENCIAR" em azul.
+ */
 export function ChannelFooter({
   device = "android",
 }: {
@@ -35,14 +19,13 @@ export function ChannelFooter({
     <footer className={`tg-channel-footer tg-channel-footer--${device}`}>
       {device === "iphone" ? (
         <div className="tg-ios-footer-actions">
-          <button type="button" className="tg-footer-circle" aria-label="Presentear">
+          <button type="button" className="tg-footer-circle tg-glass" aria-label="Presentear">
             <GiftIcon />
           </button>
-          <button type="button" className="tg-mute-pill">
-            <VolumeOffIcon />
-            <span>Silenciar</span>
+          <button type="button" className="tg-mute-pill tg-glass">
+            Silenciar
           </button>
-          <button type="button" className="tg-footer-circle" aria-label="Pesquisar">
+          <button type="button" className="tg-footer-circle tg-glass" aria-label="Pesquisar">
             <SearchIcon />
           </button>
         </div>

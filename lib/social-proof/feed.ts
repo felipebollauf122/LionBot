@@ -3,6 +3,14 @@ import type { FeedChannel, FeedMessage } from "@/lib/social-proof/types";
 import { normalizeMedia } from "@/lib/social-proof/media";
 import { normalizeReactions } from "@/lib/social-proof/reactions";
 
+export interface LoadedFeed {
+  channel: FeedChannel;
+  messages: FeedMessage[];
+  pinnedText: string;
+  /** Foto da mensagem fixada, para a miniatura da barra. null sem foto. */
+  pinnedMediaUrl: string | null;
+}
+
 /**
  * Lê o feed público de um bot.
  *
@@ -13,9 +21,7 @@ import { normalizeReactions } from "@/lib/social-proof/reactions";
  * Mesmo padrão de app/go/route.ts: o cliente é criado inline, sem helper
  * compartilhado.
  */
-export async function loadFeed(
-  botId: string,
-): Promise<{ channel: FeedChannel; messages: FeedMessage[]; pinnedText: string } | null> {
+export async function loadFeed(botId: string): Promise<LoadedFeed | null> {
   const supabase = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -84,9 +90,13 @@ export async function loadFeed(
     };
   });
 
-  const fixada = canal.pinned_message_id
-    ? (porId.get(canal.pinned_message_id as string)?.content_text as string | null) ?? ""
-    : "";
+  const fixadaLinha = canal.pinned_message_id
+    ? porId.get(canal.pinned_message_id as string)
+    : undefined;
+  const fixada = (fixadaLinha?.content_text as string | null) ?? "";
+  const fixadaMidia = fixadaLinha
+    ? normalizeMedia(fixadaLinha.media, fixadaLinha.media_url, fixadaLinha.media_type)
+    : [];
 
   return {
     channel: {
@@ -101,5 +111,6 @@ export async function loadFeed(
     },
     messages,
     pinnedText: fixada,
+    pinnedMediaUrl: fixadaMidia.find((m) => m.type === "photo")?.url ?? null,
   };
 }

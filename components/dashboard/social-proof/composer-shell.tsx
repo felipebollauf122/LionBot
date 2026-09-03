@@ -207,6 +207,7 @@ export function ComposerShell({
                 messages={messages}
                 draft={rascunho}
                 pinnedText={pinnedText}
+                pinnedId={pinnedId}
                 selectedId={selecionada}
                 disabled={pending}
                 onSelect={selecionar}

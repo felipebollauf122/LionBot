@@ -1,48 +1,35 @@
 import type { FeedChannel } from "@/lib/social-proof/types";
+import {
+  ChevronBackIcon,
+  MaterialBackIcon,
+  MoreVertIcon,
+  VerifiedIcon,
+} from "@/components/telegram/icons";
 
 export type TelegramDevice = "iphone" | "android";
 
-function BackIcon() {
-  return (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="m15 18-6-6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function OverflowIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="12" cy="5" r="1.8" />
-      <circle cx="12" cy="12" r="1.8" />
-      <circle cx="12" cy="19" r="1.8" />
-    </svg>
-  );
-}
-
-function ChannelAvatar({ channel, size }: { channel: FeedChannel; size: number }) {
-  const style = { width: size, height: size };
+function ChannelAvatar({ channel }: { channel: FeedChannel }) {
   if (channel.avatarUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={channel.avatarUrl} alt={channel.title} className="tg-channel-avatar" style={style} />;
+    return <img src={channel.avatarUrl} alt={channel.title} className="tg-channel-avatar" />;
   }
 
   return (
-    <div className="tg-channel-avatar tg-channel-avatar--fallback" style={style}>
+    <div className="tg-channel-avatar tg-channel-avatar--fallback">
       {channel.title.trim().charAt(0).toUpperCase() || "#"}
     </div>
   );
 }
 
-function VerifiedIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" aria-label="verificado" className="tg-verified-icon">
-      <circle cx="12" cy="12" r="11" fill="currentColor" />
-      <path d="M7 12.5 10.2 15.7 17 9" stroke="var(--tgc-verified-check)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    </svg>
-  );
-}
-
+/**
+ * Cabeçalho do canal.
+ *
+ * iPhone: três pílulas de vidro flutuando sobre o chat — voltar (com o
+ * contador de não lidas), título centralizado e avatar com anel. O botão de
+ * voltar só cresce quando há contador; sem ele vira um círculo de 44px.
+ *
+ * Android: action bar opaca de 56dp com seta, avatar de 42dp, título e menu.
+ */
 export function ChannelHeader({
   channel,
   device = "iphone",
@@ -50,34 +37,52 @@ export function ChannelHeader({
   channel: FeedChannel;
   device?: TelegramDevice;
 }) {
-  return (
-    <header className={`tg-channel-header tg-channel-header--${device}`}>
-      <div className="tg-channel-header__back" aria-hidden>
-        <BackIcon />
-        {device === "iphone" && channel.unreadBadge > 0 && (
-          <span className="tg-unread-badge">{channel.unreadBadge}</span>
-        )}
-      </div>
-
-      {device === "android" && <ChannelAvatar channel={channel} size={40} />}
-
-      <div className="tg-channel-header__copy">
-        <div className="tg-channel-header__title">
-          <span>{channel.title}</span>
-          {channel.isVerified && <VerifiedIcon />}
+  if (device === "android") {
+    return (
+      <header className="tg-channel-header tg-channel-header--android">
+        <div className="tg-channel-header__back" aria-hidden>
+          <MaterialBackIcon />
         </div>
-        <div className="tg-channel-header__subscribers">{channel.subscribersLabel}</div>
-      </div>
-
-      {device === "iphone" ? (
-        <div className="tg-channel-header__ios-avatar" aria-hidden>
-          <ChannelAvatar channel={channel} size={48} />
+        <ChannelAvatar channel={channel} />
+        <div className="tg-channel-header__copy">
+          <div className="tg-channel-header__title">
+            <span>{channel.title}</span>
+            {channel.isVerified && <VerifiedIcon />}
+          </div>
+          <div className="tg-channel-header__subscribers">{channel.subscribersLabel}</div>
         </div>
-      ) : (
         <div className="tg-channel-header__overflow" aria-hidden>
-          <OverflowIcon />
+          <MoreVertIcon />
         </div>
-      )}
+      </header>
+    );
+  }
+
+  const temBadge = channel.unreadBadge > 0;
+
+  return (
+    <header className="tg-channel-header tg-channel-header--iphone">
+      <div
+        className={`tg-channel-header__back tg-glass${temBadge ? "" : " tg-channel-header__back--solo"}`}
+        aria-hidden
+      >
+        <ChevronBackIcon />
+        {temBadge && <span className="tg-unread-badge">{channel.unreadBadge}</span>}
+      </div>
+
+      <div className="tg-channel-header__center">
+        <div className="tg-channel-header__copy tg-glass">
+          <div className="tg-channel-header__title">
+            <span>{channel.title}</span>
+            {channel.isVerified && <VerifiedIcon />}
+          </div>
+          <div className="tg-channel-header__subscribers">{channel.subscribersLabel}</div>
+        </div>
+      </div>
+
+      <div className="tg-channel-header__ios-avatar" aria-hidden>
+        <ChannelAvatar channel={channel} />
+      </div>
     </header>
   );
 }

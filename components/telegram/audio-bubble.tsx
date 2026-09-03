@@ -45,7 +45,7 @@ export function AudioBubble({ item, seed }: { item: MediaItem; seed: string }) {
         ))}
       </span>
 
-      <span style={{ color: "var(--tgc-hint)", fontSize: 12, flexShrink: 0 }}>
+      <span style={{ color: "var(--tgc-meta)", fontSize: 12, flexShrink: 0 }}>
         {formatDuration(item.durationSeconds ?? 0)}
       </span>
     </div>

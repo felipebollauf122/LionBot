@@ -76,6 +76,9 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
+      // Scripts inline acima do React gravam atributos de tema neste elemento
+      // (data-theme do dashboard, data-tg-scheme do Mini App) antes do paint.
+      suppressHydrationWarning
       className={`${chakraPetch.variable} ${rajdhani.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>

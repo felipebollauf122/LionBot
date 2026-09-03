@@ -1,95 +1,169 @@
 /*
- * Visual tokens for the Telegram channel clone.
- * Everything is scoped to .tg-app so the dashboard theme never leaks into the
- * Mini App or its composer preview.
+ * Tokens e layout do clone do Telegram (Mini App + prévia do composer).
+ *
+ * Tudo aqui foi medido pixel a pixel nas prints reais em `telegram design/`
+ * (iPhone 16 Pro @3x claro/escuro e Galaxy A52 @2.625 claro). As cores do
+ * chat NÃO vêm das variáveis --tg-theme-*: o Telegram muda essas variáveis
+ * conforme o tema do usuário, e a tela precisa parecer o CANAL, não o Mini
+ * App. Só o esquema (claro/escuro) e a plataforma vêm do cliente.
+ *
+ * Classes de estado no wrapper .tg-app:
+ *   .tg-app--iphone | .tg-app--android   plataforma (layout diverge)
+ *   .tg-app--light  | .tg-app--dark      esquema explícito (prévia)
+ *   html[data-tg-scheme="light"]         esquema vindo do Telegram (Mini App)
+ *   .tg-app--has-pinned                  reserva espaço pra barra fixada (iOS)
+ *   .tg-app--fullscreen                  Mini App real (ocupa a tela toda)
  */
 
+/* ---------- esquema escuro (padrão) ---------- */
 .tg-app {
-  --tgc-bg: var(--tg-theme-bg-color, #17212b);
-  --tgc-text: var(--tg-theme-text-color, #ffffff);
-  --tgc-hint: var(--tg-theme-hint-color, #708499);
-  --tgc-link: var(--tg-theme-link-color, #6ab3f3);
-  --tgc-button: var(--tg-theme-button-color, #5288c1);
-  --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
-  --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #232e3c);
-  --tgc-header-bg: var(--tg-theme-header-bg-color, #17212b);
-  --tgc-android-header: #5688b0;
-  --tgc-bubble: var(--tg-theme-secondary-bg-color, #182533);
-  --tgc-veil: rgba(0, 0, 0, 0.28);
-  --tgc-pinned-bg: rgba(0, 0, 0, 0.22);
-  --tgc-reaction-bg: rgba(255, 255, 255, 0.1);
-  --tgc-reply-bar: var(--tgc-link);
-  --tgc-selected: rgba(82, 136, 193, 0.18);
+  --tgc-text: #ffffff;
+  --tgc-subtitle: rgba(255, 255, 255, 0.65);
+  --tgc-meta: rgba(255, 255, 255, 0.6);
+  --tgc-bubble: #242c34;
+  --tgc-glass: rgba(255, 255, 255, 0.1);
+  --tgc-glass-rim: rgba(255, 255, 255, 0.1);
+  --tgc-glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  --tgc-service: #2e3844;
+  --tgc-service-text: #ffffff;
+  --tgc-media-veil: rgba(0, 0, 0, 0.3);
+  --tgc-badge-bg: #f0f0f0;
+  --tgc-badge-text: #000000;
+  --tgc-ring: rgba(255, 255, 255, 0.18);
+  --tgc-reaction-bg: rgba(255, 255, 255, 0.12);
+  --tgc-reaction-text: #7ac3ff;
+  --tgc-link: #6ab3f3;
+  --tgc-button: #5288c1;
+  --tgc-button-text: #ffffff;
+  --tgc-reply-bar: #7ac3ff;
+  --tgc-reply-bg: rgba(122, 195, 255, 0.12);
+  --tgc-selected: rgba(82, 136, 193, 0.22);
   --tgc-menu-bg: #1c2733;
   --tgc-menu-border: rgba(255, 255, 255, 0.1);
-  --tgc-danger: #e5484d;
-  --tgc-admin: #43b581;
-  --tgc-admin-bg: rgba(67, 181, 129, 0.16);
-  --tgc-verified-check: #ffffff;
+  --tgc-danger: #ff6b6b;
+  --tgc-admin: #4dd6bf;
+  --tgc-admin-bg: rgba(77, 214, 191, 0.16);
+  --tgc-verified: #7ac3ff;
+  --tgc-verified-check: #000000;
   --tgc-wallpaper: url("/telegram-design/wallpaper-dark.jpg");
+  --tgc-wallpaper-base: #192530;
+  --tgc-peer-0: #ff9380;
+  --tgc-peer-1: #ecb04e;
+  --tgc-peer-2: #c697ff;
+  --tgc-peer-3: #4dd6bf;
+  --tgc-peer-4: #45e8d1;
+  --tgc-peer-5: #7ac3ff;
+  --tgc-peer-6: #ff7c9c;
+  --tgc-android-header: #212d3b;
+  --tgc-android-subtitle: rgba(255, 255, 255, 0.7);
+  --tgc-android-footer-bg: #17212b;
+  --tgc-android-footer-text: #6ab3f3;
+  --tgc-android-service: rgba(0, 0, 0, 0.3);
+
+  --tgc-font-ios: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    var(--tgc-font-inter, Inter), "Helvetica Neue", Arial, sans-serif;
+  --tgc-font-android: Roboto, var(--tgc-font-roboto, Roboto), "Noto Sans", "Segoe UI", Arial,
+    sans-serif;
+
+  --tgc-side: 16px;
+  --tgc-top-inset: 66px;
+  --tgc-footer-bottom: 14px;
+  --tgc-bottom-inset: calc(40px + 14px + var(--tgc-footer-bottom));
 
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background: var(--tgc-bg);
+  background: var(--tgc-wallpaper-base);
   color: var(--tgc-text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--tgc-font-ios);
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
   color-scheme: dark;
 }
 
-.tg-app--light {
-  --tgc-bg: var(--tg-theme-bg-color, #d7efc6);
-  --tgc-text: var(--tg-theme-text-color, #111111);
-  --tgc-hint: var(--tg-theme-hint-color, #85919b);
-  --tgc-link: var(--tg-theme-link-color, #2a83bd);
-  --tgc-button: var(--tg-theme-button-color, #8fc35f);
-  --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
-  --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #ffffff);
-  --tgc-header-bg: var(--tg-theme-header-bg-color, #ffffff);
+/* ---------- esquema claro ---------- */
+.tg-app--light,
+html[data-tg-scheme="light"] .tg-app:not(.tg-app--dark) {
+  --tgc-text: #000000;
+  --tgc-subtitle: rgba(0, 0, 0, 0.6);
+  --tgc-meta: rgba(0, 0, 0, 0.62);
   --tgc-bubble: #ffffff;
-  --tgc-veil: rgba(45, 101, 50, 0.22);
-  --tgc-pinned-bg: rgba(255, 255, 255, 0.84);
-  --tgc-reaction-bg: rgba(55, 133, 188, 0.1);
+  --tgc-glass: rgba(255, 255, 255, 0.68);
+  --tgc-glass-rim: rgba(255, 255, 255, 0.55);
+  --tgc-glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --tgc-service: #82a769;
+  --tgc-service-text: #ffffff;
+  --tgc-media-veil: rgba(0, 0, 0, 0.3);
+  --tgc-badge-bg: #0e0e0e;
+  --tgc-badge-text: #ffffff;
+  --tgc-ring: rgba(255, 255, 255, 0.6);
+  --tgc-reaction-bg: rgba(51, 145, 212, 0.12);
+  --tgc-reaction-text: #3391d4;
+  --tgc-link: #3391d4;
+  --tgc-button: #3391d4;
+  --tgc-button-text: #ffffff;
+  --tgc-reply-bar: #3391d4;
+  --tgc-reply-bg: rgba(51, 145, 212, 0.1);
+  --tgc-selected: rgba(51, 145, 212, 0.16);
   --tgc-menu-bg: #ffffff;
   --tgc-menu-border: rgba(0, 0, 0, 0.1);
-  --tgc-admin: #299b64;
-  --tgc-admin-bg: rgba(41, 155, 100, 0.12);
+  --tgc-danger: #e5484d;
+  --tgc-admin: #27a910;
+  --tgc-admin-bg: rgba(39, 169, 16, 0.12);
+  --tgc-verified: #3391d4;
+  --tgc-verified-check: #ffffff;
   --tgc-wallpaper: url("/telegram-design/wallpaper-light.jpg");
+  --tgc-wallpaper-base: #91b477;
+  --tgc-peer-0: #e15052;
+  --tgc-peer-1: #e0802b;
+  --tgc-peer-2: #a05ff3;
+  --tgc-peer-3: #27a910;
+  --tgc-peer-4: #27acce;
+  --tgc-peer-5: #3391d4;
+  --tgc-peer-6: #dd4371;
+  --tgc-android-header: #527da3;
+  --tgc-android-subtitle: #d5e8f7;
+  --tgc-android-footer-bg: #ffffff;
+  --tgc-android-footer-text: #3a8ccf;
+  --tgc-android-service: rgba(0, 0, 0, 0.18);
   color-scheme: light;
+}
+
+/* ---------- Android: cores do tema "Blue" / "Dark Blue" ---------- */
+.tg-app--android {
+  --tgc-bubble: #182533;
+  --tgc-meta: #6d7f8f;
+  --tgc-reaction-bg: rgba(255, 255, 255, 0.1);
+  --tgc-reaction-text: #6ab3f3;
+  --tgc-service: var(--tgc-android-service);
+  --tgc-wallpaper-base: #0e1621;
+  font-family: var(--tgc-font-android);
+}
+
+.tg-app--android.tg-app--light,
+html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
+  --tgc-bubble: #ffffff;
+  --tgc-meta: #a1aab3;
+  --tgc-reaction-bg: #eaf5fc;
+  --tgc-reaction-text: #3f8acb;
+  --tgc-service: var(--tgc-android-service);
+  --tgc-wallpaper-base: #91b477;
 }
 
 .tg-app--dark {
   color-scheme: dark;
 }
 
-html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
-  --tgc-bg: var(--tg-theme-bg-color, #d7efc6);
-  --tgc-text: var(--tg-theme-text-color, #111111);
-  --tgc-hint: var(--tg-theme-hint-color, #85919b);
-  --tgc-link: var(--tg-theme-link-color, #2a83bd);
-  --tgc-button: var(--tg-theme-button-color, #8fc35f);
-  --tgc-button-text: var(--tg-theme-button-text-color, #ffffff);
-  --tgc-secondary-bg: var(--tg-theme-secondary-bg-color, #ffffff);
-  --tgc-header-bg: var(--tg-theme-header-bg-color, #ffffff);
-  --tgc-bubble: #ffffff;
-  --tgc-veil: rgba(45, 101, 50, 0.22);
-  --tgc-pinned-bg: rgba(255, 255, 255, 0.84);
-  --tgc-reaction-bg: rgba(55, 133, 188, 0.1);
-  --tgc-menu-bg: #ffffff;
-  --tgc-menu-border: rgba(0, 0, 0, 0.1);
-  --tgc-admin: #299b64;
-  --tgc-admin-bg: rgba(41, 155, 100, 0.12);
-  --tgc-wallpaper: url("/telegram-design/wallpaper-light.jpg");
-  color-scheme: light;
-}
-
 .tg-app--fullscreen {
   position: fixed;
   inset: 0;
   height: var(--tg-viewport-stable-height, 100dvh);
+  --tgc-footer-bottom: max(14px, calc(env(safe-area-inset-bottom, 0px) - 6px));
+}
+
+.tg-app--has-pinned {
+  --tgc-top-inset: 124px;
 }
 
 .tg-platform-only--iphone {
@@ -105,6 +179,7 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   display: none;
 }
 
+/* ---------- barra de ferramentas da prévia (dashboard) ---------- */
 .tg-preview-toolbar {
   display: flex;
   align-items: center;
@@ -213,76 +288,151 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   border-radius: 20px;
 }
 
+/* ---------- fundo ---------- */
 .tg-chat-backdrop {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-color: var(--tgc-bg);
+  background-color: var(--tgc-wallpaper-base);
   background-image: var(--tgc-wallpaper);
   background-size: cover;
   background-position: center;
 }
 
+/* ---------- vidro do iOS (pílulas do header, barra fixada, rodapé) ---------- */
+.tg-glass {
+  background: var(--tgc-glass);
+  box-shadow: inset 0 0 0 0.6px var(--tgc-glass-rim), var(--tgc-glass-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+}
+
+/* ---------- header ---------- */
 .tg-channel-header {
-  position: relative;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
+/* iOS: três pílulas flutuando sobre o chat */
 .tg-channel-header--iphone {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 7px 10px 10px;
-  background: transparent;
-}
-
-.tg-channel-header--android {
-  gap: 10px;
-  padding: 8px 11px;
-  color: #ffffff;
-  background: var(--tgc-android-header);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-}
-
-.tg-channel-header__back {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  gap: 13px;
+  height: var(--tgc-header-h, 66px);
+  padding: 12px var(--tgc-side) 10px;
 }
 
 .tg-channel-header--iphone .tg-channel-header__back {
-  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-shrink: 0;
+  box-sizing: border-box;
   width: fit-content;
-  min-width: 0;
-  height: 48px;
-  padding: 0 9px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 11px 0 15px;
+  border-radius: 22px;
   color: var(--tgc-text);
-  background: color-mix(in srgb, var(--tgc-bg) 62%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
-  border-radius: 28px;
-  backdrop-filter: blur(12px);
 }
 
-.tg-channel-header--android .tg-channel-header__back {
-  width: 25px;
-  color: #ffffff;
+.tg-channel-header--iphone .tg-channel-header__back--solo {
+  padding: 0;
+  width: 44px;
 }
 
 .tg-unread-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 35px;
-  height: 27px;
-  padding: 0 7px;
-  border-radius: 999px;
-  color: var(--tgc-text);
-  background: color-mix(in srgb, var(--tgc-text) 11%, transparent);
-  font-size: 13px;
+  box-sizing: border-box;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  color: var(--tgc-badge-text);
+  background: var(--tgc-badge-bg);
+  font-size: 15px;
   font-weight: 500;
+  line-height: 18px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-channel-header--iphone .tg-channel-header__center {
+  display: flex;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tg-channel-header--iphone .tg-channel-header__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 22px;
+  text-align: center;
+}
+
+.tg-channel-header--iphone .tg-channel-header__title {
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+}
+
+.tg-channel-header--iphone .tg-channel-header__subscribers {
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.tg-channel-header__title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tg-channel-header__title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tg-channel-header__subscribers {
+  overflow: hidden;
+  color: var(--tgc-subtitle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tg-channel-header__ios-avatar {
+  display: block;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 2px solid var(--tgc-ring);
+  border-radius: 50%;
+}
+
+.tg-channel-header__ios-avatar .tg-channel-avatar {
+  width: 100%;
+  height: 100%;
 }
 
 .tg-channel-avatar {
@@ -302,170 +452,406 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   font-weight: 500;
 }
 
-.tg-channel-header__copy {
-  min-width: 0;
+.tg-verified-icon {
+  flex-shrink: 0;
+  color: var(--tgc-verified);
 }
 
-.tg-channel-header--iphone .tg-channel-header__copy {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 48px;
-  padding: 0 12px;
-  text-align: center;
-  background: color-mix(in srgb, var(--tgc-bg) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
-  border-radius: 28px;
-  backdrop-filter: blur(12px);
+/* Android: action bar opaca de 56dp */
+.tg-channel-header--android {
+  position: relative;
+  height: 56px;
+  color: #ffffff;
+  background: var(--tgc-android-header);
+  box-shadow: 0 1.5px 3px rgba(0, 0, 0, 0.22);
 }
 
-.tg-channel-header--android .tg-channel-header__copy {
-  flex: 1;
-}
-
-.tg-channel-header__title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.tg-channel-header--iphone .tg-channel-header__title {
-  justify-content: center;
-}
-
-.tg-channel-header__title > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tg-channel-header__subscribers {
-  overflow: hidden;
-  color: var(--tgc-hint);
-  font-size: 13px;
-  line-height: 1.2;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.tg-channel-header--android .tg-channel-header__subscribers {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.tg-channel-header__ios-avatar,
-.tg-channel-header__overflow {
+.tg-channel-header--android .tg-channel-header__back {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-}
-
-.tg-channel-header__ios-avatar {
-  padding: 1px;
-  border: 2px solid color-mix(in srgb, var(--tgc-text) 35%, transparent);
-  border-radius: 50%;
-}
-
-.tg-channel-header__overflow {
-  width: 24px;
+  width: 54px;
+  height: 56px;
   color: #ffffff;
 }
 
-.tg-verified-icon {
-  flex-shrink: 0;
-  color: #3fa9f5;
+.tg-channel-header--android .tg-channel-avatar {
+  width: 42px;
+  height: 42px;
+  margin-left: 10px;
 }
 
-.tg-pinned {
-  position: relative;
-  z-index: 2;
+.tg-channel-header--android .tg-channel-header__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  margin-left: 13px;
+}
+
+.tg-channel-header--android .tg-channel-header__title {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.tg-channel-header--android .tg-channel-header__subscribers {
+  color: var(--tgc-android-subtitle);
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.tg-channel-header--android .tg-verified-icon {
+  color: #ffffff;
+  --tgc-verified-check: var(--tgc-android-header);
+}
+
+.tg-channel-header__overflow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 6px 12px;
+  width: 48px;
+  height: 56px;
+  color: #ffffff;
+}
+
+/* ---------- barra "Mensagem fixada" ---------- */
+.tg-pinned {
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
   color: var(--tgc-text);
-  background: var(--tgc-pinned-bg);
-  border-left: 3px solid var(--tgc-link);
-  font-size: 14px;
-  line-height: 1.25;
 }
 
 .tg-app--iphone .tg-pinned {
-  margin: 0 10px 3px;
-  border: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
-  border-left: 3px dashed var(--tgc-link);
-  border-radius: 16px;
-  backdrop-filter: blur(12px);
+  position: absolute;
+  top: 66px;
+  left: var(--tgc-side);
+  right: var(--tgc-side);
+  height: 50px;
+  padding: 0 20px 0 18px;
+  border-radius: 25px;
+}
+
+.tg-pinned__line {
+  flex-shrink: 0;
+  width: 2px;
+  height: 40px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    to bottom,
+    currentColor 0 8px,
+    transparent 8px 11px
+  );
+}
+
+.tg-pinned__thumb {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-left: 7px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--tgc-service);
+}
+
+.tg-pinned__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tg-pinned__copy {
+  flex: 1;
+  min-width: 0;
+  margin-left: 11px;
+}
+
+.tg-pinned__thumb + .tg-pinned__copy {
+  margin-left: 11px;
+}
+
+.tg-pinned__line + .tg-pinned__copy {
+  margin-left: 12px;
 }
 
 .tg-pinned-title {
-  color: var(--tgc-link);
-  font-size: 13px;
-  font-weight: 500;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .tg-pinned-text {
   overflow: hidden;
-  color: var(--tgc-text);
+  font-size: 15px;
+  line-height: 18px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+.tg-pinned__icon {
+  display: flex;
+  flex-shrink: 0;
+  margin-left: 12px;
+  color: var(--tgc-text);
+}
+
+/* Android: faixa opaca abaixo da action bar */
+.tg-app--android .tg-pinned {
+  position: relative;
+  height: 48px;
+  padding: 0 12px 0 0;
+  background: var(--tgc-android-footer-bg);
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.12);
+}
+
+.tg-app--android .tg-pinned__line {
+  width: 2px;
+  height: 32px;
+  margin-left: 16px;
+  background: var(--tgc-link);
+}
+
+.tg-app--android .tg-pinned__thumb {
+  width: 32px;
+  height: 32px;
+  margin-left: 10px;
+  border-radius: 4px;
+}
+
+.tg-app--android .tg-pinned__line + .tg-pinned__copy,
+.tg-app--android .tg-pinned__thumb + .tg-pinned__copy {
+  margin-left: 10px;
+}
+
+.tg-app--android .tg-pinned-title {
+  color: var(--tgc-link);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.tg-app--android .tg-pinned-text {
+  color: var(--tgc-text);
+  font-size: 14px;
+  line-height: 17px;
+}
+
+.tg-app--android .tg-pinned__icon {
+  color: var(--tgc-link);
+}
+
+/* ---------- feed ---------- */
 .tg-feed {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  scrollbar-width: none;
+  box-sizing: border-box;
 }
 
 .tg-feed::-webkit-scrollbar {
-  width: 4px;
+  display: none;
 }
 
-.tg-feed::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--tgc-text) 22%, transparent);
+.tg-app--iphone .tg-feed {
+  padding: var(--tgc-top-inset) 0 var(--tgc-bottom-inset);
 }
 
+.tg-app--android .tg-feed {
+  padding: 6px 0 8px;
+}
+
+/* linha de uma mensagem: bolha + botão de encaminhar */
+.tg-row {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  box-sizing: border-box;
+}
+
+.tg-app--iphone .tg-row {
+  gap: 8px;
+  padding: 0 23px 0 10px;
+  margin-bottom: 3px;
+}
+
+.tg-app--iphone .tg-row--group-end {
+  margin-bottom: 8px;
+}
+
+.tg-app--android .tg-row {
+  gap: 10px;
+  padding: 0 10px 0 11px;
+  margin-bottom: 3px;
+}
+
+.tg-app--android .tg-row--group-end {
+  margin-bottom: 6px;
+}
+
+.tg-row--selected {
+  background: var(--tgc-selected);
+}
+
+.tg-row__bubble-col {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tg-share {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--tgc-service-text);
+  background: var(--tgc-service);
+  cursor: default;
+}
+
+.tg-app--iphone .tg-share {
+  width: 32px;
+  height: 32px;
+}
+
+.tg-app--android .tg-share {
+  width: 33px;
+  height: 33px;
+}
+
+/* ---------- bolha ---------- */
 .tg-bubble {
   position: relative;
+  box-sizing: border-box;
   width: fit-content;
-  max-width: min(86%, 480px);
-  padding: 6px 9px 7px;
-  border-radius: 12px;
+  max-width: 100%;
   color: var(--tgc-text);
   background: var(--tgc-bubble);
-  font-size: 16px;
-  line-height: 1.3125;
   word-wrap: break-word;
   overflow-wrap: anywhere;
 }
 
-.tg-bubble--tail {
+.tg-app--iphone .tg-bubble {
+  padding: 6px 12px 7px;
+  border-radius: 16px;
+  font-size: 17px;
+  line-height: 23px;
+  letter-spacing: -0.01em;
+}
+
+.tg-app--iphone .tg-bubble--cont-top {
+  border-top-left-radius: 8px;
+}
+
+.tg-app--iphone .tg-bubble--cont-bottom {
+  border-bottom-left-radius: 8px;
+}
+
+.tg-app--iphone .tg-bubble--tail {
   border-bottom-left-radius: 6px;
 }
 
-.tg-bubble--media {
-  padding: 3px 3px 7px;
+.tg-app--android .tg-bubble {
+  padding: 5px 12px 6px 11px;
+  border-radius: 17px;
+  font-size: 16px;
+  line-height: 1.17;
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.2), 0 0 0.5px rgba(0, 0, 0, 0.25);
 }
 
-.tg-bubble--media-only {
+.tg-app--android .tg-bubble--cont-top {
+  border-top-left-radius: 6px;
+}
+
+.tg-app--android .tg-bubble--cont-bottom {
+  border-bottom-left-radius: 6px;
+}
+
+.tg-app--android .tg-bubble--tail {
+  border-bottom-left-radius: 4px;
+}
+
+.tg-bubble__tail {
+  position: absolute;
+  bottom: 0;
+  color: var(--tgc-bubble);
+  pointer-events: none;
+}
+
+.tg-app--iphone .tg-bubble__tail {
+  left: -4px;
+  width: 10px;
+  height: 14px;
+}
+
+.tg-app--android .tg-bubble__tail {
+  left: -5px;
+  width: 9px;
+  height: 14px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+
+/* `.tg-app .` para vencer o padding por plataforma (mesma especificidade, vem depois) */
+.tg-app .tg-bubble--media {
+  padding-top: 3px;
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+.tg-app .tg-bubble--media-only {
   padding: 3px;
+}
+
+.tg-bubble__head {
+  display: flex;
+  align-items: baseline;
+  padding: 0;
+}
+
+.tg-bubble--media .tg-bubble__head,
+.tg-bubble--media .tg-reply,
+.tg-bubble--media-only .tg-bubble__head,
+.tg-bubble--media-only .tg-reply {
+  margin: 0 9px 3px;
+}
+
+.tg-bubble--media-only .tg-bubble__head {
+  margin-top: 3px;
+}
+
+.tg-sender {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tg-app--android .tg-sender {
+  font-weight: 500;
 }
 
 .tg-owner-badge {
   display: inline-flex;
   align-items: center;
-  margin-left: 7px;
+  flex-shrink: 0;
+  margin-left: 6px;
   padding: 1px 6px 2px;
   border-radius: 999px;
   color: var(--tgc-admin);
@@ -476,30 +862,214 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   white-space: nowrap;
 }
 
+.tg-bubble-text {
+  position: relative;
+  white-space: pre-wrap;
+}
+
+.tg-bubble--media .tg-bubble-text {
+  margin: 5px 9px 0;
+}
+
+/* Espaço reservado no fim da última linha para a hora não cobrir o texto. */
+.tg-meta-spacer {
+  display: inline-block;
+  width: var(--tgc-meta-w, 52px);
+  height: 0;
+  vertical-align: baseline;
+  pointer-events: none;
+}
+
+.tg-meta {
+  display: inline-flex;
+  align-items: center;
+  color: var(--tgc-meta);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-app--iphone .tg-meta {
+  gap: 5px;
+  font-size: 11px;
+  line-height: 12px;
+}
+
+.tg-app--android .tg-meta {
+  gap: 4px;
+  font-size: 12px;
+  line-height: 14px;
+}
+
+.tg-meta__eye {
+  display: block;
+  flex-shrink: 0;
+}
+
+.tg-app--iphone .tg-meta__eye {
+  width: 12px;
+  height: 9px;
+}
+
+.tg-app--android .tg-meta__eye {
+  width: 16px;
+  height: 10px;
+}
+
+/* hora no canto inferior direito do texto */
+.tg-meta--corner {
+  position: absolute;
+  right: 0;
+  bottom: -2px;
+}
+
+.tg-bubble--media .tg-meta--corner {
+  right: 0;
+}
+
+/* hora sobre a mídia (mensagem só de mídia) */
+.tg-meta--overlay {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 9px;
+  color: #ffffff;
+  background: var(--tgc-media-veil);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.tg-app--android .tg-meta--overlay {
+  height: 20px;
+  border-radius: 10px;
+}
+
+/* hora em linha própria (depois das reações, Android) */
+.tg-meta--line {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.tg-media {
+  position: relative;
+  overflow: hidden;
+}
+
+.tg-media img,
+.tg-media video {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+}
+
+.tg-media--rounded {
+  border-radius: 13px;
+}
+
+.tg-app--android .tg-media--rounded {
+  border-radius: 14px;
+}
+
+.tg-media--rounded-top {
+  border-radius: 13px 13px 0 0;
+}
+
+.tg-app--android .tg-media--rounded-top {
+  border-radius: 14px 14px 0 0;
+}
+
+.tg-media-duration {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  color: #ffffff;
+  background: var(--tgc-media-veil);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ---------- reações ---------- */
 .tg-reactions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: 7px;
+}
+
+.tg-bubble--media .tg-reactions {
+  margin-left: 9px;
+  margin-right: 9px;
+}
+
+.tg-app--android .tg-reactions {
+  margin-left: -2px;
 }
 
 .tg-reaction {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 12px;
+  box-sizing: border-box;
+  height: 26px;
+  padding: 0 10px 0 9px;
+  border-radius: 13px;
   background: var(--tgc-reaction-bg);
+  color: var(--tgc-reaction-text);
   font-size: 13px;
-  line-height: 1.4;
+  font-weight: 500;
+  line-height: 1;
 }
 
+.tg-reaction__emoji {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tg-app--iphone .tg-reaction {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---------- separador de dia ---------- */
+.tg-date {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+}
+
+.tg-date > span {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  color: var(--tgc-service-text);
+  background: var(--tgc-service);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.tg-app--android .tg-date > span {
+  padding: 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ---------- álbum, áudio, resposta ---------- */
 .tg-album {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
   overflow: hidden;
-  border-radius: 9px;
+  border-radius: 13px;
 }
 
 .tg-album-item {
@@ -549,59 +1119,53 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
 .tg-audio-bar {
   width: 2px;
   border-radius: 1px;
-  background: var(--tgc-hint);
+  background: var(--tgc-meta);
 }
 
 .tg-reply {
-  margin-bottom: 4px;
-  padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--tgc-reply-bar);
+  margin: 0 0 4px;
+  padding: 3px 8px 4px 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--tgc-reply-bg);
+  box-shadow: inset 3px 0 0 var(--tgc-reply-bar);
   font-size: 14px;
-  line-height: 1.2;
+  line-height: 17px;
 }
 
 .tg-reply-sender {
-  color: var(--tgc-link);
-  font-weight: 500;
+  color: var(--tgc-reply-bar);
+  font-weight: 600;
 }
 
 .tg-reply-text {
   overflow: hidden;
-  color: var(--tgc-hint);
+  color: var(--tgc-text);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.tg-media-duration {
-  position: absolute;
-  left: 6px;
-  bottom: 6px;
-  padding: 1px 6px;
-  color: #ffffff;
-  background: rgba(0, 0, 0, 0.55);
-  border-radius: 10px;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
+/* ---------- rodapé ---------- */
 .tg-channel-footer {
-  position: relative;
-  z-index: 2;
+  z-index: 3;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
+/* iOS: presente · Silenciar · lupa, flutuando sobre o chat */
 .tg-channel-footer--iphone {
-  padding: 10px 14px max(12px, env(safe-area-inset-bottom));
-  background: transparent;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--tgc-footer-bottom);
+  padding: 0 26px;
 }
 
 .tg-ios-footer-actions {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   align-items: center;
-  gap: 14px;
-  max-width: 360px;
-  margin: 0 auto;
+  gap: 12px;
 }
 
 .tg-footer-circle,
@@ -609,64 +1173,62 @@ html[data-tg-color-scheme="light"] .tg-app:not(.tg-app--dark) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 48px;
+  box-sizing: border-box;
+  height: 40px;
+  border: 0;
+  padding: 0;
   color: var(--tgc-text);
-  background: color-mix(in srgb, var(--tgc-bg) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tgc-text) 7%, transparent);
-  border-radius: 999px;
-  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  font-family: inherit;
+  cursor: default;
 }
 
 .tg-footer-circle {
-  width: 48px;
+  width: 40px;
 }
 
 .tg-mute-pill {
-  gap: 7px;
-  width: 100%;
-  padding: 0 16px;
-  font-size: 16px;
-  font-weight: 500;
+  width: min(165px, 100%);
+  margin: 0 auto;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
+/* Android: faixa branca "SILENCIAR" */
 .tg-channel-footer--android {
-  background: var(--tgc-secondary-bg);
-  border-top: 1px solid color-mix(in srgb, var(--tgc-text) 8%, transparent);
+  position: relative;
+  height: 50px;
+  background: var(--tgc-android-footer-bg);
+  box-shadow: 0 -0.5px 1.5px rgba(0, 0, 0, 0.12);
 }
 
 .tg-android-footer-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 62px;
-  color: var(--tgc-link);
+  height: 100%;
+  color: var(--tgc-android-footer-text);
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-@media (max-width: 520px) {
-  .tg-app--iphone .tg-channel-header--iphone {
-    gap: 5px;
-    padding-inline: 7px;
-  }
+/* ---------- menu de ações da prévia ---------- */
+.tg-row__actions {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 10;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
 
-  .tg-app--iphone .tg-channel-header--iphone .tg-channel-header__back {
-    padding-inline: 7px;
-  }
-
-  .tg-app--iphone .tg-channel-header--iphone .tg-unread-badge {
-    min-width: 27px;
-    padding-inline: 5px;
-  }
-
-  .tg-app--iphone .tg-channel-header--iphone .tg-channel-header__copy {
-    padding-inline: 7px;
-  }
-
-  .tg-ios-footer-actions {
-    gap: 9px;
-  }
+.tg-row:hover .tg-row__actions,
+.tg-row__actions:focus-within {
+  opacity: 1;
 }
 
 @media (max-width: 640px) {

@@ -18,14 +18,18 @@ export function TelegramInit({ botId }: { botId: string }) {
       const WebApp = (await import("@twa-dev/sdk")).default;
       if (cancelado) return;
 
+      // O servidor já escolheu a plataforma pelo User-Agent; aqui o SDK dá a
+      // palavra final. Fora do Telegram `platform` é "unknown" e fica Android.
       const app = document.querySelector<HTMLElement>(".tg-app--fullscreen");
       const isIphone = WebApp.platform === "ios";
       app?.classList.toggle("tg-app--iphone", isIphone);
       app?.classList.toggle("tg-app--android", !isIphone);
       app?.setAttribute("data-telegram-platform", isIphone ? "iphone" : "android");
 
+      // Mesmo atributo que o script inline da página escreve antes do paint;
+      // aqui ele acompanha a troca de tema com o Mini App aberto.
       const syncColorScheme = () => {
-        document.documentElement.dataset.tgColorScheme =
+        document.documentElement.dataset.tgScheme =
           WebApp.colorScheme === "light" ? "light" : "dark";
       };
       syncColorScheme();

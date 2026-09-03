@@ -15,7 +15,15 @@ import { ChannelHeader, type TelegramDevice } from "@/components/telegram/channe
 import { PinnedBar } from "@/components/telegram/pinned-bar";
 import { ChannelFeed } from "@/components/telegram/channel-feed";
 import { ChannelFooter } from "@/components/telegram/channel-footer";
+import { tgFontsClassName } from "@/components/telegram/fonts";
 import "@/components/telegram/theme.css";
+
+/*
+ * Largura lógica dos aparelhos das prints: iPhone 16 Pro tem 402pt, o Galaxy
+ * A52 tem 411dp. Renderizar a prévia nessas larguras faz cada medida em CSS
+ * px cair no mesmo lugar em que está na print.
+ */
+const LARGURA: Record<TelegramDevice, number> = { iphone: 402, android: 411 };
 
 /** Resolve a citação contra as mensagens já carregadas, como lib/social-proof/feed.ts faz. */
 function resolverCitacao(
@@ -63,7 +71,7 @@ function draftToFeedMessage(
 ): FeedMessage | null {
   const temTexto = (d.content_text ?? "").trim() !== "";
   const temMidia = d.media.length > 0;
-  
+
   // Se está vazio mas é uma resposta a outra mensagem, ou é uma mensagem existente que foi apagada no rascunho,
   // nós retornamos o rascunho para que a bolha (mesmo que vazia ou contendo apenas a citação) apareça
   // na prévia e o usuário tenha o feedback visual.
@@ -100,6 +108,7 @@ export function FeedPreview({
   messages,
   draft,
   pinnedText,
+  pinnedId = null,
   selectedId,
   disabled,
   onSelect,
@@ -112,6 +121,8 @@ export function FeedPreview({
   messages: SocialProofMessage[];
   draft: MessageInput | null;
   pinnedText: string;
+  /** Id da mensagem fixada, para a miniatura da barra quando ela tem foto. */
+  pinnedId?: string | null;
   selectedId?: string | null;
   disabled?: boolean;
   onSelect?: (id: string) => void;
@@ -149,6 +160,25 @@ export function FeedPreview({
     unreadBadge: channel.unread_badge,
   };
 
+  const fixada = pinnedId ? porId.get(pinnedId) : undefined;
+  const fixadaFoto = fixada
+    ? normalizeMedia(fixada.media, fixada.media_url, fixada.media_type).find((m) => m.type === "photo")?.url ?? null
+    : null;
+  const temFixada = pinnedText.trim() !== "" || fixadaFoto !== null;
+
+  const classes = [
+    "tg-app",
+    `tg-app--${device}`,
+    `tg-app--${theme}`,
+    temFixada ? "tg-app--has-pinned" : "",
+    "tg-preview-device",
+    device === "iphone" ? "tg-preview-device--iphone" : "tg-preview-device--android",
+    tgFontsClassName,
+    "w-full relative mx-auto flex flex-col flex-1 min-h-0",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <section className="tg-preview w-full flex flex-col items-center h-full min-h-0">
       <div className="tg-preview-toolbar">
@@ -181,17 +211,14 @@ export function FeedPreview({
         </div>
       </div>
 
-      <div
-        className={`tg-app tg-app--${device} tg-app--${theme} tg-preview-device w-full relative mx-auto flex flex-col flex-1 min-h-0 ${device === "iphone" ? "tg-preview-device--iphone" : "tg-preview-device--android"}`}
-        style={{ maxWidth: device === "iphone" ? 380 : 390 }}
-      >
+      <div className={classes} style={{ maxWidth: LARGURA[device] }}>
         <ChatBackdrop />
         <ChannelHeader channel={feedChannel} device={device} />
-        <PinnedBar text={pinnedText} />
-        <ChannelFeed 
-          messages={lista} 
-          channel={feedChannel} 
-          now={new Date()} 
+        <PinnedBar text={pinnedText} thumbUrl={fixadaFoto} />
+        <ChannelFeed
+          messages={lista}
+          channel={feedChannel}
+          now={new Date()}
           originalIds={messages.map(m => m.id)} // Pass original IDs so we can reorder them
           selectedId={selectedId}
           disabled={disabled}

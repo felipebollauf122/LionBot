@@ -17,8 +17,7 @@ import { resolveSender } from "@/lib/social-proof/sender";
  * O selo "admin" fica encostado à direita da linha do nome, como o rótulo de
  * administrador do Telegram. Cantos seguem a posição no grupo: o canto superior
  * esquerdo só é grande na primeira mensagem, o inferior esquerdo só ganha
- * rabinho na última; entre elas os dois ficam pequenos. O selo "admin" fica à
- * direita do nome.
+ * rabinho na última; entre elas os dois ficam pequenos.
  *
  * A hora vive no canto inferior direito. Um espaçador invisível no fim do
  * texto reserva a largura dela, para a última linha nunca ficar por baixo.

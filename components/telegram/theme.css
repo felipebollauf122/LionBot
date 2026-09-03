@@ -675,7 +675,7 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
   padding: 6px 0 8px;
 }
 
-/* linha de uma mensagem: bolha + botão de encaminhar */
+/* linha de uma mensagem (o recuo à direita mantém a largura das bolhas das prints) */
 .tg-row {
   position: relative;
   display: flex;
@@ -684,8 +684,7 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
 }
 
 .tg-app--iphone .tg-row {
-  gap: 8px;
-  padding: 0 23px 0 10px;
+  padding: 0 63px 0 10px;
   margin-bottom: 3px;
 }
 
@@ -694,8 +693,7 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
 }
 
 .tg-app--android .tg-row {
-  gap: 10px;
-  padding: 0 10px 0 11px;
+  padding: 0 53px 0 11px;
   margin-bottom: 3px;
 }
 
@@ -710,28 +708,6 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
 .tg-row__bubble-col {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.tg-share {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 0;
-  border-radius: 50%;
-  color: var(--tgc-service-text);
-  background: var(--tgc-service);
-  cursor: default;
-}
-
-.tg-app--iphone .tg-share {
-  width: 32px;
-  height: 32px;
-}
-
-.tg-app--android .tg-share {
-  width: 33px;
-  height: 33px;
 }
 
 /* ---------- bolha ---------- */

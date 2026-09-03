@@ -14,15 +14,6 @@ export function EyeIcon({ className }: { className?: string }) {
   );
 }
 
-/** Seta curva do botão de encaminhar ao lado da bolha. */
-export function ShareArrowIcon({ width, height }: { width: number; height: number }) {
-  return (
-    <svg width={width} height={height} viewBox="0 0 24 20" fill="currentColor" aria-hidden>
-      <path d="M14 0v5.2C6.4 5.6 1.4 10.6 0 19.6c3.3-5.5 7.9-7.9 14-8v5.6l10-8.6L14 0Z" />
-    </svg>
-  );
-}
-
 /** "<" do botão de voltar do iPhone. */
 export function ChevronBackIcon() {
   return (

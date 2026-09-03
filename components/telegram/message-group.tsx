@@ -3,13 +3,13 @@
 import { useState } from "react";
 import type { FeedChannel, GroupedMessage } from "@/lib/social-proof/types";
 import { MessageBubble } from "@/components/telegram/message-bubble";
-import { ShareArrowIcon } from "@/components/telegram/icons";
 import { motion, AnimatePresence } from "motion/react";
 
 /**
- * Uma linha do feed: a bolha e, à direita, o botão redondo de encaminhar que
- * o Telegram põe ao lado de toda publicação de canal. Sem coluna de avatar —
- * canal não mostra avatar por mensagem, e é isso que as prints têm.
+ * Uma linha do feed: só a bolha. Sem coluna de avatar (canal não mostra
+ * avatar por mensagem) e sem o botão de encaminhar — o usuário pediu a linha
+ * limpa; o espaço à direita continua reservado para a bolha ter a largura
+ * exata das prints.
  */
 export function MessageGroup({
   message,
@@ -75,10 +75,6 @@ export function MessageGroup({
       >
         <MessageBubble message={message} channel={channel} />
       </div>
-
-      <span className="tg-share" aria-hidden>
-        <ShareArrowIcon width={14} height={12} />
-      </span>
 
       {!isDraft && (onDuplicate || onPin || onDelete) && (
         <div className="tg-row__actions">

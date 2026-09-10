@@ -21,6 +21,9 @@ wrong reads as a broken product rather than as missing configuration:
 - `INTERNAL_API_SECRET` — shared secret, **identical** to the one in
   `server/.env`. An unset secret NEVER authorises: the bot-promotion button
   and all three AI assistant buttons answer 503 forever.
+  Suba nos DOIS lados ao mesmo tempo: esse segredo protege o endpoint que
+  transporta login MTProto, sync de diálogos, Mass DM, clone de canal e
+  clone de bot — não só as campanhas. Subir de um lado só derruba todos.
 - `GEMINI_API_KEY` / `GEMINI_MODEL` — worker only, in `server/.env`. See
   [`server/README.md`](./server/README.md) and
   [`server/env.example`](./server/env.example).

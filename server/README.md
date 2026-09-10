@@ -37,7 +37,14 @@ Full list with comments: [`env.example`](./env.example).
 These four are what the scheduled-campaign feature needs, and getting them
 wrong reads as a broken product rather than as missing configuration.
 
-- `INTERNAL_API_SECRET` — shared secret for the three internal endpoints
+- `INTERNAL_API_SECRET` — shared secret for the three internal endpoints.
+  **Deploy this on the worker and on the Next app at the same time.** The
+  guarded `/api/mtproto/enqueue` is the transport for far more than the
+  campaign features: MTProto login (`auth.*`), dialog sync
+  (`account.sync-dialogs`), Mass DM (`campaign.run`), channel clone
+  (`clone.run`) and bot clone (`botclone.*`) all ride it. A one-sided
+  rollout stops every one of them — 401 if the app is missing it, 503 if
+  the worker is. Rolling it out to both sides together is not optional.
   (`POST /api/mtproto/enqueue`, `POST /api/mtproto/ensure-bot-access`,
   `POST /api/ai/assist`). **The same value must be set in the Next app's
   `.env`, under the same name.** An unset secret NEVER authorises: it means

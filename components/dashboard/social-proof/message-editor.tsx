@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { MessageInput, MessageKind, SenderKind } from "@/lib/social-proof/types";
 import { MediaPicker } from "@/components/dashboard/social-proof/media-picker";
 import { motion, AnimatePresence } from "motion/react";
@@ -15,10 +16,6 @@ const TIPOS: { kind: MessageKind; label: string }[] = [
   { kind: "album", label: "Álbum" },
 ];
 
-/** Paleta fixa. Um seletor completo de emoji é uma dependência inteira pra um
- *  caso em que sete opções cobrem quase tudo. */
-const EMOJIS = ["❤️", "🔥", "👏", "😂", "😮", "🙏", "💎"];
-
 const MAX_TEXTO = 1024;
 
 export function MessageEditor({
@@ -32,6 +29,7 @@ export function MessageEditor({
   onDelete,
   saving,
   error,
+  extras,
 }: {
   value: MessageInput;
   index: number;
@@ -39,32 +37,14 @@ export function MessageEditor({
   onSave: () => void;
   onDuplicate: () => void;
   onReply: () => void;
-  onPin: () => void;
+  /** Ausente = a feature não fixa mensagem, e o botão "Fixar" nem aparece. */
+  onPin?: () => void;
   onDelete: () => void;
   saving: boolean;
   error: string | null;
+  /** Campos que só uma das features tem, entre a mídia e os botões do rodapé. */
+  extras?: ReactNode;
 }) {
-  function setReacao(emoji: string, delta: number) {
-    const atual = value.reactions.find((r) => r.emoji === emoji);
-
-    if (atual) {
-      const count = Math.max(0, atual.count + delta);
-      const novas =
-        count === 0
-          ? value.reactions.filter((r) => r.emoji !== emoji)
-          : value.reactions.map((r) => (r.emoji === emoji ? { ...r, count } : r));
-      onChange({ ...value, reactions: novas });
-      return;
-    }
-
-    // A reação ainda não existe. Só faz sentido criar quando o gesto é de
-    // somar — botão direito (delta negativo) num emoji zerado não tem o que
-    // subtrair, e criar a reação aí seria o oposto do que o botão promete.
-    if (delta <= 0) return;
-
-    onChange({ ...value, reactions: [...value.reactions, { emoji, count: delta }] });
-  }
-
   return (
     <aside className="flex flex-col gap-5 rounded-xl border border-(--border-subtle) p-4">
       <div className="flex items-center justify-between">
@@ -234,75 +214,7 @@ export function MessageEditor({
         </div>
       )}
 
-      <div className="space-y-2">
-        <p className="text-xs text-(--text-muted)">Metadados</p>
-        <div className="grid grid-cols-3 gap-2">
-          <label className="text-xs text-(--text-ghost)">
-            Visualizações
-            <input
-              className={CAMPO}
-              type="number"
-              min={0}
-              value={value.views_count}
-              onChange={(e) =>
-                onChange({ ...value, views_count: Math.max(0, Number(e.target.value) || 0) })
-              }
-            />
-          </label>
-          <label className="text-xs text-(--text-ghost)">
-            Há quantos minutos
-            <input
-              className={CAMPO}
-              type="number"
-              min={0}
-              value={Math.round(value.offset_seconds / 60)}
-              onChange={(e) =>
-                onChange({
-                  ...value,
-                  offset_seconds: Math.max(0, Number(e.target.value) || 0) * 60,
-                })
-              }
-            />
-          </label>
-          <label className="text-xs text-(--text-ghost)">
-            Horário (opcional)
-            <input
-              className={CAMPO}
-              placeholder="02:44"
-              value={value.display_time ?? ""}
-              onChange={(e) => onChange({ ...value, display_time: e.target.value || null })}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-xs text-(--text-muted)">Reações (opcional)</p>
-        <div className="flex flex-wrap gap-2">
-          {EMOJIS.map((emoji) => {
-            const atual = value.reactions.find((r) => r.emoji === emoji);
-            return (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => setReacao(emoji, 1)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setReacao(emoji, -1);
-                }}
-                title="Clique para somar, botão direito para subtrair"
-                className={`rounded-full border px-3 py-1 text-sm ${
-                  atual
-                    ? "border-(--accent) bg-(--accent-deep) text-(--text-primary)"
-                    : "border-(--border-default) text-(--text-secondary)"
-                }`}
-              >
-                {emoji} {atual?.count ?? 0}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {extras}
 
       {/* disabled={saving} nos quatro não é estética: é proteção contra ação
           concorrente sobre a MESMA linha. Sem isto, "Excluir" clicado enquanto
@@ -333,17 +245,19 @@ export function MessageEditor({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           Responder
         </motion.button>
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          type="button"
-          onClick={onPin}
-          disabled={saving}
-          className="flex items-center justify-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-overlay) py-2 text-sm font-medium text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) hover:border-(--border-subtle) disabled:opacity-50 transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-          Fixar
-        </motion.button>
+        {onPin && (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            type="button"
+            onClick={onPin}
+            disabled={saving}
+            className="flex items-center justify-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-overlay) py-2 text-sm font-medium text-(--text-secondary) hover:bg-(--bg-hover) hover:text-(--text-primary) hover:border-(--border-subtle) disabled:opacity-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+            Fixar
+          </motion.button>
+        )}
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}

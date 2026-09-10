@@ -31,11 +31,21 @@ async function enqueueJob(job: MtprotoJob): Promise<void> {
   const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(/\/+$/, "");
   const res = await fetch(`${serverUrl}/api/mtproto/enqueue`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // A rota do worker exige segredo compartilhado desde que passou a
+      // aceitar jobs de publicação e de LLM (server/src/index.ts): ela
+      // despacha pra handlers de SERVICE ROLE que confiam no id recebido.
+      "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+    },
     body: JSON.stringify(job),
   });
   if (!res.ok) {
-    throw new Error(`Falha ao enfileirar job (${res.status})`);
+    throw new Error(
+      res.status === 401 || res.status === 503
+        ? "O servidor de automações recusou a chamada interna. Confira INTERNAL_API_SECRET nos dois lados."
+        : `Falha ao enfileirar job (${res.status})`,
+    );
   }
 }
 

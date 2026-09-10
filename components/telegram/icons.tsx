@@ -105,3 +105,17 @@ export function BubbleTail() {
     </svg>
   );
 }
+
+/**
+ * Ícone genérico de arquivo, para o chip de anexo de uma mensagem
+ * `document`. Genérico de propósito: o clone não guarda o mime do arquivo,
+ * então desenhar um ícone de PDF (ou de ZIP) seria inventar informação.
+ */
+export function DocumentIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}

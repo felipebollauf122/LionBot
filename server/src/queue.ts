@@ -503,6 +503,183 @@ export function startWorkers(): void {
     })();
   }, 30_000);
 
+  // Campanhas de postagem agendada: enfileira o que venceu.
+  //
+  // NO MÁXIMO UMA MENSAGEM EM VOO POR CAMPANHA. Não é detalhe de performance:
+  // o worker roda com concurrency 4, e duas mensagens da mesma campanha no ar
+  // ao mesmo tempo permitem que a segunda seja publicada antes da primeira.
+  // Uma por TICK não basta — uma publicação de 50MB dura mais que os 30s, e no
+  // tick seguinte a mensagem em voo já não está 'pending' (está 'sending'),
+  // então a próxima entraria por cima dela. Por isso a campanha com algo em
+  // 'sending' é pulada inteira.
+  let scheduledPostsRunning = false;
+  setInterval(() => {
+    if (scheduledPostsRunning) return;
+    scheduledPostsRunning = true;
+    (async () => {
+      try {
+        const { enqueueMtproto } = await import("./queue-mtproto.js");
+        // A decisão do tick — quem é pulado e quem é enfileirado — mora no
+        // handler, atrás de PollerDeps, e é testada lá. Aqui ficam só as
+        // leituras. Import dinâmico pelo mesmo motivo do enqueueMtproto.
+        const { tickCampanhasAgendadas, POLLER_LIMITE_CAMPANHAS, assentarCampanhaSeVazia } =
+          await import("./workers/scheduled-campaign-handler.js");
+        await tickCampanhasAgendadas(
+          {
+            // Ordem determinística e por antiguidade: com `limit` e sem ordem,
+            // as campanhas além do teto poderiam nunca ser alcançadas. Pela
+            // mais antiga primeiro a fila drena — quem começou antes termina
+            // antes e sai de 'running', abrindo a vaga pra próxima.
+            campanhasRodando: async (limite) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_campaigns")
+                .select("id")
+                .eq("status", "running")
+                .order("started_at", { ascending: true, nullsFirst: true })
+                .order("created_at", { ascending: true })
+                .limit(limite);
+              return (data ?? []).map((c) => c.id as string);
+            },
+            comEnvioEmVoo: async (ids) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_messages")
+                .select("campaign_id")
+                .eq("status", "sending")
+                .in("campaign_id", ids);
+              return (data ?? []).map((m) => m.campaign_id as string);
+            },
+            // Quem ainda tem fila AGENDADA. `scheduled_at not null` é o que
+            // separa "vai sair nesta rodada" de "pendente que o poller nunca
+            // publicaria" (criada no composer depois do disparo, ou restaurada
+            // de um descarte) — ver o comentário em PollerDeps.
+            comFilaPendente: async (ids) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_messages")
+                .select("campaign_id")
+                .eq("status", "pending")
+                .not("scheduled_at", "is", null)
+                .in("campaign_id", ids);
+              return (data ?? []).map((m) => m.campaign_id as string);
+            },
+            proximaVencida: async (campaignId, agoraIso) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_messages")
+                .select("id")
+                .eq("campaign_id", campaignId)
+                .eq("status", "pending")
+                .not("scheduled_at", "is", null)
+                .lte("scheduled_at", agoraIso)
+                .order("scheduled_at", { ascending: true })
+                // Desempate por position/created_at, o mesmo do composer. O
+                // reagendamento pós-flood põe TODA pendente atrasada no mesmo
+                // instante (o piso em retryAt), então sem desempate a ordem de
+                // publicação depois de um flood seria a que o Postgres quisesse.
+                .order("position", { ascending: true })
+                .order("created_at", { ascending: true })
+                .limit(1);
+              return data && data.length > 0 ? (data[0].id as string) : null;
+            },
+            enfileirar: (messageId) =>
+              enqueueMtproto({ kind: "postcampaign.send-one", messageId }),
+            assentar: (campaignId) => assentarCampanhaSeVazia(campaignId),
+          },
+          new Date(),
+          POLLER_LIMITE_CAMPANHAS,
+        );
+      } catch (err) {
+        console.error("[postcampaign-poller] Error:", err);
+      } finally {
+        scheduledPostsRunning = false;
+      }
+    })();
+  }, 30_000);
+
+  // Claim órfão: um worker que morreu no meio deixa a mensagem em 'sending'
+  // pra sempre, e o poller acima nunca a reenfileira (ele só olha 'pending').
+  setInterval(() => {
+    (async () => {
+      // A janela é a do próprio handler — import dinâmico pelo mesmo motivo
+      // do enqueueMtproto acima: não arrastar o grafo do worker MTProto pro
+      // import estático deste módulo.
+      const { SEND_CLAIM_STALE_MS } = await import("./workers/scheduled-campaign-handler.js");
+      const limite = new Date(Date.now() - SEND_CLAIM_STALE_MS).toISOString();
+      const { data } = await supabase
+        .from("mtproto_scheduled_messages")
+        .update({ status: "pending", claimed_at: null })
+        .eq("status", "sending")
+        .lt("claimed_at", limite)
+        .select("id");
+      if (data && data.length > 0) {
+        console.warn(`[postcampaign-sweep] ${data.length} claims órfãos devolvidos pra pending`);
+      }
+    })().catch((err) => console.error("[postcampaign-sweep] Error:", err));
+  }, 5 * 60 * 1000);
+
+  // Limpeza da mídia de campanhas concluídas. Roda 1x por dia e só toca em
+  // campanha completed há mais de 7 dias: a janela existe pra o dono ainda
+  // conseguir olhar o rascunho publicado antes de as prévias sumirem.
+  //
+  // Só apaga o que veio de clone (prefixo `campaign/`), nunca mídia que o
+  // usuário subiu à mão pela biblioteca — media_assets vive no mesmo bucket.
+  async function limparMidiaDeCampanhas(): Promise<void> {
+    const corte = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: campanhas } = await supabase
+      .from("mtproto_scheduled_campaigns")
+      .select("id, tenant_id, source_clone_job_id")
+      .eq("status", "completed")
+      .lt("completed_at", corte)
+      .not("source_clone_job_id", "is", null)
+      .limit(20);
+    if (!campanhas || campanhas.length === 0) return;
+
+    for (const c of campanhas) {
+      const pasta = `${c.tenant_id}/campaign/${c.source_clone_job_id}`;
+      // list() devolve no máximo 100 itens por chamada. Um clone de 500
+      // mensagens deixaria 400 arquivos pra trás numa varredura só, então
+      // esvazia a pasta em páginas — sempre da primeira, porque cada remove
+      // encurta a lista e um offset fixo pularia arquivos.
+      let removidos = 0;
+      let falhou = false;
+      for (let pagina = 0; pagina < 50; pagina++) {
+        const { data: arquivos } = await supabase.storage
+          .from("media")
+          .list(pasta, { limit: 100 });
+        if (!arquivos || arquivos.length === 0) break;
+        const { error } = await supabase.storage
+          .from("media")
+          .remove(arquivos.map((a) => `${pasta}/${a.name}`));
+        if (error) {
+          console.error(`[postcampaign-cleanup] falha em ${pasta}: ${error.message}`);
+          falhou = true;
+          break;
+        }
+        removidos += arquivos.length;
+      }
+      if (falhou) continue;
+      // Marca a campanha pra não varrer a mesma pasta todo dia pra sempre.
+      // Vale também pra pasta já vazia: sem isso ela voltaria em toda
+      // rodada e, com o limit de 20, ocuparia a vaga de quem tem mídia.
+      await supabase
+        .from("mtproto_scheduled_campaigns")
+        .update({ source_clone_job_id: null })
+        .eq("id", c.id);
+      if (removidos > 0) {
+        console.log(`[postcampaign-cleanup] ${removidos} arquivos removidos de ${pasta}`);
+      }
+    }
+  }
+  setInterval(
+    () => {
+      limparMidiaDeCampanhas().catch((err) =>
+        console.error("[postcampaign-cleanup] Error:", err),
+      );
+    },
+    24 * 60 * 60 * 1000,
+  );
+  setTimeout(() => {
+    limparMidiaDeCampanhas().catch(() => {});
+  }, 120_000);
+
   // Cleanup diário de inbox messages: apaga registros com mais de 7 dias.
   async function cleanupInboxMessages(): Promise<void> {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -634,5 +811,30 @@ export function startWorkers(): void {
   setInterval(() => tickBotCloneWatchdogSafe(), 10 * 60 * 1000);
   setTimeout(() => tickBotCloneWatchdogSafe(), 90_000); // 90s após boot
 
-  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + zuckpay-poller + nowpayments-poller + channel-monitor + botclone-watchdog started");
+  // Campaign-AI: watchdog pra campanha travada em ai_status='processing' —
+  // campaign.ai-process é enfileirado uma ÚNICA vez (clone-handler.ts), com
+  // attempts:2 e backoff fixo de 3s (queue-mtproto.ts). Se o worker morre no
+  // meio de um lote, o retry do BullMQ chega cedo demais: a trava CAS
+  // (ai_started_at) ainda está fresca, reivindicar() não pega, as 2
+  // tentativas se esgotam, e ninguém jamais reenfileira de novo sozinho —
+  // mesma classe de bug do watchdog do bot-clone acima, uma tabela adiante.
+  // setInterval, não BullMQ repeat: este codebase não usa essa feature em
+  // lugar nenhum (mesmo padrão dos outros pollers acima).
+  let campaignAiWatchdogRunning = false;
+  async function tickCampaignAiWatchdogSafe(): Promise<void> {
+    if (campaignAiWatchdogRunning) return;
+    campaignAiWatchdogRunning = true;
+    try {
+      const { tickCampaignAiStuckWatchdog } = await import("./workers/campaign-ai-handler.js");
+      await tickCampaignAiStuckWatchdog();
+    } catch (err) {
+      console.error("[campaign-ai.watchdog] Error:", err);
+    } finally {
+      campaignAiWatchdogRunning = false;
+    }
+  }
+  setInterval(() => tickCampaignAiWatchdogSafe(), 10 * 60 * 1000);
+  setTimeout(() => tickCampaignAiWatchdogSafe(), 90_000); // 90s após boot
+
+  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + zuckpay-poller + nowpayments-poller + channel-monitor + botclone-watchdog + campaign-ai-watchdog started");
 }

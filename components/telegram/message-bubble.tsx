@@ -7,7 +7,7 @@ import { AlbumGrid } from "@/components/telegram/album-grid";
 import { AudioBubble } from "@/components/telegram/audio-bubble";
 import { ReplyPreview } from "@/components/telegram/reply-preview";
 import { ReactionsRow } from "@/components/telegram/reactions-row";
-import { BubbleTail } from "@/components/telegram/icons";
+import { BubbleTail, DocumentIcon } from "@/components/telegram/icons";
 import { resolveSender } from "@/lib/social-proof/sender";
 
 /**
@@ -73,6 +73,18 @@ export function MessageBubble({
 
       {temResposta && (
         <ReplyPreview sender={message.replyToSender ?? ""} text={message.replyToText ?? ""} />
+      )}
+
+      {/* Anexo de documento: ícone genérico + nome do arquivo, como o Telegram
+          desenha. É elemento, não texto enfiado na legenda — o post real não
+          tem essa linha escrita, e esta tela promete ser o que vai ao ar. */}
+      {message.fileName && (
+        <div className="tg-doc">
+          <span className="tg-doc__icon">
+            <DocumentIcon />
+          </span>
+          <span className="tg-doc__name">{message.fileName}</span>
+        </div>
       )}
 
       {ehAlbum && <AlbumGrid media={message.media} />}

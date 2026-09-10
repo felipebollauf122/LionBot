@@ -328,3 +328,105 @@ export interface SocialProofMessage {
   display_time: string | null;
   created_at: string;
 }
+
+// ─── Campanhas de postagem agendada (074/075) ────────────────────────────
+
+export type ScheduledCampaignStatus =
+  | "draft"
+  | "ai_processing"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed";
+
+export type ScheduledCampaignAiStatus =
+  | "idle"
+  | "queued"
+  | "processing"
+  | "done"
+  | "partial"
+  | "failed";
+
+export interface ScheduledCampaign {
+  id: string;
+  tenant_id: string;
+  name: string;
+  dest_dialog_id: string | null;
+  dest_channel_id: string | null;
+  dest_access_hash: string | null;
+  dest_title: string | null;
+  source_clone_job_id: string | null;
+  status: ScheduledCampaignStatus;
+  start_at: string | null;
+  default_delay_seconds: number;
+  ai_clean: boolean;
+  ai_rewrite: boolean;
+  ai_smart_delay: boolean;
+  ai_status: ScheduledCampaignAiStatus;
+  ai_processed_count: number;
+  ai_error: string | null;
+  ai_started_at: string | null;
+  total_messages: number;
+  sent_count: number;
+  failed_count: number;
+  last_error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/**
+ * `document` e `poll` existem aqui e não em social_proof_messages porque o
+ * clone os produz e o bot sabe publicá-los. O MessageEditor continua
+ * oferecendo só os cinco tipos editáveis — ver Plano 2.
+ */
+export type ScheduledMessageKind =
+  | "text"
+  | "photo"
+  | "video"
+  | "audio"
+  | "album"
+  | "document"
+  | "poll";
+
+export type ScheduledMessageStatus = "pending" | "sending" | "sent" | "failed" | "skipped";
+
+export type ScheduledMessageAiAction = "none" | "cleaned" | "rewritten" | "discarded";
+
+export interface ScheduledMessage {
+  id: string;
+  tenant_id: string;
+  campaign_id: string;
+  kind: ScheduledMessageKind;
+  content_text: string | null;
+  /** jsonb: lista de MediaItem. Mesmo shape de social_proof_messages.media. */
+  media: MediaItem[];
+  reply_to_id: string | null;
+  position: number;
+  delay_seconds: number;
+  scheduled_at: string | null;
+  silent: boolean;
+  status: ScheduledMessageStatus;
+  dest_msg_id: number | null;
+  sent_at: string | null;
+  error_message: string | null;
+  attempts: number;
+  claimed_at: string | null;
+  source_msg_id: number | null;
+  /** jsonb: Api.MessageEntity[] cruas do gramjs. Opaco fora do worker. */
+  entities: unknown[] | null;
+  inline_links: Array<{ label: string; url: string }> | null;
+  poll: {
+    question: string;
+    options: string[];
+    isAnonymous: boolean;
+    allowsMultipleAnswers: boolean;
+  } | null;
+  file_name: string | null;
+  is_pinned: boolean;
+  content_text_original: string | null;
+  ai_action: ScheduledMessageAiAction | null;
+  ai_reason: string | null;
+  ai_discarded: boolean;
+  created_at: string;
+}

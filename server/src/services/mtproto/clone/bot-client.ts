@@ -66,6 +66,12 @@ export interface PublishOptions {
   fileName?: string;
   /** Id do tópico de fórum de destino (message_thread_id da Bot API). Omitido = General. */
   messageThreadId?: number;
+  /**
+   * `false` publica com notificação. Default true: o clone despeja centenas
+   * de posts de uma vez e não pode tocar o celular dos inscritos a cada um.
+   * A campanha de conteúdo passa false, onde a notificação é o objetivo.
+   */
+  silent?: boolean;
 }
 
 /**
@@ -121,7 +127,7 @@ export class CompanionBot {
       reply_markup: opts.inlineLinks?.length
         ? buildInlineKeyboard(opts.inlineLinks)
         : undefined,
-      disable_notification: true,
+      disable_notification: opts.silent !== false,
       message_thread_id: opts.messageThreadId,
     });
     return sent.message_id;
@@ -146,7 +152,7 @@ export class CompanionBot {
       reply_markup: opts.inlineLinks?.length
         ? buildInlineKeyboard(opts.inlineLinks)
         : undefined,
-      disable_notification: true,
+      disable_notification: opts.silent !== false,
       message_thread_id: opts.messageThreadId,
     };
     const api = this.bot.api;
@@ -162,7 +168,7 @@ export class CompanionBot {
               : kind === "sticker"
                 ? await api.sendSticker(this.destChatId, file, {
                     reply_parameters: common.reply_parameters,
-                    disable_notification: true,
+                    disable_notification: opts.silent !== false,
                     message_thread_id: common.message_thread_id,
                   })
                 : await api.sendDocument(this.destChatId, file, common);
@@ -181,7 +187,7 @@ export class CompanionBot {
      * Opcional, sem default de reply: o Telegram ancora o reply no primeiro
      * item do álbum automaticamente, então o caller só precisa passar o id.
      */
-    opts: { replyToMessageId?: number; messageThreadId?: number } = {},
+    opts: { replyToMessageId?: number; messageThreadId?: number; silent?: boolean } = {},
   ): Promise<number[]> {
     const media = items.map((it) => ({
       type: it.kind,
@@ -190,7 +196,7 @@ export class CompanionBot {
       caption_entities: toBotApiEntities(it.entities),
     }));
     const sent = await this.bot.api.sendMediaGroup(this.destChatId, media, {
-      disable_notification: true,
+      disable_notification: opts.silent !== false,
       reply_parameters: opts.replyToMessageId
         ? { message_id: opts.replyToMessageId }
         : undefined,
@@ -209,7 +215,7 @@ export class CompanionBot {
    */
   async publishPoll(
     poll: SourcePoll,
-    opts: { replyToMessageId?: number; messageThreadId?: number } = {},
+    opts: { replyToMessageId?: number; messageThreadId?: number; silent?: boolean } = {},
   ): Promise<number> {
     const sent = await this.bot.api.sendPoll(
       this.destChatId,
@@ -218,7 +224,7 @@ export class CompanionBot {
       {
         is_anonymous: poll.isAnonymous,
         allows_multiple_answers: poll.allowsMultipleAnswers,
-        disable_notification: true,
+        disable_notification: opts.silent !== false,
         reply_parameters: opts.replyToMessageId
           ? { message_id: opts.replyToMessageId }
           : undefined,

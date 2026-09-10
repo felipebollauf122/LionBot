@@ -41,6 +41,13 @@ export interface FeedMessage {
   kind: MessageKind;
   contentText: string | null;
   media: MediaItem[];
+  /**
+   * Nome do arquivo quando a linha é um documento. `kind` não tem "document"
+   * — o union é o contrato do editor, que só edita os cinco tipos — então a
+   * linha chega aqui como "text" e é este campo, e só ele, que faz a bolha
+   * desenhar o chip de anexo. Ausente na Prova Social, que não tem documentos.
+   */
+  fileName?: string | null;
   reactions: Reaction[];
   /** Texto da mensagem respondida, já resolvido pelo servidor. */
   replyToText: string | null;
@@ -96,4 +103,15 @@ export interface MessageInput {
   offset_seconds: number;
   views_count: number;
   // `position` NÃO entra aqui: quem calcula é a Server Action (max+1).
+
+  /**
+   * Campos da campanha agendada. Opcionais porque a Prova Social não os tem:
+   * o mesmo MessageInput serve às duas features, e o composer não precisa
+   * saber qual delas está montando a mensagem.
+   */
+  delay_seconds?: number;
+  silent?: boolean;
+  ai_discarded?: boolean;
+  content_text_original?: string | null;
+  ai_reason?: string | null;
 }

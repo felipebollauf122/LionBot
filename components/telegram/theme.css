@@ -1100,6 +1100,47 @@ html[data-tg-scheme="light"] .tg-app--android:not(.tg-app--dark) {
   background: var(--tgc-meta);
 }
 
+/* ---------- anexo de documento ---------- */
+.tg-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+  max-width: 100%;
+  padding: 4px 0;
+}
+
+.tg-doc__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  color: var(--tgc-button-text);
+  background: var(--tgc-button);
+  border-radius: 50%;
+}
+
+.tg-doc__name {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 19px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Chip de estado por mensagem (slot `messageBadge` do composer). Só existe
+   quando o adaptador passa a prop — a Prova Social não passa, e aí nem este
+   contêiner é renderizado. */
+.tg-feed__badge {
+  display: flex;
+  margin: -1px 0 6px;
+  padding: 0 10px;
+}
+
 .tg-reply {
   margin: 0 0 4px;
   padding: 3px 8px 4px 10px;

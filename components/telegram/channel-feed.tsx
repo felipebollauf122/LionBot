@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { FeedChannel, FeedMessage } from "@/lib/social-proof/types";
 import { groupMessages } from "@/lib/social-proof/grouping";
 import { moveItem } from "@/lib/social-proof/reorder";
@@ -20,6 +21,7 @@ export function ChannelFeed({
   onDuplicate,
   onPin,
   onDelete,
+  messageBadge,
 }: {
   messages: FeedMessage[];
   channel: FeedChannel;
@@ -32,6 +34,12 @@ export function ChannelFeed({
   onDuplicate?: (id: string) => void;
   onPin?: (id: string) => void;
   onDelete?: (id: string) => void;
+  /**
+   * Chip extra por mensagem, desenhado junto da bolha (o status de envio, na
+   * campanha agendada). Ausente — que é o caso do Mini App público e da Prova
+   * Social — não acrescenta um único nó ao DOM.
+   */
+  messageBadge?: (id: string) => ReactNode;
 }) {
   const grouped = groupMessages(messages, now);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
@@ -56,6 +64,9 @@ export function ChannelFeed({
         const anterior = grouped[i - 1];
         const novoDia = anterior === undefined || !isSameDay(anterior.at, m.at);
         const ehRascunho = m.id === "__rascunho__";
+        // O rascunho ainda não é uma linha do banco: não tem estado de envio
+        // pra mostrar, e pedi-lo devolveria o chip da mensagem errada.
+        const chip = ehRascunho ? null : messageBadge?.(m.id);
 
         return (
           <div key={m.id}>
@@ -80,6 +91,7 @@ export function ChannelFeed({
               onPin={onPin ? () => onPin(m.id) : undefined}
               onDelete={onDelete ? () => onDelete(m.id) : undefined}
             />
+            {chip && <div className="tg-feed__badge">{chip}</div>}
           </div>
         );
       })}

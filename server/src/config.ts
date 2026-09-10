@@ -42,4 +42,19 @@ export const config = {
   vapidPublicKey: envOptional("VAPID_PUBLIC_KEY", ""),
   vapidPrivateKey: envOptional("VAPID_PRIVATE_KEY", ""),
   vapidSubject: envOptional("VAPID_SUBJECT", "mailto:admin@lionbot.app"),
+  // Segredo compartilhado Next ↔ worker pra endpoints internos — hoje
+  // /api/mtproto/ensure-bot-access (achado de segurança: sem ele, um
+  // campaignId de outro tenant promovia bot em canal alheio), e o Plano 3
+  // (§5.5 do design doc) vai somar o assistente de IA na mesma lista.
+  // `envOptional` de propósito: vazio não pode impedir o worker de subir —
+  // quem usa o segredo é quem decide rejeitar chamada sem ele, não o boot.
+  internalApiSecret: envOptional("INTERNAL_API_SECRET", ""),
+  // Gemini: trata o conteúdo raspado antes de virar rascunho de campanha.
+  // Chave vazia desativa a feature silenciosamente, mesmo padrão do VAPID —
+  // nenhuma env nova pode derrubar o boot do worker.
+  geminiApiKey: envOptional("GEMINI_API_KEY", ""),
+  // Trocável sem deploy. Confirmado contra ai.google.dev em 2026-09-10: o
+  // flash estável atual é gemini-3.8-flash (gemini-2.5-flash virou geração
+  // anterior). Reconfirme na doc antes de mudar este default de novo.
+  geminiModel: envOptional("GEMINI_MODEL", "gemini-3.8-flash"),
 } as const;

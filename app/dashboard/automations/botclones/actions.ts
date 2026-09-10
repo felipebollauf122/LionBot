@@ -12,10 +12,21 @@ async function enqueueBotClone(kind: "botclone.explore" | "botclone.build-flow",
   );
   const res = await fetch(`${serverUrl}/api/mtproto/enqueue`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // Ver o comentário da rota em server/src/index.ts: o enqueue interno
+      // passou a exigir segredo compartilhado.
+      "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+    },
     body: JSON.stringify({ kind, cloneJobId }),
   });
-  if (!res.ok) throw new Error(`Falha ao enfileirar clonagem de bot (${res.status})`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 503
+        ? "O servidor de automações recusou a chamada interna. Confira INTERNAL_API_SECRET nos dois lados."
+        : `Falha ao enfileirar clonagem de bot (${res.status})`,
+    );
+  }
 }
 
 /**

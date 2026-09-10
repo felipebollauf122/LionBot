@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { SocialProofMessage } from "@/lib/types/database";
+import type { ReactNode } from "react";
+import type { ComposerMessageRow } from "@/lib/composer/types";
 import type {
   ChannelInput,
   FeedChannel,
@@ -27,8 +28,8 @@ const LARGURA: Record<TelegramDevice, number> = { iphone: 402, android: 411 };
 
 /** Resolve a citação contra as mensagens já carregadas, como lib/social-proof/feed.ts faz. */
 function resolverCitacao(
-  m: SocialProofMessage,
-  porId: Map<string, SocialProofMessage>,
+  m: ComposerMessageRow,
+  porId: Map<string, ComposerMessageRow>,
   channel: ChannelInput,
 ): { replyToText: string | null; replyToSender: string | null } {
   const alvo = m.reply_to_id ? porId.get(m.reply_to_id) : undefined;
@@ -37,36 +38,45 @@ function resolverCitacao(
   return {
     replyToText: alvo.content_text,
     replyToSender:
-      alvo.sender_kind === "owner"
-        ? channel.owner_name || channel.title
-        : alvo.sender_name,
+      alvo.sender_kind === "member"
+        ? (alvo.sender_name ?? "")
+        : channel.owner_name || channel.title,
   };
 }
 
 function toFeedMessage(
-  m: SocialProofMessage,
-  porId: Map<string, SocialProofMessage>,
+  m: ComposerMessageRow,
+  porId: Map<string, ComposerMessageRow>,
   channel: ChannelInput,
 ): FeedMessage {
+  // Achado do Plano 1: uma linha "document" carrega media[].type "photo",
+  // porque StagedMedia herda o union de MediaItem (que não tem "document").
+  // O union não muda — é o contrato com a UI reusada e com a tabela — então a
+  // mídia falsa é descartada e o nome do arquivo vai pro chip de anexo da
+  // bolha, que é um elemento de verdade. Nada de prefixo no texto: o post no
+  // Telegram não tem essa linha escrita, e a prévia promete ser o que vai ao ar.
+  const ehDocumento = m.kind === "document";
+
   return {
     id: m.id,
-    senderKind: m.sender_kind === "owner" ? "owner" : "member",
-    senderName: m.sender_name,
-    senderAvatarUrl: m.sender_avatar_url,
-    kind: m.kind as FeedMessage["kind"],
+    senderKind: m.sender_kind === "member" ? "member" : "owner",
+    senderName: m.sender_name ?? "",
+    senderAvatarUrl: m.sender_avatar_url ?? null,
+    kind: ehDocumento ? "text" : (m.kind as FeedMessage["kind"]),
     contentText: m.content_text,
-    media: normalizeMedia(m.media, m.media_url, m.media_type),
+    media: ehDocumento ? [] : normalizeMedia(m.media, m.media_url ?? null, m.media_type ?? null),
+    fileName: ehDocumento ? m.file_name || "Arquivo" : null,
     reactions: normalizeReactions(m.reactions),
     ...resolverCitacao(m, porId, channel),
-    offsetSeconds: m.offset_seconds,
-    displayTime: m.display_time,
-    viewsCount: m.views_count,
+    offsetSeconds: m.offset_seconds ?? 0,
+    displayTime: m.display_time ?? null,
+    viewsCount: m.views_count ?? 0,
   };
 }
 
 function draftToFeedMessage(
   d: MessageInput,
-  porId: Map<string, SocialProofMessage>,
+  porId: Map<string, ComposerMessageRow>,
   channel: ChannelInput,
 ): FeedMessage | null {
   const temTexto = (d.content_text ?? "").trim() !== "";
@@ -82,20 +92,32 @@ function draftToFeedMessage(
   // citação antes de existir no banco.
   const alvo = d.reply_to_id ? porId.get(d.reply_to_id) : undefined;
 
+  // Editar uma linha `document` não pode ressuscitar o <img> quebrado: o
+  // rascunho copiou a mídia falsa junto. O nome do arquivo vem da linha
+  // original, porque MessageInput não o carrega — o editor não edita
+  // documento, só o texto que acompanha.
+  // O `as string` é porque MessageKind não tem "document": paraInput força o
+  // valor da linha pra dentro do union. Comparar os dois lados importa —
+  // trocar o tipo no editor e escolher uma foto de verdade tem que mostrar a
+  // foto, não continuar preso ao chip do arquivo antigo.
+  const origem = d.id ? porId.get(d.id) : undefined;
+  const ehDocumento = origem?.kind === "document" && (d.kind as string) === "document";
+
   return {
     id: "__rascunho__",
     senderKind: d.sender_kind,
     senderName: d.sender_name || "Sem nome",
     senderAvatarUrl: d.sender_avatar_url,
-    kind: d.kind,
+    kind: ehDocumento ? "text" : d.kind,
     contentText: temTexto ? d.content_text : null,
-    media: d.media,
+    media: ehDocumento ? [] : d.media,
+    fileName: ehDocumento ? origem?.file_name || "Arquivo" : null,
     reactions: d.reactions,
     replyToText: alvo ? alvo.content_text : null,
     replyToSender: alvo
-      ? alvo.sender_kind === "owner"
-        ? channel.owner_name || channel.title
-        : alvo.sender_name
+      ? alvo.sender_kind === "member"
+        ? (alvo.sender_name ?? "")
+        : channel.owner_name || channel.title
       : null,
     offsetSeconds: d.offset_seconds,
     displayTime: d.display_time,
@@ -116,11 +138,20 @@ export function FeedPreview({
   onDuplicate,
   onPin,
   onDelete,
+  messageBadge,
+  now,
 }: {
   channel: ChannelInput;
-  messages: SocialProofMessage[];
+  messages: ComposerMessageRow[];
   draft: MessageInput | null;
   pinnedText: string;
+  /**
+   * Momento de referência do feed: `offset_seconds` é contado a partir dele.
+   * A Prova Social não passa nada — o feed dela é relativo ao agora do lead —
+   * e a campanha passa a âncora de `campaignTimeline`, que é o momento da
+   * última postagem da sequência. Ver o porquê lá.
+   */
+  now?: Date;
   /** Id da mensagem fixada, para a miniatura da barra quando ela tem foto. */
   pinnedId?: string | null;
   selectedId?: string | null;
@@ -130,6 +161,12 @@ export function FeedPreview({
   onDuplicate?: (id: string) => void;
   onPin?: (id: string) => void;
   onDelete?: (id: string) => void;
+  /**
+   * Chip por bolha, recebendo a linha inteira — é a assinatura que o
+   * `ComposerShell` publica. O `ChannelFeed` trabalha por id (ele não conhece
+   * `ComposerMessageRow`), então a tradução acontece aqui.
+   */
+  messageBadge?: (row: ComposerMessageRow) => ReactNode;
 }) {
   const [device, setDevice] = useState<TelegramDevice>("iphone");
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -162,7 +199,7 @@ export function FeedPreview({
 
   const fixada = pinnedId ? porId.get(pinnedId) : undefined;
   const fixadaFoto = fixada
-    ? normalizeMedia(fixada.media, fixada.media_url, fixada.media_type).find((m) => m.type === "photo")?.url ?? null
+    ? normalizeMedia(fixada.media, fixada.media_url ?? null, fixada.media_type ?? null).find((m) => m.type === "photo")?.url ?? null
     : null;
   const temFixada = pinnedText.trim() !== "" || fixadaFoto !== null;
 
@@ -218,7 +255,7 @@ export function FeedPreview({
         <ChannelFeed
           messages={lista}
           channel={feedChannel}
-          now={new Date()}
+          now={now ?? new Date()}
           originalIds={messages.map(m => m.id)} // Pass original IDs so we can reorder them
           selectedId={selectedId}
           disabled={disabled}
@@ -227,6 +264,16 @@ export function FeedPreview({
           onDuplicate={onDuplicate}
           onPin={onPin}
           onDelete={onDelete}
+          messageBadge={
+            // Sem a prop, `undefined` continua descendo: o ChannelFeed não
+            // desenha contêiner nenhum, e a Prova Social fica byte a byte igual.
+            messageBadge
+              ? (id) => {
+                  const linha = porId.get(id);
+                  return linha ? messageBadge(linha) : null;
+                }
+              : undefined
+          }
         />
         <ChannelFooter device={device} />
       </div>

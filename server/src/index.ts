@@ -8,6 +8,11 @@ import { enqueueMtproto, type MtprotoJobData } from "./queue-mtproto.js";
 import { supabase } from "./db.js";
 import { TelegramApi } from "./telegram/api.js";
 import { botCache, flowCache, flowByIdCache } from "./cache.js";
+import { MtprotoClient } from "./services/mtproto/client.js";
+import { ensureBotAccess } from "./services/mtproto/ensure-bot-access.js";
+import { isAuthorizedInternalRequest } from "./services/mtproto/internal-auth.js";
+import { GeminiClient } from "./services/ai/gemini.js";
+import { buildAssistPrompt, mediaKindsParaIa, type AiAssistAction } from "./services/ai/assist.js";
 
 interface Bot {
   id: string;
@@ -554,9 +559,29 @@ app.post("/api/mtproto/inbox/close", async (req, res) => {
   }
 });
 
-// MTProto job enqueue — called from dashboard server actions
+// MTProto job enqueue — called from dashboard server actions.
+//
+// Segredo compartilhado, a MESMA `isAuthorizedInternalRequest` de
+// /api/mtproto/ensure-bot-access e /api/ai/assist. Isto já foi débito aceito
+// enquanto a rota carregava só clone.run; o Plano 3 acrescentou
+// `postcampaign.send-one` e `campaign.ai-process` ao union
+// (queue-mtproto.ts), e os dois despacham pra handlers de SERVICE ROLE que
+// confiam cegamente no id recebido: um POST anônimo forçava a publicação de
+// uma mensagem agendada de outro tenant, ou queimava quota do Gemini numa
+// campanha qualquer. Ampliar a superfície invalidou a aceitação do débito.
+//
+// Secret não configurado responde 503 e NUNCA autoriza — "sem segredo" é
+// "não pronto pra uso", não "aberto pra todo mundo" (ver internal-auth.ts).
 app.post("/api/mtproto/enqueue", async (req, res) => {
   try {
+    if (!isAuthorizedInternalRequest(config.internalApiSecret, req.headers["x-internal-secret"])) {
+      const status = config.internalApiSecret ? 401 : 503;
+      res.status(status).json({
+        error: config.internalApiSecret ? "não autorizado" : "fila interna não configurada",
+      });
+      return;
+    }
+
     const job = req.body as MtprotoJobData;
     if (!job?.kind) {
       res.status(400).json({ error: "invalid job" });
@@ -567,6 +592,144 @@ app.post("/api/mtproto/enqueue", async (req, res) => {
   } catch (error) {
     console.error("Failed to enqueue mtproto job:", error);
     res.status(500).json({ error: "enqueue failed" });
+  }
+});
+
+// Assistente de IA sob demanda, chamado pela Server Action do painel.
+//
+// Segredo compartilhado, como /api/mtproto/enqueue logo acima e
+// /api/mtproto/ensure-bot-access logo abaixo — os três endpoints internos
+// hoje exigem o mesmo header. (O enqueue ficou aberto enquanto carregava só
+// clone.run; o Plano 3 pôs jobs de publicação e de LLM nele e a exceção
+// deixou de se justificar.)
+//
+// A checagem usa `isAuthorizedInternalRequest` — a MESMA função de
+// /api/mtproto/ensure-bot-access logo abaixo, não uma segunda comparação de
+// string escrita na mão. Status diferenciado só pra quem opera o serviço
+// saber qual é qual; a recusa em si é genérica nos dois casos.
+app.post("/api/ai/assist", async (req, res) => {
+  try {
+    if (!isAuthorizedInternalRequest(config.internalApiSecret, req.headers["x-internal-secret"])) {
+      const status = config.internalApiSecret ? 401 : 503;
+      res.status(status).json({
+        error: config.internalApiSecret ? "não autorizado" : "assistente de IA não configurado",
+      });
+      return;
+    }
+
+    const { action, text, mediaKinds, kind } = req.body as {
+      action?: AiAssistAction;
+      text?: string | null;
+      mediaKinds?: string[];
+      /** `kind` da linha. E ele que distingue documento de foto — ver mediaKindsParaIa. */
+      kind?: string | null;
+    };
+    if (action !== "rewrite" && action !== "caption" && action !== "summarize") {
+      res.status(400).json({ error: "ação inválida" });
+      return;
+    }
+
+    const gemini = new GeminiClient(config.geminiApiKey, config.geminiModel);
+    if (!gemini.isConfigured()) {
+      res.status(503).json({ error: "GEMINI_API_KEY não configurada" });
+      return;
+    }
+    const out = await gemini.generateJson<{ text: string }>(
+      buildAssistPrompt(action, text ?? null, mediaKindsParaIa(kind, mediaKinds ?? [])),
+    );
+    res.json({ text: out.text });
+  } catch (error) {
+    console.error("[ai.assist] falhou:", error);
+    res.status(500).json({ error: "assistente falhou" });
+  }
+});
+
+// Promove o bot companheiro a admin do canal de destino de uma campanha,
+// usando a conta MTProto dona do dialog. Síncrono de propósito: a tela espera
+// a resposta pra dizer ao dono se ele já pode publicar.
+app.post("/api/mtproto/ensure-bot-access", async (req, res) => {
+  try {
+    // Segredo compartilhado (achado de segurança: sem isto, qualquer um que
+    // adivinhasse/visse um campaignId de outro tenant na URL fazia a conta
+    // MTProto e o bot DAQUELE tenant promoverem admin num canal que não é
+    // seu — IDOR entre tenants). `isAuthorizedInternalRequest` também
+    // recusa quando `config.internalApiSecret` está vazio: endpoint sem
+    // segredo configurado é "não pronto pra uso", nunca "aberto pra todo
+    // mundo". Status diferenciado só pra quem opera o serviço saber qual é
+    // qual — a recusa em si é genérica nos dois casos.
+    if (!isAuthorizedInternalRequest(config.internalApiSecret, req.headers["x-internal-secret"])) {
+      const status = config.internalApiSecret ? 401 : 503;
+      res.status(status).json({
+        error: config.internalApiSecret ? "não autorizado" : "endpoint não configurado",
+      });
+      return;
+    }
+
+    const { campaignId } = req.body as { campaignId?: string };
+    if (!campaignId) {
+      res.status(400).json({ error: "campaignId ausente" });
+      return;
+    }
+
+    const { data: campaign } = await supabase
+      .from("mtproto_scheduled_campaigns")
+      .select("id, tenant_id, dest_channel_id, dest_access_hash, dest_dialog_id")
+      .eq("id", campaignId)
+      .maybeSingle();
+    if (!campaign?.dest_channel_id || !campaign.dest_access_hash) {
+      res.json({ ok: false, error: "Escolha o canal de destino antes." });
+      return;
+    }
+
+    const { data: dialog } = await supabase
+      .from("mtproto_dialogs")
+      .select("account_id")
+      .eq("id", campaign.dest_dialog_id)
+      .maybeSingle();
+    const { data: account } = await supabase
+      .from("mtproto_accounts")
+      .select("session_string, status")
+      .eq("id", dialog?.account_id)
+      .maybeSingle();
+    if (!account?.session_string || account.status !== "active") {
+      res.json({ ok: false, error: "A conta dona deste canal não está conectada." });
+      return;
+    }
+
+    const { data: botRow } = await supabase
+      .from("automation_bots")
+      .select("username, status")
+      .eq("tenant_id", campaign.tenant_id)
+      .maybeSingle();
+    if (!botRow || botRow.status !== "active") {
+      res.json({ ok: false, error: "Cadastre o bot companheiro antes de publicar." });
+      return;
+    }
+
+    const client = new MtprotoClient(
+      config.telegramApiId,
+      config.telegramApiHash,
+      account.session_string,
+    );
+    try {
+      await client.connect();
+      const r = await ensureBotAccess(
+        {
+          promote: (cid, hash, username) => client.promoteBotToAdmin(cid, hash, username),
+        },
+        {
+          channelId: campaign.dest_channel_id,
+          accessHash: campaign.dest_access_hash,
+          botUsername: botRow.username,
+        },
+      );
+      res.json(r);
+    } finally {
+      await client.disconnect().catch(() => {});
+    }
+  } catch (error) {
+    console.error("[ensure-bot-access] falhou:", error);
+    res.status(500).json({ error: "verificação falhou" });
   }
 });
 

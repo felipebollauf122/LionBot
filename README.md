@@ -2,7 +2,33 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+Copy the environment template first — it is tracked as `env.example`
+(**no** leading dot: the `.env*` rule in `.gitignore` swallows any
+`.env.example`, so such a file never reaches a clone):
+
+```bash
+cp env.example .env.local
+```
+
+Four of those variables are what the automations need, and getting them
+wrong reads as a broken product rather than as missing configuration:
+
+- `NEXT_PUBLIC_BOT_SERVER_URL` — URL of the bot-server in `server/`. Every
+  Server Action reaches `/api/mtproto/enqueue`,
+  `/api/mtproto/ensure-bot-access` and `/api/ai/assist` through it. The
+  design doc §5.1 calls it `BOT_SERVER_URL`; the code has always read the
+  `NEXT_PUBLIC_` name, and that is the one that works.
+- `INTERNAL_API_SECRET` — shared secret, **identical** to the one in
+  `server/.env`. An unset secret NEVER authorises: the bot-promotion button
+  and all three AI assistant buttons answer 503 forever.
+  Suba nos DOIS lados ao mesmo tempo: esse segredo protege o endpoint que
+  transporta login MTProto, sync de diálogos, Mass DM, clone de canal e
+  clone de bot — não só as campanhas. Subir de um lado só derruba todos.
+- `GEMINI_API_KEY` / `GEMINI_MODEL` — worker only, in `server/.env`. See
+  [`server/README.md`](./server/README.md) and
+  [`server/env.example`](./server/env.example).
+
+Then, run the development server:
 
 ```bash
 npm run dev

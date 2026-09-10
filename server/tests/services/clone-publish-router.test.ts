@@ -93,6 +93,37 @@ describe("chooseStrategy", () => {
       chooseStrategy({ requested: "auto", sourceHasNoForwards: false, copyButtons: false }),
     ).toBe("batch");
   });
+
+  it("draftMode força download antes de qualquer outra guarda", () => {
+    // Todas as condições que normalmente levariam a "batch" estão ligadas:
+    // requested batch, origem permite forward, nenhuma feature que force
+    // download. Ainda assim o rascunho precisa de "download", porque o
+    // ForwardMessages copia server-side e o app nunca vê o conteúdo.
+    expect(
+      chooseStrategy({
+        requested: "batch",
+        sourceHasNoForwards: false,
+        copyButtons: false,
+        copyReplies: false,
+        crossAccount: false,
+        linkReplaceConfigured: false,
+        draftMode: true,
+      }),
+    ).toBe("download");
+  });
+
+  it("sem draftMode o comportamento de sempre continua", () => {
+    expect(
+      chooseStrategy({
+        requested: "batch",
+        sourceHasNoForwards: false,
+        copyButtons: false,
+        copyReplies: false,
+        crossAccount: false,
+        linkReplaceConfigured: false,
+      }),
+    ).toBe("batch");
+  });
 });
 
 describe("routeGroup", () => {

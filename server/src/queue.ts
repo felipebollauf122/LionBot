@@ -505,25 +505,48 @@ export function startWorkers(): void {
 
   // Campanhas de postagem agendada: enfileira o que venceu.
   //
-  // NO MÁXIMO UMA MENSAGEM POR CAMPANHA POR TICK. Não é detalhe de
-  // performance: o worker roda com concurrency 4, e enfileirar duas da mesma
-  // campanha permite que a segunda seja publicada antes da primeira.
+  // NO MÁXIMO UMA MENSAGEM EM VOO POR CAMPANHA. Não é detalhe de performance:
+  // o worker roda com concurrency 4, e duas mensagens da mesma campanha no ar
+  // ao mesmo tempo permitem que a segunda seja publicada antes da primeira.
+  // Uma por TICK não basta — uma publicação de 50MB dura mais que os 30s, e no
+  // tick seguinte a mensagem em voo já não está 'pending' (está 'sending'),
+  // então a próxima entraria por cima dela. Por isso a campanha com algo em
+  // 'sending' é pulada inteira.
   let scheduledPostsRunning = false;
   setInterval(() => {
     if (scheduledPostsRunning) return;
     scheduledPostsRunning = true;
     (async () => {
       try {
+        // Ordem determinística e por antiguidade: com `limit` e sem ordem, as
+        // campanhas além do teto poderiam nunca ser alcançadas. Pela mais
+        // antiga primeiro, a fila drena — quem começou antes termina antes e
+        // sai de 'running', abrindo a vaga pra próxima.
         const { data: campanhas } = await supabase
           .from("mtproto_scheduled_campaigns")
           .select("id")
           .eq("status", "running")
+          .order("started_at", { ascending: true, nullsFirst: true })
+          .order("created_at", { ascending: true })
           .limit(50);
         if (!campanhas || campanhas.length === 0) return;
+
+        // Uma consulta só responde por todas as candidatas: quais delas já têm
+        // mensagem em voo.
+        const { data: emVoo } = await supabase
+          .from("mtproto_scheduled_messages")
+          .select("campaign_id")
+          .eq("status", "sending")
+          .in(
+            "campaign_id",
+            campanhas.map((c) => c.id),
+          );
+        const ocupadas = new Set((emVoo ?? []).map((m) => m.campaign_id as string));
 
         const { enqueueMtproto } = await import("./queue-mtproto.js");
         const agora = new Date().toISOString();
         for (const c of campanhas) {
+          if (ocupadas.has(c.id)) continue;
           const { data: due } = await supabase
             .from("mtproto_scheduled_messages")
             .select("id")

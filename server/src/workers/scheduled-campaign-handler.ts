@@ -66,7 +66,8 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
     await supabase
       .from("mtproto_scheduled_messages")
       .update({ status: "pending", claimed_at: null })
-      .eq("id", messageId);
+      .eq("id", messageId)
+      .eq("status", "sending");
     return;
   }
 
@@ -97,7 +98,12 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
 
   try {
     const destMsgId = await publicar(bot, claimed, tmpDir);
-    await supabase
+    // A gravação do resultado também é CAS. Uma publicação mais lenta que
+    // SEND_CLAIM_STALE_MS é devolvida pra 'pending' pelo sweep e pode ser
+    // reivindicada por um segundo worker enquanto este ainda publica; sem o
+    // `status = 'sending'` aqui, o perdedor sobrescreveria o dest_msg_id do
+    // vencedor e a duplicata não deixaria rastro nenhum na linha.
+    const { data: gravado } = await supabase
       .from("mtproto_scheduled_messages")
       .update({
         status: "sent",
@@ -106,7 +112,16 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
         claimed_at: null,
         error_message: null,
       })
-      .eq("id", messageId);
+      .eq("id", messageId)
+      .eq("status", "sending")
+      .select("id")
+      .maybeSingle();
+    if (!gravado) {
+      console.warn(
+        `[postcampaign] mensagem ${messageId} publicada como ${destMsgId} mas o claim já não era nosso — resultado descartado (possível duplicata no destino)`,
+      );
+      return;
+    }
     await incrementar(campaign.id, "sent");
     if (claimed.is_pinned) {
       await bot.pin(destMsgId).catch((e) => console.warn("[postcampaign] pin falhou:", e));
@@ -128,7 +143,8 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
       await supabase
         .from("mtproto_scheduled_messages")
         .update({ status: "pending", claimed_at: null, attempts: tentativas, error_message: msg })
-        .eq("id", messageId);
+        .eq("id", messageId)
+        .eq("status", "sending");
     }
   } finally {
     await bot.disconnect().catch(() => {});
@@ -217,20 +233,37 @@ async function reagendarPorFlood(
   campaignId: string,
   waitSeconds: number,
 ): Promise<void> {
-  const { data: pendentes } = await supabase
-    .from("mtproto_scheduled_messages")
-    .select("id, scheduled_at")
-    .eq("campaign_id", campaignId)
-    .eq("status", "pending")
-    .not("scheduled_at", "is", null);
+  // Paginado e ordenado de propósito. Sem `range` explícito o PostgREST corta
+  // a resposta em `db-max-rows` sem avisar, e sem ordem o corte é um
+  // subconjunto arbitrário: parte da campanha ficaria SEM o empurrão e
+  // venceria durante a espera — exatamente o despejo que esta função existe
+  // pra impedir. A ordem é a mesma do poller (scheduled_at, position,
+  // created_at), então as páginas não se sobrepõem nem pulam linhas.
+  const PAGINA = 500;
+  const pendentes: Array<{ id: string; scheduledAt: Date }> = [];
+  for (let pagina = 0; pagina < 200; pagina++) {
+    const de = pagina * PAGINA;
+    const { data } = await supabase
+      .from("mtproto_scheduled_messages")
+      .select("id, scheduled_at")
+      .eq("campaign_id", campaignId)
+      .eq("status", "pending")
+      .not("scheduled_at", "is", null)
+      .order("scheduled_at", { ascending: true })
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true })
+      .range(de, de + PAGINA - 1);
+    if (!data || data.length === 0) break;
+    for (const p of data) {
+      pendentes.push({ id: p.id as string, scheduledAt: new Date(p.scheduled_at as string) });
+    }
+    if (data.length < PAGINA) break;
+  }
 
   const { retryAt, empurradas } = nextFloodSchedule({
     now: new Date(),
     waitSeconds,
-    pendentes: (pendentes ?? []).map((p) => ({
-      id: p.id as string,
-      scheduledAt: new Date(p.scheduled_at as string),
-    })),
+    pendentes,
   });
 
   await supabase
@@ -241,8 +274,14 @@ async function reagendarPorFlood(
       scheduled_at: retryAt.toISOString(),
       error_message: `flood_wait_${waitSeconds}s`,
     })
-    .eq("id", messageId);
+    .eq("id", messageId)
+    .eq("status", "sending");
 
+  // Um UPDATE por mensagem: o PostgREST não escreve valor diferente por linha
+  // numa chamada só, e cada empurrada tem o seu próprio scheduled_at. Numa
+  // campanha de 500 são 500 idas ao banco — custo aceitável porque só
+  // acontece em flood, quando a campanha já está parada esperando. Se
+  // incomodar, o caminho é um rpc() que aplique o delta no servidor.
   for (const e of empurradas) {
     await supabase
       .from("mtproto_scheduled_messages")
@@ -255,10 +294,19 @@ async function reagendarPorFlood(
 }
 
 async function falhar(messageId: string, campaignId: string, erro: string): Promise<void> {
-  await supabase
+  // CAS pelo mesmo motivo do caminho de sucesso: quem perdeu o claim não
+  // marca a linha do vencedor como falha nem soma no contador da campanha.
+  const { data: gravado } = await supabase
     .from("mtproto_scheduled_messages")
     .update({ status: "failed", error_message: erro, claimed_at: null })
-    .eq("id", messageId);
+    .eq("id", messageId)
+    .eq("status", "sending")
+    .select("id")
+    .maybeSingle();
+  if (!gravado) {
+    console.warn(`[postcampaign] falha da mensagem ${messageId} ignorada: claim já não era nosso`);
+    return;
+  }
   await incrementar(campaignId, "failed");
   await concluirSeUltima(campaignId);
 }

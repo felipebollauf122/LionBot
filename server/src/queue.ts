@@ -503,6 +503,139 @@ export function startWorkers(): void {
     })();
   }, 30_000);
 
+  // Campanhas de postagem agendada: enfileira o que venceu.
+  //
+  // NO MÁXIMO UMA MENSAGEM POR CAMPANHA POR TICK. Não é detalhe de
+  // performance: o worker roda com concurrency 4, e enfileirar duas da mesma
+  // campanha permite que a segunda seja publicada antes da primeira.
+  let scheduledPostsRunning = false;
+  setInterval(() => {
+    if (scheduledPostsRunning) return;
+    scheduledPostsRunning = true;
+    (async () => {
+      try {
+        const { data: campanhas } = await supabase
+          .from("mtproto_scheduled_campaigns")
+          .select("id")
+          .eq("status", "running")
+          .limit(50);
+        if (!campanhas || campanhas.length === 0) return;
+
+        const { enqueueMtproto } = await import("./queue-mtproto.js");
+        const agora = new Date().toISOString();
+        for (const c of campanhas) {
+          const { data: due } = await supabase
+            .from("mtproto_scheduled_messages")
+            .select("id")
+            .eq("campaign_id", c.id)
+            .eq("status", "pending")
+            .not("scheduled_at", "is", null)
+            .lte("scheduled_at", agora)
+            .order("scheduled_at", { ascending: true })
+            // Desempate por position/created_at, o mesmo do composer. O
+            // reagendamento pós-flood põe TODA pendente atrasada no mesmo
+            // instante (o piso em retryAt), então sem desempate a ordem de
+            // publicação depois de um flood seria a que o Postgres quisesse.
+            .order("position", { ascending: true })
+            .order("created_at", { ascending: true })
+            .limit(1);
+          if (!due || due.length === 0) continue;
+          await enqueueMtproto({ kind: "postcampaign.send-one", messageId: due[0].id });
+        }
+      } catch (err) {
+        console.error("[postcampaign-poller] Error:", err);
+      } finally {
+        scheduledPostsRunning = false;
+      }
+    })();
+  }, 30_000);
+
+  // Claim órfão: um worker que morreu no meio deixa a mensagem em 'sending'
+  // pra sempre, e o poller acima nunca a reenfileira (ele só olha 'pending').
+  setInterval(() => {
+    (async () => {
+      // A janela é a do próprio handler — import dinâmico pelo mesmo motivo
+      // do enqueueMtproto acima: não arrastar o grafo do worker MTProto pro
+      // import estático deste módulo.
+      const { SEND_CLAIM_STALE_MS } = await import("./workers/scheduled-campaign-handler.js");
+      const limite = new Date(Date.now() - SEND_CLAIM_STALE_MS).toISOString();
+      const { data } = await supabase
+        .from("mtproto_scheduled_messages")
+        .update({ status: "pending", claimed_at: null })
+        .eq("status", "sending")
+        .lt("claimed_at", limite)
+        .select("id");
+      if (data && data.length > 0) {
+        console.warn(`[postcampaign-sweep] ${data.length} claims órfãos devolvidos pra pending`);
+      }
+    })().catch((err) => console.error("[postcampaign-sweep] Error:", err));
+  }, 5 * 60 * 1000);
+
+  // Limpeza da mídia de campanhas concluídas. Roda 1x por dia e só toca em
+  // campanha completed há mais de 7 dias: a janela existe pra o dono ainda
+  // conseguir olhar o rascunho publicado antes de as prévias sumirem.
+  //
+  // Só apaga o que veio de clone (prefixo `campaign/`), nunca mídia que o
+  // usuário subiu à mão pela biblioteca — media_assets vive no mesmo bucket.
+  async function limparMidiaDeCampanhas(): Promise<void> {
+    const corte = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: campanhas } = await supabase
+      .from("mtproto_scheduled_campaigns")
+      .select("id, tenant_id, source_clone_job_id")
+      .eq("status", "completed")
+      .lt("completed_at", corte)
+      .not("source_clone_job_id", "is", null)
+      .limit(20);
+    if (!campanhas || campanhas.length === 0) return;
+
+    for (const c of campanhas) {
+      const pasta = `${c.tenant_id}/campaign/${c.source_clone_job_id}`;
+      // list() devolve no máximo 100 itens por chamada. Um clone de 500
+      // mensagens deixaria 400 arquivos pra trás numa varredura só, então
+      // esvazia a pasta em páginas — sempre da primeira, porque cada remove
+      // encurta a lista e um offset fixo pularia arquivos.
+      let removidos = 0;
+      let falhou = false;
+      for (let pagina = 0; pagina < 50; pagina++) {
+        const { data: arquivos } = await supabase.storage
+          .from("media")
+          .list(pasta, { limit: 100 });
+        if (!arquivos || arquivos.length === 0) break;
+        const { error } = await supabase.storage
+          .from("media")
+          .remove(arquivos.map((a) => `${pasta}/${a.name}`));
+        if (error) {
+          console.error(`[postcampaign-cleanup] falha em ${pasta}: ${error.message}`);
+          falhou = true;
+          break;
+        }
+        removidos += arquivos.length;
+      }
+      if (falhou) continue;
+      // Marca a campanha pra não varrer a mesma pasta todo dia pra sempre.
+      // Vale também pra pasta já vazia: sem isso ela voltaria em toda
+      // rodada e, com o limit de 20, ocuparia a vaga de quem tem mídia.
+      await supabase
+        .from("mtproto_scheduled_campaigns")
+        .update({ source_clone_job_id: null })
+        .eq("id", c.id);
+      if (removidos > 0) {
+        console.log(`[postcampaign-cleanup] ${removidos} arquivos removidos de ${pasta}`);
+      }
+    }
+  }
+  setInterval(
+    () => {
+      limparMidiaDeCampanhas().catch((err) =>
+        console.error("[postcampaign-cleanup] Error:", err),
+      );
+    },
+    24 * 60 * 60 * 1000,
+  );
+  setTimeout(() => {
+    limparMidiaDeCampanhas().catch(() => {});
+  }, 120_000);
+
   // Cleanup diário de inbox messages: apaga registros com mais de 7 dias.
   async function cleanupInboxMessages(): Promise<void> {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

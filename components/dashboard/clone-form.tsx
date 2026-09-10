@@ -70,6 +70,8 @@ export function CloneForm({
     linkReplaceGroup: "",
     linkReplaceChannel: "",
   });
+  const [mode, setMode] = useState<"live" | "draft">("live");
+  const [ia, setIa] = useState({ clean: true, rewrite: false, smartDelay: true });
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -83,6 +85,82 @@ export function CloneForm({
           className="input"
         />
       </label>
+
+      <div className="space-y-2">
+        <p className="input-label">O que fazer com o conteúdo</p>
+        {(
+          [
+            {
+              value: "live" as const,
+              titulo: "Publicar direto no destino",
+              hint: "Cria o canal e posta tudo agora, como sempre.",
+            },
+            {
+              value: "draft" as const,
+              titulo: "Mandar pro rascunho de uma campanha",
+              hint: "Nada vai pro Telegram. Você revisa, edita e agenda antes de publicar.",
+            },
+          ]
+        ).map((op) => (
+          <label
+            key={op.value}
+            className="row-hover flex items-start gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) cursor-pointer"
+          >
+            <input
+              type="radio"
+              name="clone-mode"
+              className="mt-1"
+              checked={mode === op.value}
+              onChange={() => setMode(op.value)}
+            />
+            <span>
+              <span className="block text-foreground text-sm">{op.titulo}</span>
+              <span className="block text-(--text-muted) text-xs">{op.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {mode === "draft" && (
+        <div className="space-y-2 rounded-lg border border-(--border-subtle) p-3">
+          <p className="input-label">Tratamento automático por IA</p>
+          {(
+            [
+              {
+                key: "clean" as const,
+                label: "Limpar menções e links",
+                hint: "Remove @ e links do concorrente. Não mexe no resto do texto.",
+              },
+              {
+                key: "rewrite" as const,
+                label: "Reescrever textos",
+                hint: "Parafraseia pra evitar plágio e ajusta o tom. Preço, prazo e cupom ficam intactos, e o original fica salvo pra reverter.",
+              },
+              {
+                key: "smartDelay" as const,
+                label: "Definir a cadência",
+                hint: "A IA decide o intervalo entre os posts pra parecer natural.",
+              },
+            ]
+          ).map((t) => (
+            <label
+              key={t.key}
+              className="row-hover flex items-start gap-3 px-3 py-2 rounded-lg cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={ia[t.key]}
+                onChange={(e) => setIa({ ...ia, [t.key]: e.target.checked })}
+              />
+              <span>
+                <span className="block text-foreground text-sm">{t.label}</span>
+                <span className="block text-(--text-muted) text-xs">{t.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
 
       <label className="row-hover flex items-start gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) cursor-pointer">
         <input
@@ -100,32 +178,34 @@ export function CloneForm({
         </span>
       </label>
 
-      <label className="block">
-        <span className="input-label">Criar o destino na conta</span>
-        {destAccounts.length > 0 ? (
-          <select
-            value={destAccountId}
-            onChange={(e) => setDestAccountId(e.target.value)}
-            className="input"
-          >
-            {destAccounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.label}
-                {a.id === sourceAccountId ? " (mesma da origem)" : ""}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <p className="text-(--red) text-xs">
-            Nenhuma conta pode criar canais agora (todas restritas ou inativas). Conecte uma
-            conta não-restrita, ou libere uma no card da conta em Automações.
-          </p>
-        )}
-        <span className="block text-(--text-muted) text-xs mt-2">
-          A leitura da origem usa a conta dona do canal. Se ela estiver restrita de criar
-          canais, escolha outra conta aqui para criar o destino.
-        </span>
-      </label>
+      {mode === "live" && (
+        <label className="block">
+          <span className="input-label">Criar o destino na conta</span>
+          {destAccounts.length > 0 ? (
+            <select
+              value={destAccountId}
+              onChange={(e) => setDestAccountId(e.target.value)}
+              className="input"
+            >
+              {destAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                  {a.id === sourceAccountId ? " (mesma da origem)" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-(--red) text-xs">
+              Nenhuma conta pode criar canais agora (todas restritas ou inativas). Conecte uma
+              conta não-restrita, ou libere uma no card da conta em Automações.
+            </p>
+          )}
+          <span className="block text-(--text-muted) text-xs mt-2">
+            A leitura da origem usa a conta dona do canal. Se ela estiver restrita de criar
+            canais, escolha outra conta aqui para criar o destino.
+          </span>
+        </label>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
@@ -198,6 +278,10 @@ export function CloneForm({
               destAccountId,
               ...flags,
               ...replacements,
+              mode,
+              aiClean: mode === "draft" && ia.clean,
+              aiRewrite: mode === "draft" && ia.rewrite,
+              aiSmartDelay: mode === "draft" && ia.smartDelay,
               actingTenantId,
             });
             if (!res.ok) {
@@ -209,15 +293,19 @@ export function CloneForm({
             // gente navega pra tela de progresso: la o usuario ve o status real
             // (inclusive last_error) e pode tentar "Retomar", em vez de travar
             // o formulario ou deixar o throw sem catch derrubar a pagina.
+            // Isso vale tambem pro rascunho: launchClone e o que dispara o
+            // scraping que preenche a campanha.
             try {
               await launchClone(res.cloneJobId);
             } catch {
               // Ignorado de proposito: a tela de progresso e quem reporta a falha.
             }
+            // A tela da campanha so existe a partir do Plano 2. Ate la, o
+            // rascunho criado e inspecionavel pela tela do clone.
             router.push(`/dashboard/automations/clones/${res.cloneJobId}`);
           })
         }
-        disabled={pending || !destAccountId}
+        disabled={pending || (mode === "live" && !destAccountId)}
         className="btn-primary w-full"
       >
         {pending ? "Criando..." : "Criar e começar a clonar"}

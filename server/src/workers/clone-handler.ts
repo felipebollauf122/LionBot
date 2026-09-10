@@ -812,18 +812,24 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       // que o job chegou a 'completed' de verdade. Ver o porquê em
       // topic-sync.ts: fechar um tópico antes de terminar de publicar nele
       // arriscaria bloquear posts futuros do bot mesmo sendo admin.
-      if (wantsForum && topicSync) {
-        // Guarda explícita do invariante que a asserção de atribuição
-        // definida de `dest` promete mas o compilador não checa: fórum só
-        // existe no caminho live, e lá `dest` sempre foi atribuído antes
-        // daqui. Se um dia alguém alcançar este ponto sem destino, é melhor
-        // um erro nomeado que um `undefined.channelId` três frames abaixo.
-        // Inalcançável hoje: no rascunho `wantsForum` nunca deixa de ser false.
-        if (!dest) {
-          throw new Error(
-            "DESTINO_AUSENTE_NO_FINALIZE: tópicos a finalizar sem destino — invariante do modo live quebrada",
-          );
-        }
+      // Guarda explícita do invariante que a asserção de atribuição definida
+      // de `dest` promete mas o compilador não checa: fórum só existe no
+      // caminho live, e lá `dest` sempre foi atribuído antes daqui.
+      // Inalcançável hoje — no rascunho `wantsForum` nunca deixa de ser false.
+      //
+      // DEGRADA, não lança: finalizar tópicos já é deliberadamente não-fatal
+      // aqui (ver o .catch logo abaixo, que só avisa). Um throw contradiria
+      // isso e viraria um clone que TERMINOU num job 'failed' no dashboard —
+      // pior que o `undefined.channelId` que a guarda evita, porque apagaria
+      // um resultado verdadeiro. Perder a fixação/fechamento dos tópicos é
+      // perda menor que reportar como falho um job que deu certo. O nome
+      // DESTINO_AUSENTE_NO_FINALIZE é a alça de grep no log.
+      if (wantsForum && topicSync && !dest) {
+        console.error(
+          `[clone] DESTINO_AUSENTE_NO_FINALIZE: job ${cloneJobId} chegou à finalização de tópicos sem destino — invariante do modo live quebrada, finalização pulada (o job mantém o status real)`,
+        );
+      }
+      if (wantsForum && topicSync && dest) {
         const { data: finalRow } = await supabase
           .from("clone_jobs")
           .select("status")

@@ -230,6 +230,42 @@ export async function setCampaignDestination(
   });
 }
 
+/**
+ * Promove o bot no destino escolhido. Passa pelo worker (mesmo hop de
+ * enqueueClone, em clones/actions.ts) porque promover exige MTProto, que o
+ * Next não fala — só a conta dona do dialog, que mora no worker, consegue.
+ *
+ * Embrulhado em comGuarda como toda action daqui: falta de assinatura ou
+ * qualquer exceção inesperada tem que voltar como ActionResult, nunca como
+ * `throw` (Ruling 18 desta branch — Server Action que lança tem o erro
+ * apagado em produção e vira inglês genérico).
+ */
+export async function ensureBotAccessOnDestination(
+  campaignId: string,
+): Promise<ActionResult> {
+  return comGuarda("ensureBotAccessOnDestination", async () => {
+    const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(
+      /\/+$/,
+      "",
+    );
+    try {
+      const res = await fetch(`${serverUrl}/api/mtproto/ensure-bot-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId }),
+      });
+      if (!res.ok) {
+        return { ok: false, error: `Não deu pra verificar o bot (${res.status}).` };
+      }
+      const body = (await res.json()) as { ok: boolean; error?: string };
+      // Recusa prevista volta como DADO, com o texto acionável que o worker montou.
+      return body.ok ? { ok: true } : { ok: false, error: body.error ?? "Falha desconhecida." };
+    } catch {
+      return { ok: false, error: "Não deu pra falar com o servidor de automações." };
+    }
+  });
+}
+
 export async function saveScheduledMessage(
   campaignId: string,
   input: MessageInput,

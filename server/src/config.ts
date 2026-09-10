@@ -42,4 +42,9 @@ export const config = {
   vapidPublicKey: envOptional("VAPID_PUBLIC_KEY", ""),
   vapidPrivateKey: envOptional("VAPID_PRIVATE_KEY", ""),
   vapidSubject: envOptional("VAPID_SUBJECT", "mailto:admin@lionbot.app"),
+  // Segredo compartilhado Next ↔ worker pra endpoints internos (ex.: o
+  // assistente de IA do Plano 3, §5.5 do design doc). `envOptional` de
+  // propósito: vazio não pode impedir o worker de subir — quem usa o
+  // segredo é quem decide rejeitar chamada sem ele, não o boot.
+  internalApiSecret: envOptional("INTERNAL_API_SECRET", ""),
 } as const;

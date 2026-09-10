@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import {
+  ensureBotAccessOnDestination,
   listDestinationDialogs,
   setCampaignDestination,
 } from "@/app/dashboard/automations/scheduled/actions";
@@ -36,6 +37,15 @@ export function DestinationCard({
   const [erro, setErro] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // Transition própria: preparar o bot é uma operação independente de trocar
+  // o destino (mesmo raciocínio da Task 3 — operações independentes não
+  // dividem o mesmo useTransition, senão uma desabilita o controle da outra
+  // sem necessidade).
+  const [botStatus, setBotStatus] = useState<
+    { ok: true } | { ok: false; error: string } | null
+  >(null);
+  const [preparando, startPreparar] = useTransition();
+
   useEffect(() => {
     let cancelado = false;
     listDestinationDialogs(actingTenantId).then((lista) => {
@@ -49,9 +59,20 @@ export function DestinationCard({
   function escolher(dialogId: string) {
     setSelecionado(dialogId);
     setErro(null);
+    // Um selo "bot pronto" de um canal anterior não vale mais pro novo canal
+    // escolhido — cada destino precisa da própria verificação.
+    setBotStatus(null);
     start(async () => {
       const r = await setCampaignDestination(campaignId, dialogId);
       if (!r.ok) setErro(r.error);
+    });
+  }
+
+  function prepararBot() {
+    setBotStatus(null);
+    startPreparar(async () => {
+      const r = await ensureBotAccessOnDestination(campaignId);
+      setBotStatus(r.ok ? { ok: true } : { ok: false, error: r.error });
     });
   }
 
@@ -99,6 +120,32 @@ export function DestinationCard({
       )}
 
       {erro && <p className="text-(--red) text-xs">{erro}</p>}
+
+      {currentDialogId && (
+        <div className="space-y-2 border-t border-(--border-subtle) pt-3">
+          <button
+            type="button"
+            onClick={prepararBot}
+            disabled={preparando}
+            className="w-full rounded-lg border border-(--border-default) bg-(--bg-overlay) py-2 text-xs font-medium text-(--text-secondary) transition-colors hover:bg-(--bg-hover) hover:text-(--text-primary) disabled:opacity-50"
+          >
+            {preparando ? "Preparando o bot…" : "Preparar o bot neste canal"}
+          </button>
+
+          {botStatus?.ok === true && (
+            <p className="inline-flex items-center gap-1.5 rounded-full border border-(--cyan) px-2.5 py-1 text-xs font-medium text-(--cyan)">
+              Bot pronto para publicar
+            </p>
+          )}
+
+          {/* Erro por inteiro, de propósito: ensureBotAccessOnDestination já
+              devolve texto acionável (ex.: o que mudar no BotFather), não uma
+              mensagem genérica. */}
+          {botStatus?.ok === false && (
+            <p className="text-(--red) text-xs">{botStatus.error}</p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

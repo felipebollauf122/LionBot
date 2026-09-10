@@ -70,6 +70,7 @@ export function ComposerShell({
   leftColumnLabel = "Canal",
   editorExtras,
   messageBadge,
+  now,
   emptyEditorHint = "Selecione ou crie uma mensagem para editar seus detalhes.",
 }: {
   actions: ComposerActions;
@@ -96,6 +97,9 @@ export function ComposerShell({
    *  ChannelFeed, que o desenha logo abaixo da bolha. Ausente, como na Prova
    *  Social, não acrescenta nada ao DOM. */
   messageBadge?: (row: ComposerMessageRow) => ReactNode;
+  /** Momento de referência do preview. Ausente = o agora, que é o caso da
+   *  Prova Social; a campanha ancora na última postagem da sequência. */
+  now?: Date;
   emptyEditorHint?: string;
 }) {
   const [pending, start] = useTransition();
@@ -178,6 +182,7 @@ export function ComposerShell({
                 disabled={pending}
                 onSelect={selecionar}
                 messageBadge={messageBadge}
+                now={now}
                 onReorder={(ids) => correr(() => actions.reorderMessages(ids))}
                 onDuplicate={(id) => correr(() => actions.duplicateMessage(id))}
                 onPin={

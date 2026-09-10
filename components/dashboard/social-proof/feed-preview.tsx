@@ -139,11 +139,19 @@ export function FeedPreview({
   onPin,
   onDelete,
   messageBadge,
+  now,
 }: {
   channel: ChannelInput;
   messages: ComposerMessageRow[];
   draft: MessageInput | null;
   pinnedText: string;
+  /**
+   * Momento de referência do feed: `offset_seconds` é contado a partir dele.
+   * A Prova Social não passa nada — o feed dela é relativo ao agora do lead —
+   * e a campanha passa a âncora de `campaignTimeline`, que é o momento da
+   * última postagem da sequência. Ver o porquê lá.
+   */
+  now?: Date;
   /** Id da mensagem fixada, para a miniatura da barra quando ela tem foto. */
   pinnedId?: string | null;
   selectedId?: string | null;
@@ -247,7 +255,7 @@ export function FeedPreview({
         <ChannelFeed
           messages={lista}
           channel={feedChannel}
-          now={new Date()}
+          now={now ?? new Date()}
           originalIds={messages.map(m => m.id)} // Pass original IDs so we can reorder them
           selectedId={selectedId}
           disabled={disabled}

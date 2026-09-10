@@ -12,6 +12,7 @@ import {
   duplicateScheduledMessage,
   reorderScheduledMessages,
 } from "@/app/dashboard/automations/scheduled/actions";
+import { campaignTimeline } from "@/lib/composer/schedule";
 import type { ComposerMessageRow } from "@/lib/composer/types";
 import type { ScheduledCampaign, ScheduledMessage } from "@/lib/types/database";
 import type { ChannelInput, MessageInput } from "@/lib/social-proof/types";
@@ -56,15 +57,27 @@ export function CampaignComposer({
 
   // Um "agora" só, fixado na montagem: recalculá-lo a cada render faria os
   // horários da prévia escorregarem a cada tecla digitada no editor.
-  const [agora] = useState(() => Date.now());
+  const [agora] = useState(() => new Date());
+
+  // `offset_seconds` é derivado, nunca persistido — e é contado a partir da
+  // ÂNCORA, que é o momento da última postagem da sequência, não do agora.
+  // Ancorar no agora deixaria toda campanha ainda não publicada com offsets
+  // negativos, e `offsetToDate` apara negativo em zero (decisão da Prova
+  // Social, travada por teste): as bolhas colapsariam todas no mesmo horário,
+  // debaixo de um "Hoje" só. Ver campaignTimeline.
+  const { anchor, offsetSeconds } = campaignTimeline(
+    messages.map((m) => ({
+      id: m.id,
+      delay_seconds: m.delay_seconds,
+      ai_discarded: m.ai_discarded,
+      scheduled_at: m.scheduled_at,
+    })),
+    campaign.start_at ? new Date(campaign.start_at) : agora,
+  );
+
   const linhas: ComposerMessageRow[] = messages.map((m) => ({
     ...m,
-    // FeedPreview desenha o horário a partir de "há quantos segundos".
-    // Uma postagem futura tem offset negativo, e o formatador do Telegram
-    // já lida com isso — o que importa é a distância, não o sinal.
-    offset_seconds: m.scheduled_at
-      ? Math.round((agora - new Date(m.scheduled_at).getTime()) / 1000)
-      : 0,
+    offset_seconds: offsetSeconds.get(m.id) ?? 0,
   }));
 
   const porId = new Map(messages.map((m) => [m.id, m]));
@@ -78,6 +91,7 @@ export function CampaignComposer({
       subtitle="Monte a sequência de posts e agende o disparo no canal de destino."
       channel={canal}
       messages={linhas}
+      now={anchor}
       leftColumnLabel="Campanha"
       // `pinnedId`/`pinnedText` ficam de fora: a campanha não fixa nada pela
       // UI (o `is_pinned` vem do clone). Ver também `setPinned` lá embaixo.

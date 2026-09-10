@@ -591,25 +591,47 @@ export async function launchScheduledCampaign(
     }
 
     for (const item of agenda) {
-      const { error } = await supabase
+      // Mesma contagem de linhas afetadas das outras actions do arquivo: sem
+      // linha alterada o supabase-js NÃO devolve error, então uma RLS que
+      // barrasse tudo deixaria a campanha ir pra 'running' com as mensagens
+      // sem scheduled_at nenhum — publicação que nunca acontece, relatada
+      // como sucesso. Não é transacional (o laço já gravou o que gravou), mas
+      // recusar aqui para o estrago no primeiro sinal e mantém a campanha
+      // fora de 'running'.
+      const { data, error } = await supabase
         .from("mtproto_scheduled_messages")
         .update({ scheduled_at: item.scheduledAt.toISOString() })
         .eq("id", item.id)
-        .eq("campaign_id", campaignId);
+        .eq("campaign_id", campaignId)
+        .select("id");
       if (error) return { ok: false, error: `Não deu pra agendar: ${error.message}` };
+      if (!data || data.length === 0) {
+        return {
+          ok: false,
+          error: "A lista de mensagens mudou. Recarregue a página e tente de novo.",
+        };
+      }
     }
 
     // Descartadas viram 'skipped' AGORA: deixá-las 'pending' faria o poller
     // enfileirá-las (elas não têm scheduled_at, mas um reprocessamento futuro
-    // poderia dar), e o contador de progresso mentiria.
-    await supabase
+    // poderia dar), e o contador de progresso mentiria. O erro É conferido:
+    // ignorá-lo publicaria a campanha com as descartadas ainda 'pending' —
+    // exatamente o cenário que esta linha existe pra impedir.
+    const { error: erroDescartadas } = await supabase
       .from("mtproto_scheduled_messages")
       .update({ status: "skipped" })
       .eq("campaign_id", campaignId)
       .eq("ai_discarded", true)
       .eq("status", "pending");
+    if (erroDescartadas) {
+      return {
+        ok: false,
+        error: `Não deu pra marcar as mensagens descartadas: ${erroDescartadas.message}`,
+      };
+    }
 
-    const { error } = await supabase
+    const { data: publicada, error } = await supabase
       .from("mtproto_scheduled_campaigns")
       .update({
         status: "running",
@@ -618,8 +640,12 @@ export async function launchScheduledCampaign(
         total_messages: agenda.length,
         last_error: null,
       })
-      .eq("id", campaignId);
+      .eq("id", campaignId)
+      .select("id");
     if (error) return { ok: false, error: `Não deu pra publicar: ${error.message}` };
+    if (!publicada || publicada.length === 0) {
+      return { ok: false, error: "Campanha não encontrada (ou sem permissão)." };
+    }
 
     revalidatePath(rota(campaignId));
     revalidatePath("/dashboard/automations");

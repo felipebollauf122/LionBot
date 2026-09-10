@@ -42,6 +42,12 @@ function paraInput(m: ComposerMessageRow): MessageInput {
     // e o editor dela não os mostra — o zero aqui é só o que preenche o campo.
     offset_seconds: m.offset_seconds ?? 0,
     views_count: m.views_count ?? 0,
+    // E estes dois são só da campanha: sem eles, abrir uma mensagem já salva
+    // mostraria a cadência padrão em vez da dela, e salvar de volta zeraria a
+    // espera real. Na Prova Social a linha não os tem, viram `undefined`, e
+    // nem o editor nem a action dela olham pra eles.
+    delay_seconds: m.delay_seconds ?? undefined,
+    silent: m.silent ?? undefined,
   };
 }
 
@@ -63,6 +69,7 @@ export function ComposerShell({
   leftColumn,
   leftColumnLabel = "Canal",
   editorExtras,
+  messageBadge,
   emptyEditorHint = "Selecione ou crie uma mensagem para editar seus detalhes.",
 }: {
   actions: ComposerActions;
@@ -85,10 +92,9 @@ export function ComposerShell({
   leftColumnLabel?: string;
   /** Campos extras do editor, específicos da feature. */
   editorExtras?: (value: MessageInput, onChange: (v: MessageInput) => void) => ReactNode;
-  /** Chip por mensagem no preview (status de envio, na campanha).
-   *  Declarado aqui porque é do contrato do shell, mas ainda não desenhado:
-   *  o FeedPreview não tem slot por bolha. Quem for ligar o chip abre o slot
-   *  no FeedPreview/ChannelFeed antes de passar esta prop. */
+  /** Chip por mensagem no preview (status de envio, na campanha). Desce até o
+   *  ChannelFeed, que o desenha logo abaixo da bolha. Ausente, como na Prova
+   *  Social, não acrescenta nada ao DOM. */
   messageBadge?: (row: ComposerMessageRow) => ReactNode;
   emptyEditorHint?: string;
 }) {
@@ -171,6 +177,7 @@ export function ComposerShell({
                 selectedId={selecionada}
                 disabled={pending}
                 onSelect={selecionar}
+                messageBadge={messageBadge}
                 onReorder={(ids) => correr(() => actions.reorderMessages(ids))}
                 onDuplicate={(id) => correr(() => actions.duplicateMessage(id))}
                 onPin={

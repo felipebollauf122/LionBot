@@ -41,6 +41,13 @@ export interface FeedMessage {
   kind: MessageKind;
   contentText: string | null;
   media: MediaItem[];
+  /**
+   * Nome do arquivo quando a linha é um documento. `kind` não tem "document"
+   * — o union é o contrato do editor, que só edita os cinco tipos — então a
+   * linha chega aqui como "text" e é este campo, e só ele, que faz a bolha
+   * desenhar o chip de anexo. Ausente na Prova Social, que não tem documentos.
+   */
+  fileName?: string | null;
   reactions: Reaction[];
   /** Texto da mensagem respondida, já resolvido pelo servidor. */
   replyToText: string | null;

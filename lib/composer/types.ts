@@ -30,6 +30,14 @@ export interface ComposerMessageRow {
    * dá nome ao chip de uma linha `kind: "document"` (ver toFeedMessage).
    */
   file_name?: string | null;
+  /**
+   * Cadência e modo silencioso, também só de `mtproto_scheduled_messages`.
+   * Estão aqui porque o editor da campanha os mostra e regrava: sem eles a
+   * tela exibiria a cadência padrão no lugar da real e a devolveria zerada ao
+   * salvar. A Prova Social não os tem, e não olha pra eles.
+   */
+  delay_seconds?: number | null;
+  silent?: boolean | null;
 }
 
 /**

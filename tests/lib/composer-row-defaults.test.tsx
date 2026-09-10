@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import { FeedPreview } from "@/components/dashboard/social-proof/feed-preview";
 import type { ComposerMessageRow } from "@/lib/composer/types";
 import type { ChannelInput } from "@/lib/social-proof/types";
@@ -111,6 +111,108 @@ describe("ComposerMessageRow sem os campos de Prova Social", () => {
     );
 
     expect(container.querySelector("img")).toBeNull();
-    expect(screen.getByText(/contrato\.pdf/)).toBeInTheDocument();
+
+    // O nome aparece dentro do chip de anexo — um elemento de verdade, não uma
+    // linha "📄 contrato.pdf" enfiada na legenda: o post real no Telegram não
+    // teria esse texto, e a prévia promete ser exatamente o que vai ao ar.
+    const chip = container.querySelector(".tg-doc");
+    expect(chip).not.toBeNull();
+    expect(chip).toContainElement(screen.getByText("contrato.pdf"));
+    // E a legenda continua vazia: a linha não tinha content_text.
+    expect(container.querySelector(".tg-bubble-text")).toBeNull();
+  });
+
+  it("linha 'document' com legenda mostra só a legenda no texto", () => {
+    const { container } = render(
+      <FeedPreview
+        channel={canal}
+        messages={[
+          {
+            id: "d2",
+            kind: "document",
+            content_text: "Segue o contrato.",
+            media: [{ url: "https://exemplo.com/contrato.pdf", type: "photo" }],
+            reply_to_id: null,
+            file_name: "contrato.pdf",
+          },
+        ]}
+        draft={null}
+        pinnedText=""
+      />,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".tg-bubble-text")?.textContent).toContain(
+      "Segue o contrato.",
+    );
+    expect(container.querySelector(".tg-bubble-text")?.textContent).not.toContain("📄");
+    expect(container.querySelector(".tg-doc")?.textContent).toBe("contrato.pdf");
+  });
+});
+
+describe("slot de badge por bolha", () => {
+  it("sem a prop, o DOM da prévia é exatamente o mesmo", () => {
+    // É esta a garantia que a Prova Social tem: ela não passa `messageBadge`,
+    // e nenhum contêiner extra nasce por causa do slot.
+    const sem = render(
+      <FeedPreview channel={canal} messages={[linhaDeCampanha]} draft={null} pinnedText="" />,
+    ).container.innerHTML;
+
+    cleanup();
+
+    const comSlotVazio = render(
+      <FeedPreview
+        channel={canal}
+        messages={[linhaDeCampanha]}
+        draft={null}
+        pinnedText=""
+        messageBadge={() => null}
+      />,
+    ).container.innerHTML;
+
+    expect(comSlotVazio).toBe(sem);
+  });
+
+  it("com a prop, o chip aparece por mensagem", () => {
+    const { container } = render(
+      <FeedPreview
+        channel={canal}
+        messages={[linhaDeCampanha, { ...linhaDeCampanha, id: "m2" }]}
+        draft={null}
+        pinnedText=""
+        messageBadge={(row) => <span data-testid="chip">{row.id}</span>}
+      />,
+    );
+
+    expect(container.querySelectorAll(".tg-feed__badge")).toHaveLength(2);
+    expect(screen.getAllByTestId("chip").map((e) => e.textContent)).toEqual(["m1", "m2"]);
+  });
+
+  it("o rascunho não recebe chip — ele ainda não é uma linha do banco", () => {
+    const { container } = render(
+      <FeedPreview
+        channel={canal}
+        messages={[linhaDeCampanha]}
+        draft={{
+          sender_kind: "owner",
+          sender_name: "",
+          sender_avatar_url: null,
+          kind: "text",
+          content_text: "Rascunho novo",
+          media: [],
+          reactions: [],
+          reply_to_id: null,
+          display_time: null,
+          offset_seconds: 0,
+          views_count: 0,
+        }}
+        pinnedText=""
+        messageBadge={() => <span>chip</span>}
+      />,
+    );
+
+    // Duas bolhas (a salva e o rascunho), um chip só.
+    expect(container.querySelectorAll(".tg-bubble")).toHaveLength(2);
+    expect(container.querySelectorAll(".tg-feed__badge")).toHaveLength(1);
   });
 });

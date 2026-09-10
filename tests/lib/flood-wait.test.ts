@@ -33,16 +33,47 @@ describe("parseFloodWait", () => {
 });
 
 describe("describeFloodWait", () => {
+  const agora = new Date("2026-09-10T23:50:00-03:00");
+
   it("nomeia o Telegram como origem do limite e diz quando volta, sem o termo técnico", () => {
-    const texto = describeFloodWait({
-      waitSeconds: 300,
-      resumesAt: new Date("2026-09-10T12:05:00-03:00"),
-    });
+    const texto = describeFloodWait(
+      { waitSeconds: 300, resumesAt: new Date("2026-09-10T12:05:00-03:00") },
+      agora,
+    );
     expect(texto).toContain("Telegram");
     expect(texto).toContain("12:05");
     // Escrito pra quem não sabe o que é "flood wait" — a string crua do
     // banco não pode vazar pro texto amigável.
     expect(texto.toLowerCase()).not.toContain("flood");
+  });
+
+  it("mesmo dia de `now`: só a hora, sem data — não precisa dizer o óbvio", () => {
+    const texto = describeFloodWait(
+      { waitSeconds: 60, resumesAt: new Date("2026-09-10T23:59:00-03:00") },
+      agora,
+    );
+    expect(texto).toContain("às 23:59");
+    expect(texto).not.toMatch(/\bdia\b/);
+  });
+
+  it("espera que atravessa a meia-noite: a data entra na frase, não só a hora", () => {
+    // Os empurrões de reagendarPorFlood se somam entre mensagens — uma
+    // campanha grande pode facilmente empurrar a espera pro dia seguinte.
+    // Sem a data, o aviso lê como se fosse resolver ainda hoje.
+    const texto = describeFloodWait(
+      { waitSeconds: 600, resumesAt: new Date("2026-09-11T00:10:00-03:00") },
+      agora,
+    );
+    expect(texto).toContain("00:10");
+    expect(texto).toMatch(/dia 11 de setembro/);
+  });
+
+  it("sem `now` explícito, usa o agora real (não quebra)", () => {
+    const texto = describeFloodWait({
+      waitSeconds: 300,
+      resumesAt: new Date(Date.now() + 60_000),
+    });
+    expect(texto).toContain("Telegram");
   });
 });
 

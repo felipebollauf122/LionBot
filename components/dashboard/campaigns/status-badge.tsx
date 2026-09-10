@@ -1,5 +1,6 @@
 import type { ScheduledMessageStatus } from "@/lib/types/database";
 import { messageFloodHint } from "@/lib/composer/flood-wait";
+import { describeSendError } from "@/lib/composer/message-error";
 
 /** Não existe token `--green` em app/globals.css — `--cyan` é o que o
  *  projeto já usa pra "sucesso/enviado" (ver o badge de alvo `sent` em
@@ -25,33 +26,45 @@ const CLASSE_FLOOD = "text-(--amber) border-(--amber)";
  * preview (`messageBadge` do ComposerShell).
  *
  * `errorMessage`/`scheduledAt` são opcionais e vêm da linha real
- * (`mtproto_scheduled_messages.error_message`/`scheduled_at`) — ausentes,
- * o chip continua exatamente como antes (nenhum `title`). Quando a linha
- * carrega um `error_message` no formato `flood_wait_<N>s` do worker, o chip
- * troca de cor pra amber e ganha um `title` (hover) explicando em português
- * simples: o limite é do Telegram, não um erro da campanha, e quando volta.
- * Qualquer outro `error_message` (falha real, retry em curso) aparece no
- * hover por inteiro — mesma lógica de `ensureBotAccess`: erro sem causa
- * conhecida some no `title` cru, nunca é escondido atrás de um texto
- * genérico.
+ * (`mtproto_scheduled_messages.error_message`/`scheduled_at`) — ausentes, o
+ * chip continua exatamente como antes (nenhum `title`).
+ *
+ * O `title` (hover) NUNCA mostra `error_message` cru. Quando é uma espera de
+ * limite do Telegram, o hover explica em português simples (via
+ * `messageFloodHint`) e o chip troca pra amber. Qualquer outro erro passa
+ * por `describeSendError`, que reconhece as causas que o worker documenta e
+ * cai numa frase neutra em português pra qualquer coisa não reconhecida —
+ * inclusive o texto cru do Telegram/Bot API, tipicamente em inglês, que o
+ * worker às vezes grava direto (`err.message`). Diferente de
+ * `ensureBotAccess`: ali o dono pode AGIR a partir do erro cru (mudar uma
+ * config no BotFather); aqui não há ação nenhuma que o texto técnico
+ * habilite, só confusão. O texto cru continua acessível, só que discreto —
+ * `data-raw-error`, não o `title`.
+ *
+ * `now` (opcional, default o agora real) só importa pro caso de flood: é a
+ * referência pra decidir se o dia entra na frase.
  */
 export function StatusBadge({
   status,
   errorMessage = null,
   scheduledAt = null,
+  now,
 }: {
   status: ScheduledMessageStatus;
   errorMessage?: string | null;
   scheduledAt?: string | null;
+  now?: Date;
 }) {
   const info = ROTULO[status];
-  const floodHint = messageFloodHint(errorMessage, scheduledAt);
-  const title = floodHint ?? errorMessage ?? undefined;
+  const floodHint = messageFloodHint(errorMessage, scheduledAt, now);
+  const sendErrorHint = floodHint ? null : describeSendError(errorMessage);
+  const title = floodHint ?? sendErrorHint ?? undefined;
   const classe = floodHint ? CLASSE_FLOOD : info.classe;
 
   return (
     <span
       title={title}
+      data-raw-error={!floodHint && errorMessage ? errorMessage : undefined}
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${classe}`}
     >
       {floodHint ? "aguardando limite" : info.texto}

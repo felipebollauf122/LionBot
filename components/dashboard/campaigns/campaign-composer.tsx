@@ -130,13 +130,14 @@ export function CampaignComposer({
             status={original.status}
             errorMessage={original.error_message}
             scheduledAt={original.scheduled_at}
+            now={agora}
           />
         ) : null;
       }}
       notice={
         flood ? (
           <p className="mb-4 rounded-lg border border-(--amber) bg-(--amber-muted) px-3 py-2 text-sm text-(--amber)">
-            {describeFloodWait(flood)}
+            {describeFloodWait(flood, agora)}
           </p>
         ) : campaign.last_error ? (
           <p className="mb-4 rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">

@@ -12,7 +12,7 @@
  * string crua.
  */
 
-import { formatClock } from "@/lib/social-proof/format";
+import { formatClock, formatDaySeparator } from "@/lib/social-proof/format";
 
 export interface FloodWait {
   waitSeconds: number;
@@ -41,11 +41,19 @@ export function parseFloodWait(
 /**
  * Frase para quem não sabe o que é "flood wait": nomeia o Telegram (não a
  * campanha) como origem do limite, diz que não é erro, e quando volta.
+ *
+ * `now` decide se o dia entra na frase — sem isto, uma espera que atravessa
+ * a meia-noite (os empurrões de `reagendarPorFlood` se somam entre
+ * mensagens; uma campanha grande pode facilmente passar de horas pra o dia
+ * seguinte) lê como se fosse resolver ainda hoje. Parâmetro em vez de
+ * `new Date()` interno pelo mesmo motivo do `agora` fixo em
+ * `campaign-composer.tsx`: quem CHAMA decide o instante de referência.
  */
-export function describeFloodWait(flood: FloodWait): string {
-  return `O Telegram limitou o envio temporariamente. A publicação continua sozinha às ${formatClock(
-    flood.resumesAt,
-  )} — nada foi perdido, é só aguardar.`;
+export function describeFloodWait(flood: FloodWait, now: Date = new Date()): string {
+  const hora = formatClock(flood.resumesAt);
+  const dia = formatDaySeparator(flood.resumesAt, now);
+  const quando = dia === "Hoje" ? `às ${hora}` : `no dia ${dia}, às ${hora}`;
+  return `O Telegram limitou o envio temporariamente. A publicação continua ${quando} — nada foi perdido, é só aguardar.`;
 }
 
 /** Texto pronto pro `title` (hover) do chip de status de uma mensagem — null
@@ -53,9 +61,10 @@ export function describeFloodWait(flood: FloodWait): string {
 export function messageFloodHint(
   errorMessage: string | null | undefined,
   scheduledAt: string | null | undefined,
+  now: Date = new Date(),
 ): string | null {
   const flood = parseFloodWait(errorMessage, scheduledAt);
-  return flood ? describeFloodWait(flood) : null;
+  return flood ? describeFloodWait(flood, now) : null;
 }
 
 /**

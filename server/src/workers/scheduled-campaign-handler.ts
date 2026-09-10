@@ -43,11 +43,70 @@ export function nextFloodSchedule(input: FloodInput): {
   return { retryAt, empurradas };
 }
 
+/** Teto de campanhas olhadas por tick do poller. */
+export const POLLER_LIMITE_CAMPANHAS = 50;
+
+/**
+ * Leituras que o tick do poller precisa. Injetadas em vez de chamadas direto,
+ * mesmo padrão de CloneRunnerDeps/RunnerDeps, pra a decisão do poller —
+ * "quem é pulado e quem é enfileirado" — ser testável sem banco nem fila.
+ */
+export interface PollerDeps {
+  /**
+   * Campanhas em 'running', DA MAIS ANTIGA PRA MAIS NOVA e no máximo
+   * `limite`. A ordem é contrato: como a consulta é limitada, sem ela as
+   * campanhas além do teto poderiam nunca ser alcançadas.
+   */
+  campanhasRodando(limite: number): Promise<string[]>;
+  /** Dentre as candidatas, as que já têm mensagem em 'sending'. */
+  comEnvioEmVoo(campaignIds: string[]): Promise<string[]>;
+  /** Id da mensagem vencida mais antiga da campanha, ou null se não há. */
+  proximaVencida(campaignId: string, agoraIso: string): Promise<string | null>;
+  enfileirar(messageId: string): Promise<void>;
+}
+
+/**
+ * Um tick do poller de disparo.
+ *
+ * A regra que este código existe pra manter é UMA MENSAGEM EM VOO POR
+ * CAMPANHA. "Uma por tick" não basta: uma publicação de 50MB dura mais que os
+ * 30s do intervalo e, no tick seguinte, ela já não está 'pending' (está
+ * 'sending'), então a próxima entraria por cima — e com concurrency 4 a
+ * segunda publicaria antes da primeira, fora da ordem que o dono montou.
+ */
+export async function tickCampanhasAgendadas(
+  deps: PollerDeps,
+  agora: Date,
+  limite: number = POLLER_LIMITE_CAMPANHAS,
+): Promise<{ enfileiradas: string[]; puladas: string[] }> {
+  const campanhas = await deps.campanhasRodando(limite);
+  if (campanhas.length === 0) return { enfileiradas: [], puladas: [] };
+
+  // Uma consulta responde por todas as candidatas, não uma por campanha.
+  const ocupadas = new Set(await deps.comEnvioEmVoo(campanhas));
+  const agoraIso = agora.toISOString();
+  const enfileiradas: string[] = [];
+  const puladas: string[] = [];
+
+  for (const campaignId of campanhas) {
+    if (ocupadas.has(campaignId)) {
+      puladas.push(campaignId);
+      continue;
+    }
+    const messageId = await deps.proximaVencida(campaignId, agoraIso);
+    if (!messageId) continue;
+    await deps.enfileirar(messageId);
+    enfileiradas.push(messageId);
+  }
+  return { enfileiradas, puladas };
+}
+
 export async function handleScheduledSend(messageId: string): Promise<void> {
   // 1) Claim CAS. Sem linha de volta, outro worker pegou (ou já não é pending).
+  const agora = new Date().toISOString();
   const { data: claimed } = await supabase
     .from("mtproto_scheduled_messages")
-    .update({ status: "sending", claimed_at: new Date().toISOString() })
+    .update({ status: "sending", claimed_at: agora })
     .eq("id", messageId)
     .eq("status", "pending")
     .select("*")
@@ -56,6 +115,14 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
     console.log(`[postcampaign] mensagem ${messageId} não reivindicada, ignorando`);
     return;
   }
+  // A assinatura DESTE claim. `status = 'sending'` sozinho prova que ALGUÉM
+  // detém a trava, não que somos nós: numa publicação mais lenta que
+  // SEND_CLAIM_STALE_MS o sweep devolve a linha pra 'pending', um segundo
+  // worker reivindica (status volta a 'sending', com claimed_at NOVO) e a
+  // nossa conclusão atrasada ainda casaria com o status — ABA clássico, com
+  // post duplicado no canal e nenhum rastro na linha. Preferimos o claimed_at
+  // que o banco devolveu ao que mandamos: é literalmente o valor gravado.
+  const nossoClaim = (claimed.claimed_at as string | null) ?? agora;
 
   const { data: campaign } = await supabase
     .from("mtproto_scheduled_campaigns")
@@ -67,14 +134,15 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
       .from("mtproto_scheduled_messages")
       .update({ status: "pending", claimed_at: null })
       .eq("id", messageId)
-      .eq("status", "sending");
+      .eq("status", "sending")
+      .eq("claimed_at", nossoClaim);
     return;
   }
 
   // Sem destino não existe chat_id: `-100null` viraria três tentativas de
   // Bot API com erro obscuro antes de falhar. Falha logo, com o motivo.
   if (!campaign.dest_channel_id) {
-    await falhar(messageId, campaign.id, "campanha sem canal de destino");
+    await falhar(messageId, campaign.id, "campanha sem canal de destino", nossoClaim);
     return;
   }
 
@@ -84,7 +152,7 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
     .eq("tenant_id", campaign.tenant_id)
     .single();
   if (!botRow || botRow.status !== "active") {
-    await falhar(messageId, campaign.id, "bot companheiro não cadastrado ou inválido");
+    await falhar(messageId, campaign.id, "bot companheiro não cadastrado ou inválido", nossoClaim);
     return;
   }
 
@@ -98,11 +166,10 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
 
   try {
     const destMsgId = await publicar(bot, claimed, tmpDir);
-    // A gravação do resultado também é CAS. Uma publicação mais lenta que
-    // SEND_CLAIM_STALE_MS é devolvida pra 'pending' pelo sweep e pode ser
-    // reivindicada por um segundo worker enquanto este ainda publica; sem o
-    // `status = 'sending'` aqui, o perdedor sobrescreveria o dest_msg_id do
-    // vencedor e a duplicata não deixaria rastro nenhum na linha.
+    // A gravação do resultado é CAS presa ao NOSSO claim (status + claimed_at,
+    // ver `nossoClaim` lá em cima). Sem ela, o worker que perdeu a trava
+    // sobrescreveria o dest_msg_id do vencedor e a duplicata não deixaria
+    // rastro nenhum na linha.
     const { data: gravado } = await supabase
       .from("mtproto_scheduled_messages")
       .update({
@@ -114,11 +181,12 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
       })
       .eq("id", messageId)
       .eq("status", "sending")
+      .eq("claimed_at", nossoClaim)
       .select("id")
       .maybeSingle();
     if (!gravado) {
       console.warn(
-        `[postcampaign] mensagem ${messageId} publicada como ${destMsgId} mas o claim já não era nosso — resultado descartado (possível duplicata no destino)`,
+        `[postcampaign] mensagem ${messageId} publicada como ${destMsgId} mas perdemos a corrida do claim — resultado descartado (o vencedor mantém o dele; possível duplicata no destino)`,
       );
       return;
     }
@@ -130,13 +198,13 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
   } catch (err) {
     const wait = extractWaitSeconds(err);
     if (wait !== null) {
-      await reagendarPorFlood(messageId, campaign.id, wait);
+      await reagendarPorFlood(messageId, campaign.id, wait, nossoClaim);
       return;
     }
     const msg = err instanceof Error ? err.message : String(err);
     const tentativas = (claimed.attempts as number) + 1;
     if (tentativas >= MAX_ATTEMPTS) {
-      await falhar(messageId, campaign.id, msg);
+      await falhar(messageId, campaign.id, msg, nossoClaim);
     } else {
       // Volta pra pending com uma tentativa a mais contabilizada; o poller
       // reenfileira no próximo tick porque scheduled_at já venceu.
@@ -144,7 +212,8 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
         .from("mtproto_scheduled_messages")
         .update({ status: "pending", claimed_at: null, attempts: tentativas, error_message: msg })
         .eq("id", messageId)
-        .eq("status", "sending");
+        .eq("status", "sending")
+        .eq("claimed_at", nossoClaim);
     }
   } finally {
     await bot.disconnect().catch(() => {});
@@ -232,6 +301,7 @@ async function reagendarPorFlood(
   messageId: string,
   campaignId: string,
   waitSeconds: number,
+  nossoClaim: string,
 ): Promise<void> {
   // Paginado e ordenado de propósito. Sem `range` explícito o PostgREST corta
   // a resposta em `db-max-rows` sem avisar, e sem ordem o corte é um
@@ -275,7 +345,8 @@ async function reagendarPorFlood(
       error_message: `flood_wait_${waitSeconds}s`,
     })
     .eq("id", messageId)
-    .eq("status", "sending");
+    .eq("status", "sending")
+    .eq("claimed_at", nossoClaim);
 
   // Um UPDATE por mensagem: o PostgREST não escreve valor diferente por linha
   // numa chamada só, e cada empurrada tem o seu próprio scheduled_at. Numa
@@ -293,7 +364,12 @@ async function reagendarPorFlood(
   );
 }
 
-async function falhar(messageId: string, campaignId: string, erro: string): Promise<void> {
+async function falhar(
+  messageId: string,
+  campaignId: string,
+  erro: string,
+  nossoClaim: string,
+): Promise<void> {
   // CAS pelo mesmo motivo do caminho de sucesso: quem perdeu o claim não
   // marca a linha do vencedor como falha nem soma no contador da campanha.
   const { data: gravado } = await supabase
@@ -301,6 +377,7 @@ async function falhar(messageId: string, campaignId: string, erro: string): Prom
     .update({ status: "failed", error_message: erro, claimed_at: null })
     .eq("id", messageId)
     .eq("status", "sending")
+    .eq("claimed_at", nossoClaim)
     .select("id")
     .maybeSingle();
   if (!gravado) {

@@ -59,6 +59,8 @@ interface ChamadaDb {
   op: "select" | "update";
   payload?: Record<string, unknown>;
   filtros: Record<string, unknown>;
+  /** Argumentos de `.range(de, ate)`, pra provar a paginação da varredura. */
+  range?: [number, number];
 }
 
 interface RespostaDb {
@@ -74,7 +76,7 @@ interface FakeQuery {
   in: (coluna: string, valor: unknown) => FakeQuery;
   not: (...args: unknown[]) => FakeQuery;
   order: (...args: unknown[]) => FakeQuery;
-  range: (...args: unknown[]) => FakeQuery;
+  range: (de: number, ate: number) => FakeQuery;
   limit: (...args: unknown[]) => FakeQuery;
   single: () => Promise<RespostaDb>;
   maybeSingle: () => Promise<RespostaDb>;
@@ -111,7 +113,10 @@ vi.mock("../../src/db.js", () => {
       },
       not: () => q,
       order: () => q,
-      range: () => q,
+      range: (de, ate) => {
+        ch.range = [de, ate];
+        return q;
+      },
       limit: () => q,
       single: () => resolver(),
       maybeSingle: () => resolver(),
@@ -128,7 +133,8 @@ vi.mock("../../src/services/mtproto/clone/bot-client.js", () => {
       return `-100${channelId}`;
     }
     async publishText(): Promise<number> {
-      throw h.erroDoPublish;
+      if (h.erroDoPublish) throw h.erroDoPublish;
+      return 4242;
     }
     async publishMedia(): Promise<number> {
       throw h.erroDoPublish;
@@ -171,7 +177,11 @@ function responderPadrao(ch: ChamadaDb): RespostaDb {
   }
   if (ch.table === "mtproto_scheduled_messages") {
     // O claim CAS: update de pending -> sending. Devolve a linha reivindicada.
-    if (ch.op === "update" && ch.filtros.status === "pending") return { data: LINHA };
+    // O banco devolve a linha COM o claimed_at que acabou de gravar; é dele
+    // que sai a assinatura do claim usada nas escritas de desfecho.
+    if (ch.op === "update" && ch.filtros.status === "pending") {
+      return { data: { ...LINHA, claimed_at: ch.payload?.claimed_at } };
+    }
     // A varredura de pendentes do reagendamento (status é a string "pending");
     // a contagem de concluirSeUltima passa um array em `in`, e cai no default.
     if (ch.op === "select" && ch.filtros.status === "pending") {
@@ -254,5 +264,112 @@ describe("handleScheduledSend — fiação do flood da Bot API", () => {
     expect(retry?.payload?.attempts).toBe(1);
     expect(retry?.filtros.status).toBe("sending");
     expect(updates.some((u) => u.filtros.id === "m2")).toBe(false);
+  });
+
+  it("a varredura de pendentes pagina, e todas as páginas são empurradas em ordem", async () => {
+    // Sem `range`, o PostgREST corta em db-max-rows sem avisar e as pendentes
+    // além do corte venceriam durante a espera — o despejo que o empurrão
+    // existe pra impedir. Duas páginas: 500 (cheia, força a próxima) e 3.
+    const base = Date.UTC(2026, 8, 10, 13, 0, 0);
+    const pagina1 = Array.from({ length: 500 }, (_, i) => ({
+      id: `p${i}`,
+      scheduled_at: new Date(base + i * 60_000).toISOString(),
+      position: i,
+    }));
+    const pagina2 = Array.from({ length: 3 }, (_, i) => ({
+      id: `q${i}`,
+      scheduled_at: new Date(base + (500 + i) * 60_000).toISOString(),
+      position: 500 + i,
+    }));
+    h.responder = (ch) => {
+      if (
+        ch.table === "mtproto_scheduled_messages" &&
+        ch.op === "select" &&
+        ch.filtros.status === "pending"
+      ) {
+        const de = ch.range?.[0] ?? 0;
+        if (de === 0) return { data: pagina1 };
+        if (de === 500) return { data: pagina2 };
+        return { data: [] };
+      }
+      return responderPadrao(ch);
+    };
+    h.erroDoPublish = new GrammyError(
+      "Call to 'sendMessage' failed! (429: Too Many Requests: retry after 60)",
+      {
+        ok: false,
+        error_code: 429,
+        description: "Too Many Requests: retry after 60",
+        parameters: { retry_after: 60 },
+      },
+      "sendMessage",
+      {},
+    );
+
+    await handleScheduledSend("m1");
+
+    // Paginou de verdade, e parou na página incompleta.
+    const paginas = h.chamadas
+      .filter(
+        (c) =>
+          c.table === "mtproto_scheduled_messages" &&
+          c.op === "select" &&
+          c.filtros.status === "pending",
+      )
+      .map((c) => c.range);
+    expect(paginas).toEqual([
+      [0, 499],
+      [500, 999],
+    ]);
+
+    // As 503 foram empurradas, na ordem em que a consulta devolveu.
+    const empurradas = updatesDeMensagem().filter((u) => u.filtros.id !== "m1");
+    expect(empurradas).toHaveLength(503);
+    expect(empurradas[0].filtros.id).toBe("p0");
+    expect(empurradas[499].filtros.id).toBe("p499");
+    expect(empurradas[502].filtros.id).toBe("q2");
+
+    // E cada uma pelo MESMO delta (60 + 5 = 65s), não pro mesmo instante.
+    expect(empurradas[0].payload?.scheduled_at).toBe("2026-09-10T13:01:05.000Z");
+    expect(empurradas[502].payload?.scheduled_at).toBe("2026-09-10T21:23:05.000Z");
+  });
+
+  it("com o claim intacto, grava o resultado preso ao próprio claim", async () => {
+    await handleScheduledSend("m1");
+
+    const escrita = updatesDeMensagem().find((u) => u.payload?.status === "sent");
+    expect(escrita?.payload?.dest_msg_id).toBe(4242);
+    expect(escrita?.filtros.status).toBe("sending");
+    // A assinatura DESTE claim, não só "alguém está enviando".
+    expect(escrita?.filtros.claimed_at).toBe(AGORA.toISOString());
+    expect(
+      h.chamadas.some((c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update"),
+    ).toBe(true);
+  });
+
+  it("quem teve o claim roubado não grava resultado nem mexe no contador (ABA)", async () => {
+    // O sweep devolveu a linha pra 'pending' no meio da publicação, outro
+    // worker reivindicou (status voltou a 'sending', claimed_at NOVO) e a
+    // nossa conclusão chega atrasada: `status = 'sending'` sozinho ainda
+    // casaria. Com o claimed_at no filtro, o CAS não casa e o desfecho do
+    // vencedor fica de pé.
+    h.responder = (ch) => {
+      if (
+        ch.table === "mtproto_scheduled_messages" &&
+        ch.op === "update" &&
+        ch.payload?.status === "sent"
+      ) {
+        return { data: null };
+      }
+      return responderPadrao(ch);
+    };
+
+    await handleScheduledSend("m1");
+
+    const escrita = updatesDeMensagem().find((u) => u.payload?.status === "sent");
+    expect(escrita?.filtros.claimed_at).toBe(AGORA.toISOString());
+    expect(
+      h.chamadas.some((c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update"),
+    ).toBe(false);
   });
 });

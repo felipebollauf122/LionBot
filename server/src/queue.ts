@@ -518,53 +518,61 @@ export function startWorkers(): void {
     scheduledPostsRunning = true;
     (async () => {
       try {
-        // Ordem determinística e por antiguidade: com `limit` e sem ordem, as
-        // campanhas além do teto poderiam nunca ser alcançadas. Pela mais
-        // antiga primeiro, a fila drena — quem começou antes termina antes e
-        // sai de 'running', abrindo a vaga pra próxima.
-        const { data: campanhas } = await supabase
-          .from("mtproto_scheduled_campaigns")
-          .select("id")
-          .eq("status", "running")
-          .order("started_at", { ascending: true, nullsFirst: true })
-          .order("created_at", { ascending: true })
-          .limit(50);
-        if (!campanhas || campanhas.length === 0) return;
-
-        // Uma consulta só responde por todas as candidatas: quais delas já têm
-        // mensagem em voo.
-        const { data: emVoo } = await supabase
-          .from("mtproto_scheduled_messages")
-          .select("campaign_id")
-          .eq("status", "sending")
-          .in(
-            "campaign_id",
-            campanhas.map((c) => c.id),
-          );
-        const ocupadas = new Set((emVoo ?? []).map((m) => m.campaign_id as string));
-
         const { enqueueMtproto } = await import("./queue-mtproto.js");
-        const agora = new Date().toISOString();
-        for (const c of campanhas) {
-          if (ocupadas.has(c.id)) continue;
-          const { data: due } = await supabase
-            .from("mtproto_scheduled_messages")
-            .select("id")
-            .eq("campaign_id", c.id)
-            .eq("status", "pending")
-            .not("scheduled_at", "is", null)
-            .lte("scheduled_at", agora)
-            .order("scheduled_at", { ascending: true })
-            // Desempate por position/created_at, o mesmo do composer. O
-            // reagendamento pós-flood põe TODA pendente atrasada no mesmo
-            // instante (o piso em retryAt), então sem desempate a ordem de
-            // publicação depois de um flood seria a que o Postgres quisesse.
-            .order("position", { ascending: true })
-            .order("created_at", { ascending: true })
-            .limit(1);
-          if (!due || due.length === 0) continue;
-          await enqueueMtproto({ kind: "postcampaign.send-one", messageId: due[0].id });
-        }
+        // A decisão do tick — quem é pulado e quem é enfileirado — mora no
+        // handler, atrás de PollerDeps, e é testada lá. Aqui ficam só as
+        // leituras. Import dinâmico pelo mesmo motivo do enqueueMtproto.
+        const { tickCampanhasAgendadas, POLLER_LIMITE_CAMPANHAS } = await import(
+          "./workers/scheduled-campaign-handler.js"
+        );
+        await tickCampanhasAgendadas(
+          {
+            // Ordem determinística e por antiguidade: com `limit` e sem ordem,
+            // as campanhas além do teto poderiam nunca ser alcançadas. Pela
+            // mais antiga primeiro a fila drena — quem começou antes termina
+            // antes e sai de 'running', abrindo a vaga pra próxima.
+            campanhasRodando: async (limite) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_campaigns")
+                .select("id")
+                .eq("status", "running")
+                .order("started_at", { ascending: true, nullsFirst: true })
+                .order("created_at", { ascending: true })
+                .limit(limite);
+              return (data ?? []).map((c) => c.id as string);
+            },
+            comEnvioEmVoo: async (ids) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_messages")
+                .select("campaign_id")
+                .eq("status", "sending")
+                .in("campaign_id", ids);
+              return (data ?? []).map((m) => m.campaign_id as string);
+            },
+            proximaVencida: async (campaignId, agoraIso) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_messages")
+                .select("id")
+                .eq("campaign_id", campaignId)
+                .eq("status", "pending")
+                .not("scheduled_at", "is", null)
+                .lte("scheduled_at", agoraIso)
+                .order("scheduled_at", { ascending: true })
+                // Desempate por position/created_at, o mesmo do composer. O
+                // reagendamento pós-flood põe TODA pendente atrasada no mesmo
+                // instante (o piso em retryAt), então sem desempate a ordem de
+                // publicação depois de um flood seria a que o Postgres quisesse.
+                .order("position", { ascending: true })
+                .order("created_at", { ascending: true })
+                .limit(1);
+              return data && data.length > 0 ? (data[0].id as string) : null;
+            },
+            enfileirar: (messageId) =>
+              enqueueMtproto({ kind: "postcampaign.send-one", messageId }),
+          },
+          new Date(),
+          POLLER_LIMITE_CAMPANHAS,
+        );
       } catch (err) {
         console.error("[postcampaign-poller] Error:", err);
       } finally {

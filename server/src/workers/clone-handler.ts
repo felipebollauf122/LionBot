@@ -21,6 +21,7 @@ import {
   MAX_FILE_BYTES,
 } from "../services/mtproto/clone/publish-router.js";
 import { createDraftPublisher } from "../services/mtproto/clone/draft-publisher.js";
+import { finalizarCampanhaDoRascunho } from "../services/mtproto/clone/draft-finalize.js";
 import type { StagedRow } from "../services/mtproto/clone/draft-publisher.js";
 import { downloadAndRehostMedia } from "../services/mtproto/bot-clone/media-rehost.js";
 import { rewriteMessageLinks } from "../services/mtproto/clone/link-replace.js";
@@ -794,21 +795,9 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
           const campaignId = job.draft_campaign_id as string;
           const total = await renumberDraftPositions(campaignId);
           const querIa = job.ai_clean || job.ai_rewrite || job.ai_smart_delay;
-          await supabase
-            .from("mtproto_scheduled_campaigns")
-            .update({
-              total_messages: total,
-              // A fase de IA (Plano 3) consome 'queued'. Sem alavanca ligada,
-              // o rascunho já nasce pronto pra revisão humana.
-              status: querIa ? "ai_processing" : "draft",
-              ai_status: querIa ? "queued" : "idle",
-            })
-            .eq("id", campaignId);
-          // Enfileiramento que o Plano 1 adiou explicitamente porque o kind
-          // ainda não existia (Plano 3 o criou em campaign-ai-handler.ts).
-          if (querIa) {
-            await enqueueMtproto({ kind: "campaign.ai-process", campaignId });
-          }
+          // A escrita (com CAS de estado) e o enfileiramento da IA moram em
+          // draft-finalize.ts pra serem testáveis sem montar meio worker.
+          await finalizarCampanhaDoRascunho(campaignId, total, querIa);
         }
       }
 

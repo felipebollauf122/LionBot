@@ -232,9 +232,36 @@ export async function handleCampaignAiProcess(campaignId: string): Promise<void>
     },
 
     async finalizar(id, status, erro) {
-      await supabase
+      // CAS DE ESTADO, não só de id. Devolver a campanha pra 'draft' é uma
+      // escrita sobre o CICLO DE VIDA dela, e só pode alcançar quem ainda
+      // está sob a IA. Sem `.eq("status", "ai_processing")` esta linha
+      // rebaixava pra 'draft' uma campanha que já tinha ido pra 'running' —
+      // e como o poller só enfileira status='running' (queue.ts), a
+      // publicação parava NO MEIO da sequência sem erro nenhum, sem mudar o
+      // badge e sem escrever last_error. Duas rotas vivas chegavam aqui
+      // nesse estado: o botão "Publicar campanha" não era barrado durante a
+      // IA, e o watchdog reenfileirava uma campanha lançada depois de o
+      // worker morrer.
+      const { data: rebaixada } = await supabase
         .from("mtproto_scheduled_campaigns")
         .update({ ai_status: status, ai_error: erro, status: "draft" })
+        .eq("id", id)
+        .eq("status", "ai_processing")
+        .select("id")
+        .maybeSingle();
+      if (rebaixada) return;
+
+      // Perdeu o CAS: alguém tirou a campanha da fase de IA no meio do
+      // tratamento. O status é de quem o mudou — mas o RESULTADO da IA ainda
+      // precisa ser gravado. Sem esta segunda escrita a campanha ficaria em
+      // ai_status='processing' pra sempre, e o watchdog reenfileiraria o
+      // tratamento em loop contra um alvo que já está publicando.
+      console.warn(
+        `[campaign-ai] campanha ${id} já não estava em 'ai_processing' ao finalizar — status preservado, só o resultado da IA (${status}) foi gravado`,
+      );
+      await supabase
+        .from("mtproto_scheduled_campaigns")
+        .update({ ai_status: status, ai_error: erro })
         .eq("id", id);
     },
   };
@@ -303,8 +330,22 @@ export async function tickCampaignAiStuckWatchdog(): Promise<void> {
       const { data } = await supabase
         .from("mtproto_scheduled_campaigns")
         .select("id")
-        .eq("ai_status", "processing")
-        .lt("ai_started_at", staleBefore.toISOString())
+        // Só campanha que AINDA está na fase de IA. Sem este filtro o
+        // watchdog reanimava o tratamento de uma campanha já em 'running' —
+        // a outra ponta do bloqueador corrigido em `finalizar`.
+        .eq("status", "ai_processing")
+        // 'queued' entra junto com 'processing' porque a PRÓPRIA recuperação
+        // daqui grava 'queued' ANTES de enfileirar, e o enqueue pode falhar
+        // (Redis/bot-server fora do ar) — vale igual pro enqueue do
+        // clone-handler. Sem 'queued' na varredura, esse era exatamente o
+        // estado que ninguém mais olhava: ai_status='queued' com
+        // status='ai_processing' e job nenhum na fila.
+        .in("ai_status", ["processing", "queued"])
+        // 'queued' recém-gravada tem ai_started_at NULO, e `lt` sozinho
+        // descarta nulo — daí o OR. Reenfileirar uma campanha que por acaso
+        // ainda tinha job legítimo na fila é inofensivo: o segundo job perde
+        // o CAS de reivindicar() e sai sem fazer nada.
+        .or(`ai_started_at.is.null,ai_started_at.lt.${staleBefore.toISOString()}`)
         .limit(50);
       return (data ?? []).map((r) => r.id as string);
     },
@@ -313,7 +354,8 @@ export async function tickCampaignAiStuckWatchdog(): Promise<void> {
         .from("mtproto_scheduled_campaigns")
         .update({ ai_status: "queued", ai_started_at: null })
         .eq("id", campaignId)
-        .eq("ai_status", "processing")
+        .eq("status", "ai_processing")
+        .in("ai_status", ["processing", "queued"])
         .select("id")
         .maybeSingle();
       return Boolean(data);

@@ -531,6 +531,80 @@ describe("handleCampaignAiProcess — fiação real (Supabase + GeminiClient)", 
     expect(linha).toMatch(/permission denied/);
     errSpy.mockRestore();
   });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // BLOQUEADOR da revisão: `finalizar` escrevia status:'draft' com apenas
+  // `.eq("id", campaignId)`. Duas rotas vivas chegam nela com a campanha já
+  // em 'running' (o botão Publicar não era barrado durante a IA, e o
+  // watchdog reenfileirava uma campanha lançada depois do worker morrer), e
+  // o resultado era uma campanha rebaixada pra 'draft' NO MEIO da sequência:
+  // o poller só enfileira status='running', então a publicação simplesmente
+  // parava — sem erro, sem badge, sem last_error.
+  // ───────────────────────────────────────────────────────────────────────
+
+  /** Sobe uma campanha reivindicável com uma mensagem, pra chegar em finalizar. */
+  function responderComUmaMensagem(cas: (ch: ChamadaDb) => RespostaDb) {
+    return (ch: ChamadaDb): RespostaDb => {
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.payload?.ai_status === "processing") {
+        return { data: { ai_clean: true, ai_rewrite: false, ai_smart_delay: false } };
+      }
+      if (ch.table === "mtproto_scheduled_messages" && ch.op === "select") {
+        return {
+          data: [
+            {
+              id: "m1",
+              position: 0,
+              content_text: "oi @concorrente",
+              content_text_original: null,
+              media: [],
+              inline_links: null,
+            },
+          ],
+        };
+      }
+      return cas(ch);
+    };
+  }
+
+  it("finaliza com CAS de estado: só devolve pra 'draft' quem ainda está em 'ai_processing'", async () => {
+    h.responder = responderComUmaMensagem(() => ({ data: { id: "camp-1" } }));
+    g.respostas = [() => ({ itens: [] })];
+
+    await handleCampaignAiProcess("camp-1");
+
+    const final = h.chamadas.find(
+      (c) => c.table === "mtproto_scheduled_campaigns" && c.payload?.status === "draft",
+    );
+    expect(final?.filtros.id).toBe("camp-1");
+    // A condição que faltava: sem ela o UPDATE pega a campanha em qualquer
+    // estado, inclusive 'running'.
+    expect(final?.filtros.status).toBe("ai_processing");
+  });
+
+  it("campanha que saiu de 'ai_processing' no meio: NÃO volta pra 'draft', mas o resultado da IA é gravado", async () => {
+    // O dono clicou em Publicar enquanto a IA rodava. O CAS não pega nenhuma
+    // linha — e aí o `ai_status` PRECISA ser gravado mesmo assim: sem isso a
+    // campanha ficaria em ai_status='processing' pra sempre e o watchdog
+    // reenfileiraria o tratamento em loop, num alvo que já está publicando.
+    h.responder = responderComUmaMensagem((ch) =>
+      ch.op === "update" && ch.payload?.status === "draft" ? { data: null } : { data: { id: "x" } },
+    );
+    g.respostas = [() => ({ itens: [] })];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await handleCampaignAiProcess("camp-1");
+
+    const finaisCampanha = h.chamadas.filter(
+      (c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update" && c.payload?.ai_status,
+    );
+    // A última escrita é a de consolo: ai_status/ai_error SEM tocar em status.
+    const consolo = finaisCampanha.at(-1);
+    expect(consolo?.payload?.ai_status).toBe("done");
+    expect(consolo?.payload).not.toHaveProperty("status");
+    expect(consolo?.filtros.id).toBe("camp-1");
+    expect(warnSpy.mock.calls.map((c) => c.map(String).join(" ")).join("\n")).toMatch(/camp-1/);
+    warnSpy.mockRestore();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -650,17 +724,47 @@ describe("tickCampaignAiStuckWatchdog — fiação real (Supabase + enqueueMtpro
     await tickCampaignAiStuckWatchdog();
 
     const busca = h.chamadas.find((c) => c.table === "mtproto_scheduled_campaigns" && c.op === "select");
-    expect(busca?.filtros.ai_status).toBe("processing");
-    expect(busca?.ltFiltros?.ai_started_at).toBeDefined();
+    // 'queued' junto de 'processing': a própria recuperação daqui grava
+    // 'queued' antes de enfileirar, e um enqueue que falha deixava a campanha
+    // no único estado que a varredura não enxergava.
+    expect(busca?.filtros.ai_status).toEqual(["processing", "queued"]);
+    // E nunca reanimar a IA de uma campanha que já saiu da fase.
+    expect(busca?.filtros.status).toBe("ai_processing");
+    // 'queued' tem ai_started_at nulo, então o limiar precisa do OR.
+    expect(busca?.orExpr).toMatch(/ai_started_at\.is\.null,ai_started_at\.lt\./);
 
     const destrava = h.chamadas.find(
       (c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update" && c.payload?.ai_status === "queued",
     );
     expect(destrava?.filtros.id).toBe("camp-1");
-    expect(destrava?.filtros.ai_status).toBe("processing");
+    expect(destrava?.filtros.status).toBe("ai_processing");
+    expect(destrava?.filtros.ai_status).toEqual(["processing", "queued"]);
     expect(destrava?.payload?.ai_started_at).toBeNull();
 
     expect(q.enfileiradas).toEqual([{ kind: "campaign.ai-process", campaignId: "camp-1" }]);
+  });
+
+  it("ai_status='queued' com status='ai_processing' e job nenhum na fila é reenfileirada", async () => {
+    // O estado que o watchdog criava e depois não enxergava: destravar grava
+    // 'queued' + ai_started_at nulo, o enqueue falha, e a campanha some da
+    // varredura antiga (que só listava 'processing' com ai_started_at antigo).
+    let listou = false;
+    h.responder = (ch) => {
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.op === "select") {
+        // Uma campanha 'queued'/null é devolvida pelo filtro novo.
+        listou = true;
+        return { data: [{ id: "camp-presa" }] };
+      }
+      if (ch.op === "update" && ch.payload?.ai_status === "queued") {
+        return { data: { id: "camp-presa" } };
+      }
+      return { data: null };
+    };
+
+    await tickCampaignAiStuckWatchdog();
+
+    expect(listou).toBe(true);
+    expect(q.enfileiradas).toEqual([{ kind: "campaign.ai-process", campaignId: "camp-presa" }]);
   });
 
   it("nenhuma travada: não reenfileira nada", async () => {

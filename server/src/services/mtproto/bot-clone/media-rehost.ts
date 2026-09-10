@@ -51,6 +51,12 @@ export interface DownloadAndRehostInput {
   fileName: string;
   tmpDir: string;
   maxBytes: number;
+  /**
+   * Pasta lógica dentro do bucket. Default "botclone" pra não mexer nas
+   * chaves já gravadas por jobs de clone de bot; as campanhas agendadas
+   * passam "campaign".
+   */
+  keyPrefix?: string;
 }
 
 /** Devolve a URL pública, ou null se a mídia passar do teto de tamanho. */
@@ -65,7 +71,7 @@ export async function downloadAndRehostMedia(
     if (size === null) return null; // grande demais — downloadMediaToPath já limpou o arquivo
 
     const buf = await readFile(tmpPath);
-    const key = `${input.tenantId}/botclone/${input.jobId}/${input.nodeIdHint}_${input.fileName}`;
+    const key = `${input.tenantId}/${input.keyPrefix ?? "botclone"}/${input.jobId}/${input.nodeIdHint}_${input.fileName}`;
     await ensureMediaBucket(deps.supabase);
     const { error } = await deps.supabase.storage.from("media").upload(key, buf, {
       contentType: guessContentType(input.fileName),

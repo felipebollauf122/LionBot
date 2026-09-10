@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { downloadAndRehostMedia } from "../../src/services/mtproto/bot-clone/media-rehost.js";
 import type { MediaRehostDeps } from "../../src/services/mtproto/bot-clone/media-rehost.js";
 
@@ -127,5 +128,55 @@ describe("downloadAndRehostMedia", () => {
     );
 
     expect(supabase.storage.createBucket).toHaveBeenCalledWith("media", { public: true });
+  });
+
+  it("keyPrefix muda a pasta no Storage e default continua botclone", async () => {
+    const uploads: string[] = [];
+    const rawClient = fakeRaw([Buffer.from("fake image bytes"), Buffer.from("fake image bytes")]);
+
+    const supabase = {
+      storage: {
+        listBuckets: vi.fn(async () => ({ data: [{ id: "media" }] })),
+        createBucket: vi.fn(async () => ({})),
+        from: (bucket: string) => ({
+          upload: vi.fn(async (key: string) => {
+            uploads.push(key);
+            return { error: null };
+          }),
+          getPublicUrl: (key: string) => ({
+            data: { publicUrl: `https://fake.supabase.co/storage/v1/object/public/${bucket}/${key}` },
+          }),
+        }),
+      },
+    } as unknown as MediaRehostDeps["supabase"];
+
+    await downloadAndRehostMedia(
+      { raw: rawClient, supabase },
+      {
+        media: {},
+        tenantId: "t1",
+        jobId: "j1",
+        nodeIdHint: "n1",
+        fileName: "a.jpg",
+        tmpDir: tmpdir(),
+        maxBytes: 1000,
+        keyPrefix: "campaign",
+      },
+    );
+    expect(uploads[0]).toBe("t1/campaign/j1/n1_a.jpg");
+
+    await downloadAndRehostMedia(
+      { raw: rawClient, supabase },
+      {
+        media: {},
+        tenantId: "t1",
+        jobId: "j1",
+        nodeIdHint: "n2",
+        fileName: "b.jpg",
+        tmpDir: tmpdir(),
+        maxBytes: 1000,
+      },
+    );
+    expect(uploads[1]).toBe("t1/botclone/j1/n2_b.jpg");
   });
 });

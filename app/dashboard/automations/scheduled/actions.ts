@@ -726,6 +726,18 @@ export async function launchScheduledCampaign(
     if (campaign.status === "running") {
       return { ok: false, error: "Esta campanha já está publicando." };
     }
+    // Publicar durante o tratamento por IA era o outro lado de um bloqueador
+    // da revisão: o worker de IA termina depois e devolve a campanha pra
+    // 'draft' — e como o poller só enfileira status='running', a publicação
+    // parava no meio da sequência sem erro, sem badge e sem last_error. O
+    // worker agora recusa esse rebaixamento (CAS de estado em
+    // campaign-ai-handler.ts); aqui a corrida nem começa.
+    if (campaign.status === "ai_processing") {
+      return {
+        ok: false,
+        error: "A IA ainda está tratando esta campanha. Espere ela terminar pra publicar.",
+      };
+    }
 
     const startAt = new Date(startAtIso);
     if (Number.isNaN(startAt.getTime())) {
@@ -793,20 +805,44 @@ export async function launchScheduledCampaign(
       };
     }
 
+    // `total_messages` é o denominador de "N/M enviadas" no cabeçalho, e
+    // `sent_count` NUNCA é zerado numa retomada. Gravar só `agenda.length`
+    // (as pendentes que sobraram) fazia uma campanha retomada mostrar
+    // "5/3 enviadas". O total é a fila inteira que já passou por aqui: o que
+    // terminou (enviado ou falho) mais o que acabou de ser agendado. As
+    // descartadas ficam de fora de propósito — elas não vão ao ar.
+    const { count: jaTerminadas } = await supabase
+      .from("mtproto_scheduled_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .in("status", ["sent", "failed"]);
+
     const { data: publicada, error } = await supabase
       .from("mtproto_scheduled_campaigns")
       .update({
         status: "running",
         start_at: startAt.toISOString(),
         started_at: new Date().toISOString(),
-        total_messages: agenda.length,
+        total_messages: (jaTerminadas ?? 0) + agenda.length,
         last_error: null,
+        // Retomada é um ciclo novo: manter o completed_at da rodada anterior
+        // deixaria a campanha "concluída em" uma data no passado enquanto
+        // publica.
+        completed_at: null,
       })
       .eq("id", campaignId)
+      // CAS de estado, não só id: entre a leitura lá em cima e esta escrita a
+      // campanha pode ter entrado em 'running' (outra aba) ou em
+      // 'ai_processing' (o clone terminou e enfileirou a IA). Sem isto as
+      // duas recusas acima seriam só conselho.
+      .in("status", ["draft", "paused", "completed", "failed"])
       .select("id");
     if (error) return { ok: false, error: `Não deu pra publicar: ${error.message}` };
     if (!publicada || publicada.length === 0) {
-      return { ok: false, error: "Campanha não encontrada (ou sem permissão)." };
+      return {
+        ok: false,
+        error: "O estado da campanha mudou. Recarregue a página e tente de novo.",
+      };
     }
 
     revalidatePath(rota(campaignId));

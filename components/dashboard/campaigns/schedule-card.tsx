@@ -59,13 +59,21 @@ export function ScheduleCard({
   const ultima = agenda.at(-1)?.scheduledAt ?? null;
 
   const jaRodando = status === "running";
+  // Publicar no meio do tratamento por IA rebaixava a campanha pra 'draft'
+  // quando o worker terminasse — e o poller, que só enfileira
+  // status='running', parava a sequência sem erro nenhum. A action recusa
+  // por conta própria (a tela não é a única porta), mas um botão que aceita
+  // o clique pra devolver erro é pior que um botão que explica.
+  const emTratamentoIa = status === "ai_processing";
   const motivoDesabilitado = !hasDestination
     ? "Escolha o canal de destino antes de publicar."
-    : agenda.length === 0
-      ? "Não há mensagens pendentes para publicar."
-      : jaRodando
-        ? "Esta campanha já está publicando."
-        : null;
+    : emTratamentoIa
+      ? "A IA ainda está tratando esta campanha. Espere ela terminar pra publicar."
+      : agenda.length === 0
+        ? "Não há mensagens pendentes para publicar."
+        : jaRodando
+          ? "Esta campanha já está publicando."
+          : null;
 
   function salvarAgenda() {
     if (Number.isNaN(dataInicio.getTime())) return;

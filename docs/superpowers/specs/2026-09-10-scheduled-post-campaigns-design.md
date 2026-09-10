@@ -304,7 +304,13 @@ export function buildTreatmentPrompt(batch, opts): { system: string; user: strin
 export function applyTreatment(row, t, opts): Partial<StagedRow>;
 ```
 
-`applyTreatment` é onde moram as regras que não podem depender do humor do modelo: só preenche `content_text_original` se ainda for null; só aplica `delaySeconds` se `ai_smart_delay` estiver ligado; só aceita `rewrite` se `ai_rewrite` estiver ligado (um modelo que devolve `rewrite` com a alavanca desligada é degradado pra `clean`); e trunca `delaySeconds` na faixa permitida.
+`applyTreatment` é onde moram as regras que não podem depender do humor do modelo. O invariante é total, sem exceção: **nunca altera `content_text` sem que a alavanca daquela ação esteja ligada.**
+
+- `clean` com `ai_clean` desligado vira `keep` — não escreve texto, não marca `ai_action`, não preenche o original. "Não destrutivo" era o enquadramento errado: tirar uma menção ainda muda o que o canal publica, e o que importa é se o dono autorizou alguma edição, não o tamanho dela.
+- `rewrite` com `ai_rewrite` desligado degrada pra `clean` **quando a limpeza está autorizada**, e vira `keep` quando não está.
+- `content_text_original` só é preenchido se ainda for null — reprocessar não pode destruir a única cópia do texto raspado.
+- `delaySeconds` só é aplicado com `ai_smart_delay` ligado, e é truncado na faixa permitida em vez de recusado.
+- `discard` exige `reason`; sem motivo legível o dono não teria como decidir restaurar.
 
 ### 5.3 Guardas do prompt
 
@@ -502,6 +508,26 @@ Seguem a convenção existente: núcleo puro com deps injetadas, sem rede e sem 
 - **Refatoração do composer.** É a fase com maior superfície de regressão. Mitigada por mover em vez de reescrever, manter `SocialProofComposer` como adaptador, e tratar os 8 testes de Prova Social como portão.
 - **Quota do Gemini.** Lotes de 20 sobre um teto de 500 dão ~25 chamadas por rascunho. Falha de lote degrada pra `partial` em vez de derrubar.
 - **Bot removido do destino entre o launch e o envio.** Cada mensagem falha individualmente com `error_message` legível; a campanha não trava.
+
+## 11.1 Variáveis de ambiente que precisam ser definidas no deploy
+
+Documentadas aqui e não em `server/.env.example` porque aquele arquivo está no
+`.gitignore` (regra `.env*`) — o que for escrito lá não chega a mais ninguém.
+
+| Variável | Onde | Sem ela |
+|---|---|---|
+| `INTERNAL_API_SECRET` | worker **e** app Next, com o MESMO valor | `/api/mtproto/ensure-bot-access` recusa toda chamada (fail-closed, de propósito) e o botão "Preparar o bot neste canal" devolve 503 para sempre |
+| `GEMINI_API_KEY` | só o worker | O tratamento por IA fica desativado em silêncio; o rascunho do clone continua funcionando, sem limpeza nem cadência automática |
+| `GEMINI_MODEL` | só o worker (opcional) | Usa `gemini-3.8-flash`, confirmado contra ai.google.dev em 2026-09-10 |
+
+Nenhuma delas usa `env()` com assert: o worker roda a automação inteira do
+Telegram, e uma chave de IA ausente nunca pode derrubar isso no boot.
+
+**Observação de segurança, fora do escopo desta entrega:** `server/.env.example`
+carrega o que aparenta ser uma chave `service_role` real, não um placeholder.
+Hoje está protegido pelo `.gitignore`, mas o nome do arquivo convida alguém a
+commitá-lo. Vale renomear para `.env` e criar um `.env.example` de verdade,
+só com os nomes das variáveis.
 
 ## 12. Fora de escopo
 

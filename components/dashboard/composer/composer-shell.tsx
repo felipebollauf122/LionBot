@@ -1,20 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { SocialProofChannel, SocialProofMessage } from "@/lib/types/database";
+import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { ChannelInput, MessageInput, SenderKind } from "@/lib/social-proof/types";
+import type { ComposerActions, ComposerMessageRow } from "@/lib/composer/types";
 import { normalizeReactions } from "@/lib/social-proof/reactions";
-import {
-  saveChannel,
-  saveMessage,
-  deleteMessage,
-  duplicateMessage,
-  setPinnedMessage,
-  reorderMessages,
-} from "@/lib/actions/social-proof-actions";
-import { ChannelCard } from "@/components/dashboard/social-proof/channel-card";
-import { OwnerCard } from "@/components/dashboard/social-proof/owner-card";
 import { MessageEditor } from "@/components/dashboard/social-proof/message-editor";
 import { QuickCompose } from "@/components/dashboard/social-proof/quick-compose";
 import { FeedPreview } from "@/components/dashboard/social-proof/feed-preview";
@@ -35,65 +26,90 @@ function mensagemVazia(kind: SenderKind = "member"): MessageInput {
   };
 }
 
-function paraInput(m: SocialProofMessage): MessageInput {
+function paraInput(m: ComposerMessageRow): MessageInput {
   return {
     id: m.id,
     sender_kind: m.sender_kind === "owner" ? "owner" : "member",
-    sender_name: m.sender_name,
-    sender_avatar_url: m.sender_avatar_url,
+    sender_name: m.sender_name ?? "",
+    sender_avatar_url: m.sender_avatar_url ?? null,
     kind: m.kind as MessageInput["kind"],
     content_text: m.content_text,
     media: Array.isArray(m.media) ? m.media : [],
     reactions: normalizeReactions(m.reactions),
     reply_to_id: m.reply_to_id,
-    display_time: m.display_time,
-    offset_seconds: m.offset_seconds,
-    views_count: m.views_count,
+    display_time: m.display_time ?? null,
+    // Os três últimos são da Prova Social. Uma linha de campanha não os traz,
+    // e o editor dela não os mostra — o zero aqui é só o que preenche o campo.
+    offset_seconds: m.offset_seconds ?? 0,
+    views_count: m.views_count ?? 0,
   };
 }
 
+/**
+ * As três colunas do composer — identidade, prévia do Telegram, editor — sem
+ * saber de que feature são. Quem monta a coluna 1, o cabeçalho e os campos
+ * extras do editor é o adaptador; as gravações chegam por `actions`.
+ */
 export function ComposerShell({
-  botId,
-  channel,
+  actions,
   messages,
+  channel,
+  title,
+  subtitle,
+  pinnedId = null,
+  pinnedText = "",
+  headerActions,
+  notice,
+  leftColumn,
+  leftColumnLabel = "Canal",
+  editorExtras,
+  emptyEditorHint = "Selecione ou crie uma mensagem para editar seus detalhes.",
 }: {
-  botId: string;
-  channel: SocialProofChannel | null;
-  messages: SocialProofMessage[];
+  actions: ComposerActions;
+  messages: ComposerMessageRow[];
+  /** Identidade usada pelo cabeçalho da prévia. */
+  channel: ChannelInput;
+  title: string;
+  subtitle: string;
+  /** Mensagem fixada. Ausente = a feature não fixa nada (a campanha não fixa). */
+  pinnedId?: string | null;
+  pinnedText?: string;
+  /** Botões do canto superior direito (Visualizar, Salvar, Publicar…). */
+  headerActions?: ReactNode;
+  /** Faixa acima das colunas: cada feature mostra ali o erro que é dela
+   *  (o do canal, na Prova Social) — o erro de mensagem é do shell. */
+  notice?: ReactNode;
+  /** Coluna 1. Prova Social passa ChannelCard+OwnerCard; campanha, os cards dela. */
+  leftColumn: ReactNode;
+  /** Rótulo da aba mobile da coluna 1. */
+  leftColumnLabel?: string;
+  /** Campos extras do editor, específicos da feature. */
+  editorExtras?: (value: MessageInput, onChange: (v: MessageInput) => void) => ReactNode;
+  /** Chip por mensagem no preview (status de envio, na campanha).
+   *  Declarado aqui porque é do contrato do shell, mas ainda não desenhado:
+   *  o FeedPreview não tem slot por bolha. Quem for ligar o chip abre o slot
+   *  no FeedPreview/ChannelFeed antes de passar esta prop. */
+  messageBadge?: (row: ComposerMessageRow) => ReactNode;
+  emptyEditorHint?: string;
 }) {
   const [pending, start] = useTransition();
-  const [erroCanal, setErroCanal] = useState<string | null>(null);
   const [erroMensagem, setErroMensagem] = useState<string | null>(null);
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [rascunho, setRascunho] = useState<MessageInput | null>(null);
   const [senderRapido, setSenderRapido] = useState<SenderKind>("owner");
   const [mobileTab, setMobileTab] = useState<"canal" | "chat">("chat");
 
-  const [canal, setCanal] = useState<ChannelInput>({
-    title: channel?.title ?? "",
-    avatar_url: channel?.avatar_url ?? null,
-    subscribers_label: channel?.subscribers_label ?? "",
-    is_verified: channel?.is_verified ?? false,
-    is_active: channel?.is_active ?? false,
-    owner_name: channel?.owner_name ?? "",
-    owner_avatar_url: channel?.owner_avatar_url ?? null,
-    owner_username: channel?.owner_username ?? "",
-    unread_badge: channel?.unread_badge ?? 0,
-  });
-
-  const pinnedId = channel?.pinned_message_id ?? null;
-  const pinnedText = messages.find((m) => m.id === pinnedId)?.content_text ?? "";
   const indice = selecionada ? messages.findIndex((m) => m.id === selecionada) : -1;
 
-  function correr(
-    fn: () => Promise<{ ok: true } | { ok: false; error: string }>,
-    onde: "canal" | "mensagem",
-  ) {
-    const setar = onde === "canal" ? setErroCanal : setErroMensagem;
-    setar(null);
+  // Em variável, e não `actions.setPinned` direto: assim o TypeScript mantém o
+  // estreitamento dentro dos callbacks, sem `!` em cima de uma prop opcional.
+  const setPinned = actions.setPinned;
+
+  function correr(fn: () => Promise<{ ok: true } | { ok: false; error: string }>) {
+    setErroMensagem(null);
     start(async () => {
       const r = await fn();
-      if (!r.ok) setar(r.error);
+      if (!r.ok) setErroMensagem(r.error);
     });
   }
 
@@ -108,69 +124,25 @@ export function ComposerShell({
     <div className="flex flex-col h-[calc(100dvh-56px)] md:h-[calc(100vh-theme(spacing.14))]">
       <header className="shrink-0 p-4 md:px-6 md:py-4 border-b border-(--border-subtle) flex flex-wrap items-center justify-between gap-3 bg-(--bg-body) z-10">
         <div>
-          <h1 className="text-xl font-semibold text-(--text-primary)">Prova Social</h1>
+          <h1 className="text-xl font-semibold text-(--text-primary)">{title}</h1>
           <p className="text-sm text-(--text-muted) hidden md:block">
-            Monte a prévia do canal que aparecerá no seu Mini App.
+            {subtitle}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <motion.a
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            href={`/mini/${botId}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 rounded-lg border border-(--border-default) px-3 py-2 text-sm text-(--text-secondary) transition-colors hover:text-(--text-primary) hover:bg-(--bg-hover)"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
-            <span className="hidden md:inline">Visualizar</span>
-          </motion.a>
-          <motion.button
-            whileHover={{ scale: pending ? 1 : 1.02 }}
-            whileTap={{ scale: pending ? 1 : 0.98 }}
-            type="button"
-            onClick={() => correr(() => saveChannel(botId, canal), "canal")}
-            disabled={pending}
-            className="relative flex items-center justify-center overflow-hidden rounded-lg bg-(--accent) px-4 py-2 text-sm font-semibold text-(--on-accent) disabled:opacity-80 transition-opacity"
-          >
-            <AnimatePresence mode="popLayout" initial={false}>
-              {pending ? (
-                <motion.div
-                  key="saving"
-                  initial={{ opacity: 0, y: -15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 15 }}
-                  className="flex items-center gap-2"
-                >
-                  <svg className="h-4 w-4 animate-spin text-(--on-accent)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  <span className="hidden md:inline">Salvando…</span>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="save"
-                  initial={{ opacity: 0, y: -15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 15 }}
-                >
-                  Salvar
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.button>
-        </div>
+        <div className="flex items-center gap-2">{headerActions}</div>
       </header>
 
       {/* Navegação Mobile */}
       <div className="md:hidden flex p-2 bg-(--bg-overlay) border-b border-(--border-subtle) shrink-0">
-        <button 
-          onClick={() => setMobileTab("canal")} 
+        <button
+          onClick={() => setMobileTab("canal")}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${mobileTab === "canal" ? "bg-(--accent) text-(--on-accent)" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
         >
-          Canal
+          {leftColumnLabel}
         </button>
-        <button 
-          onClick={() => setMobileTab("chat")} 
+        <button
+          onClick={() => setMobileTab("chat")}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${mobileTab === "chat" ? "bg-(--accent) text-(--on-accent)" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
         >
           Chat
@@ -179,31 +151,19 @@ export function ComposerShell({
 
       <div className="flex-1 min-h-0 relative">
         <div className="absolute inset-0 p-4 md:p-6 overflow-hidden">
-          <AnimatePresence>
-            {erroCanal && (
-              <motion.p
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                className="rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red) overflow-hidden"
-              >
-                {erroCanal}
-              </motion.p>
-            )}
-          </AnimatePresence>
+          {notice}
 
           <div className="h-full grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)_340px] xl:grid-cols-[320px_minmax(0,1fr)_400px] gap-4 md:gap-6 relative">
-            
+
             {/* Coluna 1: Canal */}
             <div className={`h-full overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-10 ${mobileTab === "canal" ? "block" : "hidden md:block"}`}>
-              <ChannelCard value={canal} onChange={setCanal} />
-              <OwnerCard value={canal} onChange={setCanal} />
+              {leftColumn}
             </div>
 
             {/* Coluna 2: Preview do Chat */}
             <div className={`h-full flex-col items-center overflow-hidden pb-10 ${mobileTab === "chat" ? "flex" : "hidden md:flex"}`}>
               <FeedPreview
-                channel={canal}
+                channel={channel}
                 messages={messages}
                 draft={rascunho}
                 pinnedText={pinnedText}
@@ -211,20 +171,22 @@ export function ComposerShell({
                 selectedId={selecionada}
                 disabled={pending}
                 onSelect={selecionar}
-                onReorder={(ids) => correr(() => reorderMessages(botId, ids), "mensagem")}
-                onDuplicate={(id) => correr(() => duplicateMessage(id, botId), "mensagem")}
-                onPin={(id) =>
-                  correr(() => setPinnedMessage(botId, pinnedId === id ? null : id), "mensagem")
+                onReorder={(ids) => correr(() => actions.reorderMessages(ids))}
+                onDuplicate={(id) => correr(() => actions.duplicateMessage(id))}
+                onPin={
+                  setPinned
+                    ? (id) => correr(() => setPinned(pinnedId === id ? null : id))
+                    : undefined
                 }
                 onDelete={(id) => {
-                  correr(() => deleteMessage(id, botId), "mensagem");
+                  correr(() => actions.deleteMessage(id));
                   if (selecionada === id) {
                     setSelecionada(null);
                     setRascunho(null);
                   }
                 }}
               />
-              
+
               <div className="shrink-0 w-full flex flex-col items-center mt-2">
                 <QuickCompose
                   senderKind={senderRapido}
@@ -232,7 +194,7 @@ export function ComposerShell({
                   disabled={pending}
                   onSend={async (text) => {
                     setErroMensagem(null);
-                    const r = await saveMessage(botId, {
+                    const r = await actions.saveMessage({
                       ...mensagemVazia(senderRapido),
                       content_text: text,
                     });
@@ -243,7 +205,7 @@ export function ComposerShell({
                     return true;
                   }}
                 />
-                
+
                 <button
                   type="button"
                   disabled={pending}
@@ -291,35 +253,39 @@ export function ComposerShell({
                     onChange={setRascunho}
                     saving={pending}
                     error={erroMensagem}
-                    onSave={() => correr(() => saveMessage(botId, rascunho), "mensagem")}
+                    extras={editorExtras?.(rascunho, setRascunho)}
+                    onSave={() => correr(() => actions.saveMessage(rascunho))}
                     onDuplicate={() => {
-                      if (selecionada) correr(() => duplicateMessage(selecionada, botId), "mensagem");
+                      if (selecionada) correr(() => actions.duplicateMessage(selecionada));
                     }}
                     onReply={() => {
                       setRascunho({ ...mensagemVazia(), reply_to_id: selecionada });
                       setSelecionada(null);
                       setErroMensagem(null);
                     }}
-                    onPin={() => {
-                      if (selecionada) {
-                        correr(
-                          () => setPinnedMessage(botId, pinnedId === selecionada ? null : selecionada),
-                          "mensagem",
-                        );
-                      }
-                    }}
+                    onPin={
+                      setPinned
+                        ? () => {
+                            if (selecionada) {
+                              correr(() =>
+                                setPinned(pinnedId === selecionada ? null : selecionada),
+                              );
+                            }
+                          }
+                        : undefined
+                    }
                     onDelete={() => {
                       if (!selecionada) {
                         setRascunho(null);
                         return;
                       }
-                      correr(() => deleteMessage(selecionada, botId), "mensagem");
+                      correr(() => actions.deleteMessage(selecionada));
                       setSelecionada(null);
                       setRascunho(null);
                     }}
                   />
                   {/* Botão de fechar só visível no mobile */}
-                  <button 
+                  <button
                     onClick={() => {
                       setSelecionada(null);
                       setRascunho(null);
@@ -337,7 +303,7 @@ export function ComposerShell({
                   exit={{ opacity: 0 }}
                   className="hidden md:flex items-center justify-center rounded-xl border border-dashed border-(--border-subtle) p-8 text-center text-sm text-(--text-muted) w-full h-fit py-20 bg-(--bg-input)/50"
                 >
-                  Selecione ou crie uma mensagem para editar seus detalhes.
+                  {emptyEditorHint}
                 </motion.aside>
               )}
             </AnimatePresence>

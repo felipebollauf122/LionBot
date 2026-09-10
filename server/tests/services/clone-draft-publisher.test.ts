@@ -1,0 +1,192 @@
+import { describe, it, expect, vi } from "vitest";
+import {
+  createDraftPublisher,
+  type DraftPublisherDeps,
+  type StagedRow,
+} from "../../src/services/mtproto/clone/draft-publisher.js";
+import type { SourceMessage } from "../../src/services/mtproto/clone/types.js";
+
+/** Mensagem de origem com um `raw` mínimo do que o publisher lê. */
+function m(
+  id: number,
+  raw: Record<string, unknown> = {},
+  over: Partial<SourceMessage> = {},
+): SourceMessage {
+  return {
+    id,
+    groupedId: null,
+    replyToMsgId: null,
+    topicId: null,
+    raw: { id, message: "", entities: undefined, media: null, ...raw },
+    ...over,
+  };
+}
+
+function deps(over: Partial<DraftPublisherDeps> = {}): DraftPublisherDeps & {
+  saved: StagedRow[];
+} {
+  const saved: StagedRow[] = [];
+  const base: DraftPublisherDeps = {
+    rehost: vi.fn(async (_raw, hint) => `https://cdn.test/${hint}`),
+    upsert: vi.fn(async (rows: StagedRow[]) => {
+      saved.push(...rows);
+    }),
+    // Substitui SourceReader.mediaPlanInput sem instanceof: lê o mesmo shape
+    // que os fakes de `m()` produzem.
+    planInput: (raw, copyPolls) => {
+      const media = (raw as unknown as { media: { className: string } | null }).media;
+      const msg = (raw as unknown as { message?: string }).message ?? "";
+      return {
+        mediaClassName: media ? media.className : null,
+        documentAttributeClassNames: [],
+        hasText: msg.trim() !== "",
+        copyPolls,
+      };
+    },
+    extractInlineLinks: vi.fn(() => undefined),
+    pollData: vi.fn(() => null),
+    originalFileName: vi.fn(() => null),
+    copyPolls: false,
+    copyButtons: false,
+    rewrite: null,
+  };
+  return { ...base, ...over, saved };
+}
+
+describe("createDraftPublisher", () => {
+  it("mensagem de texto vira uma linha e devolve o source id como destMsgId", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+
+    const out = await publish([m(42, { message: "olá" })], null);
+
+    expect(out).toEqual([{ status: "copied", destMsgId: 42 }]);
+    expect(d.saved).toHaveLength(1);
+    expect(d.saved[0]).toMatchObject({
+      sourceMsgId: 42,
+      kind: "text",
+      contentText: "olá",
+      media: [],
+      position: 0,
+      replyToSourceMsgId: null,
+    });
+  });
+
+  it("mensagem vazia sem mídia é pulada, sem gravar linha", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+
+    const out = await publish([m(1, { message: "" })], null);
+
+    expect(out).toEqual([{ status: "skipped", reason: "empty_message" }]);
+    expect(d.saved).toHaveLength(0);
+  });
+
+  it("foto rehospeda e grava a URL em media", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+
+    const out = await publish(
+      [m(7, { message: "legenda", media: { className: "MessageMediaPhoto" } })],
+      null,
+    );
+
+    expect(out).toEqual([{ status: "copied", destMsgId: 7 }]);
+    expect(d.saved[0]).toMatchObject({
+      kind: "photo",
+      contentText: "legenda",
+      media: [{ url: "https://cdn.test/msg_7", type: "photo" }],
+    });
+  });
+
+  it("mídia grande demais (rehost devolve null) vira skipped file_too_large", async () => {
+    const d = deps({ rehost: vi.fn(async () => null) });
+    const publish = createDraftPublisher(d);
+
+    const out = await publish(
+      [m(8, { media: { className: "MessageMediaPhoto" } })],
+      null,
+    );
+
+    expect(out).toEqual([{ status: "skipped", reason: "file_too_large" }]);
+    expect(d.saved).toHaveLength(0);
+  });
+
+  it("álbum vira UMA linha com N mídias, mas devolve um outcome por mensagem", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(10, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g1" }),
+      m(11, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g1" }),
+      m(12, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g1" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "copied", destMsgId: 10 },
+      { status: "copied", destMsgId: 11 },
+      { status: "copied", destMsgId: 12 },
+    ]);
+    expect(d.saved).toHaveLength(1);
+    expect(d.saved[0]).toMatchObject({ kind: "album", sourceMsgId: 10, contentText: "capa" });
+    expect(d.saved[0].media).toHaveLength(3);
+  });
+
+  it("replyToDestId chega na linha como replyToSourceMsgId", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+
+    await publish([m(20, { message: "resposta" })], 15);
+
+    expect(d.saved[0].replyToSourceMsgId).toBe(15);
+  });
+
+  it("enquete só vira linha com copyPolls ligado", async () => {
+    const poll = {
+      question: "gostou?",
+      options: ["sim", "não"],
+      isAnonymous: true,
+      allowsMultipleAnswers: false,
+    };
+    const desligado = deps({ pollData: vi.fn(() => poll) });
+    const publishOff = createDraftPublisher(desligado);
+    expect(await publishOff([m(30, { media: { className: "MessageMediaPoll" } })], null)).toEqual([
+      { status: "skipped", reason: "poll_disabled" },
+    ]);
+    expect(desligado.saved).toHaveLength(0);
+
+    const ligado = deps({ pollData: vi.fn(() => poll), copyPolls: true });
+    const publishOn = createDraftPublisher(ligado);
+    expect(await publishOn([m(30, { media: { className: "MessageMediaPoll" } })], null)).toEqual([
+      { status: "copied", destMsgId: 30 },
+    ]);
+    expect(ligado.saved[0]).toMatchObject({ kind: "poll", poll });
+  });
+
+  it("botões inline só são gravados com copyButtons ligado", async () => {
+    const links = [{ label: "comprar", url: "https://x.test" }];
+    const d = deps({ extractInlineLinks: vi.fn(() => links), copyButtons: true });
+    const publish = createDraftPublisher(d);
+
+    await publish([m(40, { message: "oferta" })], null);
+
+    expect(d.saved[0].inlineLinks).toEqual(links);
+  });
+
+  it("rewrite substitui texto, entities e links antes de gravar", async () => {
+    const d = deps({
+      rewrite: vi.fn(async () => ({
+        text: "texto limpo",
+        entities: [{ className: "MessageEntityBold" }],
+        inlineLinks: undefined,
+      })),
+    });
+    const publish = createDraftPublisher(d);
+
+    await publish([m(50, { message: "texto com @concorrente" })], null);
+
+    expect(d.saved[0].contentText).toBe("texto limpo");
+    expect(d.saved[0].entities).toEqual([{ className: "MessageEntityBold" }]);
+  });
+});

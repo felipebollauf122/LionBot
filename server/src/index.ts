@@ -12,7 +12,7 @@ import { MtprotoClient } from "./services/mtproto/client.js";
 import { ensureBotAccess } from "./services/mtproto/ensure-bot-access.js";
 import { isAuthorizedInternalRequest } from "./services/mtproto/internal-auth.js";
 import { GeminiClient } from "./services/ai/gemini.js";
-import { buildAssistPrompt, type AiAssistAction } from "./services/ai/assist.js";
+import { buildAssistPrompt, mediaKindsParaIa, type AiAssistAction } from "./services/ai/assist.js";
 
 interface Bot {
   id: string;
@@ -617,10 +617,12 @@ app.post("/api/ai/assist", async (req, res) => {
       return;
     }
 
-    const { action, text, mediaKinds } = req.body as {
+    const { action, text, mediaKinds, kind } = req.body as {
       action?: AiAssistAction;
       text?: string | null;
       mediaKinds?: string[];
+      /** `kind` da linha. E ele que distingue documento de foto — ver mediaKindsParaIa. */
+      kind?: string | null;
     };
     if (action !== "rewrite" && action !== "caption" && action !== "summarize") {
       res.status(400).json({ error: "ação inválida" });
@@ -633,7 +635,7 @@ app.post("/api/ai/assist", async (req, res) => {
       return;
     }
     const out = await gemini.generateJson<{ text: string }>(
-      buildAssistPrompt(action, text ?? null, mediaKinds ?? []),
+      buildAssistPrompt(action, text ?? null, mediaKindsParaIa(kind, mediaKinds ?? [])),
     );
     res.json({ text: out.text });
   } catch (error) {

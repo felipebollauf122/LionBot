@@ -33,6 +33,33 @@ const INSTRUCAO: Record<AiAssistAction, string> = {
   summarize: "Resuma a postagem abaixo em no máximo duas frases, mantendo a chamada para ação.",
 };
 
+/**
+ * O que a IA deve ouvir sobre a midia de uma linha.
+ *
+ * `media[].type` e dica de RENDERIZACAO e so admite 'photo'|'video'|'audio' —
+ * e o `MediaItem` que a UI le. Documento nao tem representacao nesse union, e
+ * o mapeador do rascunho (`toStagedMediaType` em draft-publisher.ts) grava
+ * 'photo' como ultimo recurso. Resultado: a IA era informada de que um PDF e
+ * uma imagem, e "Criar texto para a imagem" pedia legenda de uma foto que nao
+ * existe.
+ *
+ * Quem diz o que a mensagem E e o `kind` da linha, e ele ja carrega
+ * 'document' com fidelidade. Quando ele fala 'document', e ele que vale.
+ *
+ * A correcao mora aqui, e nao em `toStagedMediaType`, de proposito: aquele
+ * union e contrato com a UI (MediaItem), e `normalizeMedia` DESCARTA tipo que
+ * nao esteja nele — alarga-lo pra 'document' poria no jsonb um valor que a
+ * previa joga fora e o MediaPicker rotula errado, trocando uma mentira por
+ * outra. O `kind` da linha sempre foi a fonte honesta.
+ */
+export function mediaKindsParaIa(
+  rowKind: string | null | undefined,
+  mediaTypes: string[],
+): string[] {
+  if (rowKind === "document") return ["document"];
+  return mediaTypes;
+}
+
 export function buildAssistPrompt(
   action: AiAssistAction,
   texto: string | null,

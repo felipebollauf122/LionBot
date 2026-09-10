@@ -349,6 +349,38 @@ describe("handleScheduledSend — fiação do flood da Bot API", () => {
     ).toBe(true);
   });
 
+  it("o contador é RECONTADO da tabela de mensagens, não lido-e-somado", async () => {
+    // Read-modify-write perde atualização: dois desfechos quase simultâneos
+    // leem 4, os dois gravam 5, e uma publicação some do contador. Contar
+    // converge — o status da linha já está gravado quando a contagem roda.
+    h.responder = (ch) => {
+      if (
+        ch.table === "mtproto_scheduled_messages" &&
+        ch.op === "select" &&
+        ch.filtros.status === "sent"
+      ) {
+        return { count: 7 };
+      }
+      return responderPadrao(ch);
+    };
+
+    await handleScheduledSend("m1");
+
+    const contador = h.chamadas.find(
+      (c) => c.table === "mtproto_scheduled_campaigns" && c.payload?.sent_count !== undefined,
+    );
+    expect(contador?.payload?.sent_count).toBe(7);
+    // E nunca leu o valor atual da coluna pra somar 1 em cima.
+    expect(
+      h.chamadas.some(
+        (c) => c.table === "mtproto_scheduled_campaigns" && c.op === "select" && !c.filtros.status,
+      ),
+    ).toBe(true); // a leitura da campanha (status/destino) segue existindo
+    expect(
+      h.chamadas.filter((c) => c.table === "mtproto_scheduled_campaigns" && c.op === "select"),
+    ).toHaveLength(1);
+  });
+
   it("quem teve o claim roubado não grava resultado nem mexe no contador (ABA)", async () => {
     // O sweep devolveu a linha pra 'pending' no meio da publicação, outro
     // worker reivindicou (status voltou a 'sending', claimed_at NOVO) e a

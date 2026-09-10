@@ -29,7 +29,13 @@ function mensagemVazia(kind: SenderKind = "member"): MessageInput {
 function paraInput(m: ComposerMessageRow): MessageInput {
   return {
     id: m.id,
-    sender_kind: m.sender_kind === "owner" ? "owner" : "member",
+    // Fallback 'owner', igual ao de feed-preview.tsx. Os dois divergiam: o
+    // preview lia ausente como 'owner' (e post de canal) e este aqui como
+    // 'member', entao abrir uma mensagem de CAMPANHA — cuja tabela nao tem
+    // coluna sender_kind — trocava a bolha de dona pra membro no rascunho da
+    // previa. Na Prova Social a coluna e NOT NULL DEFAULT 'member' (073),
+    // entao o fallback nunca dispara e nada muda por la.
+    sender_kind: m.sender_kind === "member" ? "member" : "owner",
     sender_name: m.sender_name ?? "",
     sender_avatar_url: m.sender_avatar_url ?? null,
     kind: m.kind as MessageInput["kind"],

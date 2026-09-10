@@ -253,7 +253,7 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
       );
       return;
     }
-    await incrementar(campaign.id, "sent");
+    await recontar(campaign.id, "sent");
     if (claimed.is_pinned) {
       await bot.pin(destMsgId).catch((e) => console.warn("[postcampaign] pin falhou:", e));
     }
@@ -447,21 +447,30 @@ async function falhar(
     console.warn(`[postcampaign] falha da mensagem ${messageId} ignorada: claim já não era nosso`);
     return;
   }
-  await incrementar(campaignId, "failed");
+  await recontar(campaignId, "failed");
   await assentarCampanhaSeVazia(campaignId);
 }
 
-async function incrementar(campaignId: string, kind: "sent" | "failed"): Promise<void> {
+/**
+ * Recalcula o contador a partir da FONTE (as linhas de mensagem), em vez de
+ * ler o valor atual e somar 1.
+ *
+ * Read-modify-write perde atualização sob concorrência: dois desfechos quase
+ * simultâneos leem 4, os dois gravam 5, e uma publicação some do contador. O
+ * poller garante uma mensagem em voo por campanha — mas essa garantia é do
+ * POLLER, e o job também chega por retry do BullMQ e pelo sweep de claim
+ * órfão. Um contador não pode depender de invariante de outro módulo.
+ *
+ * Contar converge: as duas escritas concorrentes leem a mesma tabela de
+ * mensagens, e o status da linha é gravado ANTES desta chamada — então todo
+ * valor escrito é uma contagem que existiu de verdade, e a última é a certa.
+ * Custa as mesmas duas idas ao banco que o read-modify-write custava.
+ */
+async function recontar(campaignId: string, kind: "sent" | "failed"): Promise<void> {
   const coluna = kind === "sent" ? "sent_count" : "failed_count";
-  const { data } = await supabase
-    .from("mtproto_scheduled_campaigns")
-    .select(coluna)
-    .eq("id", campaignId)
-    .single();
-  const atual = ((data as Record<string, number> | null)?.[coluna] ?? 0) + 1;
   await supabase
     .from("mtproto_scheduled_campaigns")
-    .update({ [coluna]: atual })
+    .update({ [coluna]: await contar(campaignId, kind) })
     .eq("id", campaignId);
 }
 

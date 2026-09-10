@@ -13,6 +13,7 @@ import { supabase } from "../db.js";
 import { config } from "../config.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
 import { GeminiClient } from "../services/ai/gemini.js";
+import { mediaKindsParaIa } from "../services/ai/assist.js";
 import {
   applyTreatment,
   buildTreatmentPrompt,
@@ -199,7 +200,7 @@ export async function handleCampaignAiProcess(campaignId: string): Promise<void>
     async listarMensagens(id) {
       const { data: rows } = await supabase
         .from("mtproto_scheduled_messages")
-        .select("id, position, content_text, content_text_original, media, inline_links")
+        .select("id, position, kind, content_text, content_text_original, media, inline_links")
         .eq("campaign_id", id)
         .order("position", { ascending: true });
 
@@ -211,8 +212,13 @@ export async function handleCampaignAiProcess(campaignId: string): Promise<void>
           id: r.id as string,
           position: r.position as number,
           text: r.content_text as string | null,
-          // A IA precisa saber que há mídia pra escrever legenda coerente.
-          mediaKinds: ((r.media as Array<{ type: string }>) ?? []).map((m) => m.type),
+          // A IA precisa saber que ha midia pra escrever legenda coerente — e
+          // QUE midia. `media[].type` sozinho diz "photo" pra um PDF (ver
+          // mediaKindsParaIa); o `kind` da linha e quem sabe a verdade.
+          mediaKinds: mediaKindsParaIa(
+            r.kind as string | null,
+            ((r.media as Array<{ type: string }>) ?? []).map((m) => m.type),
+          ),
           hasButtons: Boolean(r.inline_links),
         },
       }));

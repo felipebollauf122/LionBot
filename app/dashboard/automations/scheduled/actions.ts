@@ -684,7 +684,7 @@ export async function aiAssist(
 
     const { data: row } = await supabase
       .from("mtproto_scheduled_messages")
-      .select("id, content_text, content_text_original, media")
+      .select("id, kind, content_text, content_text_original, media")
       .eq("id", messageId)
       .eq("campaign_id", campaignId)
       .maybeSingle();
@@ -705,6 +705,11 @@ export async function aiAssist(
         body: JSON.stringify({
           action,
           text: row.content_text,
+          // O `kind` vai junto porque `media[].type` mente sobre documento: o
+          // union do MediaItem nao tem 'document' e o rascunho grava 'photo'.
+          // Quem resolve e `mediaKindsParaIa`, no worker — um lugar so, do
+          // lado que monta o prompt.
+          kind: row.kind,
           mediaKinds: ((row.media as Array<{ type: string }>) ?? []).map((m) => m.type),
         }),
       });

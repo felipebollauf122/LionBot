@@ -11,6 +11,7 @@
 // DE VERDADE nos testes e só substituir claim/leitura/rede/escrita.
 import { supabase } from "../db.js";
 import { config } from "../config.js";
+import { enqueueMtproto } from "../queue-mtproto.js";
 import { GeminiClient } from "../services/ai/gemini.js";
 import {
   applyTreatment,
@@ -165,7 +166,7 @@ export async function handleCampaignAiProcess(campaignId: string): Promise<void>
       // Claim CAS com TTL, mesmo padrão de 030/050. Sem isso a campanha fica
       // presa em ai_processing pra sempre se o worker morrer no meio.
       const stale = new Date(agora.getTime() - AI_CLAIM_STALE_MS).toISOString();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("mtproto_scheduled_campaigns")
         .update({ ai_status: "processing", ai_started_at: agora.toISOString() })
         .eq("id", id)
@@ -173,6 +174,16 @@ export async function handleCampaignAiProcess(campaignId: string): Promise<void>
         .or(`ai_started_at.is.null,ai_started_at.lt.${stale}`)
         .select("ai_clean, ai_rewrite, ai_smart_delay")
         .maybeSingle();
+      if (error) {
+        // Erro de verdade (filtro malformado, conectividade, permissão) é
+        // uma classe diferente de "outro worker já reivindicou" — antes esta
+        // função destructurava só `{ data }` e descartava `error`, então os
+        // dois casos ficavam indistinguíveis e uma falha real neste worker
+        // desassistido não deixava sinal diagnóstico nenhum (mesmo padrão de
+        // clone-handler.ts).
+        console.error(`[campaign-ai] falha ao reivindicar trava da campanha ${id}: ${error.message}`);
+        return null;
+      }
       if (!data) return null;
       return {
         opts: {
@@ -229,4 +240,87 @@ export async function handleCampaignAiProcess(campaignId: string): Promise<void>
   };
 
   await processarCampanhaIa(campaignId, deps);
+}
+
+// ---------------------------------------------------------------------------
+// tickCampaignAiStuckWatchdog — chamado por um setInterval em queue.ts.
+// Espelha tickBotCloneStuckJobsWatchdog (bot-clone-handler.ts): campaign.ai-
+// process é enfileirado uma ÚNICA vez, por clone-handler.ts, com attempts:2 e
+// backoff fixo de 3s (queue-mtproto.ts) — muitíssimo menor que
+// AI_CLAIM_STALE_MS (10min). Se o worker morre no meio de um lote, o retry do
+// BullMQ chega cedo demais: a trava CAS (ai_started_at) ainda está fresca,
+// reivindicar() não pega (ai_status continua 'processing'), as 2 tentativas
+// se esgotam, e ninguém jamais reenfileira de novo — a campanha fica presa em
+// status='ai_processing'/ai_status='processing' pra sempre, e o dono vê "IA
+// processando" sem fim. setInterval, não BullMQ repeat: este codebase não usa
+// essa feature em lugar nenhum (mesmo padrão do watchdog do bot-clone e dos
+// outros pollers em queue.ts).
+// ---------------------------------------------------------------------------
+
+/**
+ * O que o watchdog precisa pra decidir e agir, sem tocar banco/fila
+ * diretamente — mesmo motivo de CampaignAiDeps: a decisão (quais campanhas
+ * estão travadas o bastante pra merecer reenfileiramento, e o que fazer com
+ * cada uma) precisa ser testável sem Postgres.
+ */
+export interface CampaignAiWatchdogDeps {
+  /** Ids de campanhas com ai_status='processing' e ai_started_at anterior a staleBefore. */
+  listarTravadas(staleBefore: Date): Promise<string[]>;
+  /** CAS: só destrava (ai_status -> 'queued') se ainda estiver 'processing'. Devolve se destravou. */
+  destravar(campaignId: string): Promise<boolean>;
+  /** Reenfileira campaign.ai-process pra uma campanha recém-destravada. */
+  reenfileirar(campaignId: string): Promise<void>;
+}
+
+/**
+ * Decisão pura do watchdog: lista as travadas, tenta destravar cada uma por
+ * CAS — o que protege contra duas varreduras concorrentes (ou uma varredura
+ * e o próprio worker) disputando a mesma campanha: quem perde o CAS não
+ * reenfileira de novo, evitando um reenfileiramento duplicado.
+ */
+export async function varrerCampanhasIaTravadas(
+  deps: CampaignAiWatchdogDeps,
+  agora: Date = new Date(),
+): Promise<void> {
+  const staleBefore = new Date(agora.getTime() - AI_CLAIM_STALE_MS);
+  const travadas = await deps.listarTravadas(staleBefore);
+  for (const campaignId of travadas) {
+    const destravou = await deps.destravar(campaignId);
+    if (!destravou) continue; // outra varredura (ou o próprio worker) já resolveu nesse meio-tempo
+    console.warn(
+      `[campaign-ai.watchdog] campanha ${campaignId} travada em ai_status='processing' (worker provavelmente caiu no meio do lote) — reiniciando pra retomar`,
+    );
+    await deps.reenfileirar(campaignId).catch((err) =>
+      console.error(`[campaign-ai.watchdog] reenqueue falhou pra campanha ${campaignId}:`, err),
+    );
+  }
+}
+
+/** Fiação real: reivindica a lista no Supabase, destrava por CAS, reenfileira no BullMQ. */
+export async function tickCampaignAiStuckWatchdog(): Promise<void> {
+  const deps: CampaignAiWatchdogDeps = {
+    async listarTravadas(staleBefore) {
+      const { data } = await supabase
+        .from("mtproto_scheduled_campaigns")
+        .select("id")
+        .eq("ai_status", "processing")
+        .lt("ai_started_at", staleBefore.toISOString())
+        .limit(50);
+      return (data ?? []).map((r) => r.id as string);
+    },
+    async destravar(campaignId) {
+      const { data } = await supabase
+        .from("mtproto_scheduled_campaigns")
+        .update({ ai_status: "queued", ai_started_at: null })
+        .eq("id", campaignId)
+        .eq("ai_status", "processing")
+        .select("id")
+        .maybeSingle();
+      return Boolean(data);
+    },
+    async reenfileirar(campaignId) {
+      await enqueueMtproto({ kind: "campaign.ai-process", campaignId });
+    },
+  };
+  await varrerCampanhasIaTravadas(deps);
 }

@@ -798,5 +798,30 @@ export function startWorkers(): void {
   setInterval(() => tickBotCloneWatchdogSafe(), 10 * 60 * 1000);
   setTimeout(() => tickBotCloneWatchdogSafe(), 90_000); // 90s após boot
 
-  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + zuckpay-poller + nowpayments-poller + channel-monitor + botclone-watchdog started");
+  // Campaign-AI: watchdog pra campanha travada em ai_status='processing' —
+  // campaign.ai-process é enfileirado uma ÚNICA vez (clone-handler.ts), com
+  // attempts:2 e backoff fixo de 3s (queue-mtproto.ts). Se o worker morre no
+  // meio de um lote, o retry do BullMQ chega cedo demais: a trava CAS
+  // (ai_started_at) ainda está fresca, reivindicar() não pega, as 2
+  // tentativas se esgotam, e ninguém jamais reenfileira de novo sozinho —
+  // mesma classe de bug do watchdog do bot-clone acima, uma tabela adiante.
+  // setInterval, não BullMQ repeat: este codebase não usa essa feature em
+  // lugar nenhum (mesmo padrão dos outros pollers acima).
+  let campaignAiWatchdogRunning = false;
+  async function tickCampaignAiWatchdogSafe(): Promise<void> {
+    if (campaignAiWatchdogRunning) return;
+    campaignAiWatchdogRunning = true;
+    try {
+      const { tickCampaignAiStuckWatchdog } = await import("./workers/campaign-ai-handler.js");
+      await tickCampaignAiStuckWatchdog();
+    } catch (err) {
+      console.error("[campaign-ai.watchdog] Error:", err);
+    } finally {
+      campaignAiWatchdogRunning = false;
+    }
+  }
+  setInterval(() => tickCampaignAiWatchdogSafe(), 10 * 60 * 1000);
+  setTimeout(() => tickCampaignAiWatchdogSafe(), 90_000); // 90s após boot
+
+  console.log("BullMQ workers + black deletion + remarketing + evpay-poller + zuckpay-poller + nowpayments-poller + channel-monitor + botclone-watchdog + campaign-ai-watchdog started");
 }

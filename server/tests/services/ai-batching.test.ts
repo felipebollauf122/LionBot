@@ -3,11 +3,29 @@ import {
   fatiarComContexto,
   processarCampanhaIa,
   handleCampaignAiProcess,
+  varrerCampanhasIaTravadas,
+  tickCampaignAiStuckWatchdog,
   AI_CLAIM_STALE_MS,
   type CampaignAiDeps,
+  type CampaignAiWatchdogDeps,
   type DraftRowForAi,
 } from "../../src/workers/campaign-ai-handler.js";
 import type { AiTreatment } from "../../src/services/ai/content-treatment.js";
+
+// Mock do enqueueMtproto pra watchdog não puxar BullMQ/ioredis de verdade no
+// import (mesmo motivo dos mocks de queue.js em flow-processor.test.ts):
+// tickCampaignAiStuckWatchdog importa enqueueMtproto de queue-mtproto.js, que
+// abre uma conexão IORedis real no module-load se não for mockado.
+const q = vi.hoisted(() => ({
+  enfileiradas: [] as Array<{ kind: string; campaignId: string }>,
+}));
+
+vi.mock("../../src/queue-mtproto.js", () => ({
+  enqueueMtproto: (data: { kind: string; campaignId: string }) => {
+    q.enfileiradas.push(data);
+    return Promise.resolve();
+  },
+}));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mocks pra "handleCampaignAiProcess — fiação real" (fim do arquivo), no
@@ -25,6 +43,8 @@ interface ChamadaDb {
   payload?: Record<string, unknown>;
   filtros: Record<string, unknown>;
   orExpr?: string;
+  ltFiltros?: Record<string, unknown>;
+  limite?: number;
 }
 
 interface RespostaDb {
@@ -38,6 +58,8 @@ interface FakeQuery {
   eq: (coluna: string, valor: unknown) => FakeQuery;
   in: (coluna: string, valor: unknown) => FakeQuery;
   or: (expr: string) => FakeQuery;
+  lt: (coluna: string, valor: unknown) => FakeQuery;
+  limit: (n: number) => FakeQuery;
   order: (...args: unknown[]) => FakeQuery;
   maybeSingle: () => Promise<RespostaDb>;
   then: (ok: (r: RespostaDb) => unknown, falha?: (e: unknown) => unknown) => Promise<unknown>;
@@ -78,6 +100,14 @@ vi.mock("../../src/db.js", () => {
       },
       or: (expr) => {
         ch.orExpr = expr;
+        return q;
+      },
+      lt: (coluna, valor) => {
+        ch.ltFiltros = { ...(ch.ltFiltros ?? {}), [coluna]: valor };
+        return q;
+      },
+      limit: (n) => {
+        ch.limite = n;
         return q;
       },
       order: () => q,
@@ -475,5 +505,181 @@ describe("handleCampaignAiProcess — fiação real (Supabase + GeminiClient)", 
 
     expect(g.chamadasIa).toHaveLength(0);
     expect(h.chamadas.some((c) => c.table === "mtproto_scheduled_messages")).toBe(false);
+  });
+
+  it("erro real no claim (não é 'já reivindicado por outro'): loga e recusa, não segue", async () => {
+    // Defeito: reivindicar() destructurava só `{ data }`, descartando `error`
+    // — uma falha de verdade (filtro malformado, conectividade, permissão)
+    // virava indistinguível do caso comum "outro worker já reivindicou". Sem
+    // sinal nenhum, um erro real neste worker desassistido nunca aparecia em
+    // lugar algum.
+    const erro = { message: "permission denied for table mtproto_scheduled_campaigns" };
+    h.responder = (ch) => {
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.payload?.ai_status === "processing") {
+        return { data: null, error: erro };
+      }
+      return { data: null };
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await handleCampaignAiProcess("camp-err");
+
+    expect(g.chamadasIa).toHaveLength(0);
+    expect(h.chamadas.some((c) => c.table === "mtproto_scheduled_messages")).toBe(false);
+    const linha = errSpy.mock.calls.map((c) => c.map(String).join(" ")).find((l) => l.includes("camp-err"));
+    expect(linha).toBeDefined();
+    expect(linha).toMatch(/permission denied/);
+    errSpy.mockRestore();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// varrerCampanhasIaTravadas — decisão do watchdog (Defeito 1: TTL sem ator).
+// campaign.ai-process é enfileirado uma única vez, com attempts:2/backoff 3s
+// (queue-mtproto.ts) — muito menor que AI_CLAIM_STALE_MS (10min). Se o worker
+// morre no meio, o retry do BullMQ acontece cedo demais pra passar pelo CAS,
+// as tentativas se esgotam e ninguém reenfileira de novo sozinho. Estes
+// testes provam a DECISÃO (quais campanhas são travadas o bastante, e o que
+// fazer com cada uma) com deps fabricadas, sem tocar banco nem fila — mesmo
+// espírito de `processarCampanhaIa — fiação` acima.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("varrerCampanhasIaTravadas — decisão do watchdog (sem banco)", () => {
+  it("campanha travada: destrava por CAS e reenfileira", async () => {
+    const destravadas: string[] = [];
+    const reenfileiradas: string[] = [];
+    const deps: CampaignAiWatchdogDeps = {
+      listarTravadas: async () => ["camp-1"],
+      destravar: async (id) => {
+        destravadas.push(id);
+        return true;
+      },
+      reenfileirar: async (id) => {
+        reenfileiradas.push(id);
+      },
+    };
+
+    await varrerCampanhasIaTravadas(deps);
+
+    expect(destravadas).toEqual(["camp-1"]);
+    expect(reenfileiradas).toEqual(["camp-1"]);
+  });
+
+  it("passa o limiar certo (agora - AI_CLAIM_STALE_MS) pra listarTravadas", async () => {
+    const agora = new Date("2026-01-01T00:20:00.000Z");
+    let staleRecebido: Date | null = null;
+    const deps: CampaignAiWatchdogDeps = {
+      listarTravadas: async (staleBefore) => {
+        staleRecebido = staleBefore;
+        return [];
+      },
+      destravar: async () => true,
+      reenfileirar: async () => {},
+    };
+
+    await varrerCampanhasIaTravadas(deps, agora);
+
+    expect(staleRecebido).toEqual(new Date(agora.getTime() - AI_CLAIM_STALE_MS));
+  });
+
+  it("CAS de destravar perdido (outra varredura ou o próprio worker já resolveu): não reenfileira", async () => {
+    const reenfileirar = vi.fn();
+    const deps: CampaignAiWatchdogDeps = {
+      listarTravadas: async () => ["camp-1"],
+      destravar: async () => false,
+      reenfileirar,
+    };
+
+    await varrerCampanhasIaTravadas(deps);
+
+    expect(reenfileirar).not.toHaveBeenCalled();
+  });
+
+  it("nenhuma campanha travada: não chama destravar nem reenfileirar", async () => {
+    const destravar = vi.fn();
+    const reenfileirar = vi.fn();
+    const deps: CampaignAiWatchdogDeps = { listarTravadas: async () => [], destravar, reenfileirar };
+
+    await varrerCampanhasIaTravadas(deps);
+
+    expect(destravar).not.toHaveBeenCalled();
+    expect(reenfileirar).not.toHaveBeenCalled();
+  });
+
+  it("várias travadas: processa todas, mesmo quando uma perde o CAS no meio", async () => {
+    const reenfileiradas: string[] = [];
+    const deps: CampaignAiWatchdogDeps = {
+      listarTravadas: async () => ["camp-1", "camp-2", "camp-3"],
+      destravar: async (id) => id !== "camp-2",
+      reenfileirar: async (id) => {
+        reenfileiradas.push(id);
+      },
+    };
+
+    await varrerCampanhasIaTravadas(deps);
+
+    expect(reenfileiradas).toEqual(["camp-1", "camp-3"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// tickCampaignAiStuckWatchdog — fiação real (Supabase + enqueueMtproto).
+// Mesma lição do Plano 2/handleCampaignAiProcess: a decisão pura acima podia
+// estar perfeita e tickCampaignAiStuckWatchdog ainda assim nunca alcançá-la
+// direito — estes testes provam que a fiação real monta as deps certas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("tickCampaignAiStuckWatchdog — fiação real (Supabase + enqueueMtproto)", () => {
+  beforeEach(() => {
+    h.chamadas = [];
+    h.responder = () => ({ data: null });
+    q.enfileiradas = [];
+  });
+
+  it("busca pelo filtro certo, destrava por CAS e reenfileira campaign.ai-process", async () => {
+    h.responder = (ch) => {
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.op === "select") {
+        return { data: [{ id: "camp-1" }] };
+      }
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.op === "update" && ch.payload?.ai_status === "queued") {
+        return { data: { id: "camp-1" } };
+      }
+      return { data: null };
+    };
+
+    await tickCampaignAiStuckWatchdog();
+
+    const busca = h.chamadas.find((c) => c.table === "mtproto_scheduled_campaigns" && c.op === "select");
+    expect(busca?.filtros.ai_status).toBe("processing");
+    expect(busca?.ltFiltros?.ai_started_at).toBeDefined();
+
+    const destrava = h.chamadas.find(
+      (c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update" && c.payload?.ai_status === "queued",
+    );
+    expect(destrava?.filtros.id).toBe("camp-1");
+    expect(destrava?.filtros.ai_status).toBe("processing");
+    expect(destrava?.payload?.ai_started_at).toBeNull();
+
+    expect(q.enfileiradas).toEqual([{ kind: "campaign.ai-process", campaignId: "camp-1" }]);
+  });
+
+  it("nenhuma travada: não reenfileira nada", async () => {
+    await tickCampaignAiStuckWatchdog();
+
+    expect(q.enfileiradas).toEqual([]);
+  });
+
+  it("destravar perde o CAS (já resolvido por outra instância): não reenfileira", async () => {
+    h.responder = (ch) => {
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.op === "select") {
+        return { data: [{ id: "camp-1" }] };
+      }
+      // update de destravar não encontra a linha (outra instância já mudou o ai_status)
+      return { data: null };
+    };
+
+    await tickCampaignAiStuckWatchdog();
+
+    expect(q.enfileiradas).toEqual([]);
   });
 });

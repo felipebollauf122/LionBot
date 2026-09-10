@@ -24,7 +24,6 @@ import type { ChannelInput, MessageInput } from "@/lib/social-proof/types";
 const STATUS_CAMPANHA: Record<ScheduledCampaign["status"], string> = {
   draft: "rascunho",
   ai_processing: "IA processando",
-  ready: "pronta",
   running: "publicando",
   paused: "pausada",
   completed: "concluída",

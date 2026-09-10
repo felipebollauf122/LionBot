@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createClient } from "@/lib/supabase/server";
 import { launchScheduledCampaign } from "@/app/dashboard/automations/scheduled/actions";
+import {
+  criarSupabaseFake,
+  type ChamadaFake,
+  type RespostaFake,
+} from "../helpers/fake-supabase";
 
 /**
  * Transições de estado do disparo — as que a revisão de branch encontrou sem
@@ -24,62 +29,12 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 const mockCreateClient = vi.mocked(createClient);
 
-interface Chamada {
-  table: string;
-  op: "select" | "update" | "insert" | "delete";
-  payload?: Record<string, unknown>;
-  filtros: Record<string, unknown>;
-}
+type Chamada = ChamadaFake;
+type Resposta = RespostaFake;
 
-interface Resposta {
-  data?: unknown;
-  error?: unknown;
-  count?: number;
-}
-
-/**
- * Cliente Supabase encadeável de mentira: registra tabela, operação, payload e
- * filtros de cada consulta e responde pelo `responder` do teste. Mesmo
- * espírito do fake de server/tests/services/scheduled-send.test.ts — provar
- * QUAIS filtros a escrita leva é o ponto destes testes.
- */
+/** Cliente encadeável compartilhado — ver tests/helpers/fake-supabase.ts. */
 function criarSupabase(responder: (ch: Chamada) => Resposta) {
-  const chamadas: Chamada[] = [];
-  function from(table: string) {
-    const ch: Chamada = { table, op: "select", filtros: {} };
-    const resolver = (): Promise<Resposta> => {
-      chamadas.push(ch);
-      return Promise.resolve(responder(ch));
-    };
-    const q: Record<string, unknown> = {
-      select: () => q,
-      update: (payload: Record<string, unknown>) => {
-        ch.op = "update";
-        ch.payload = payload;
-        return q;
-      },
-      eq: (coluna: string, valor: unknown) => {
-        ch.filtros[coluna] = valor;
-        return q;
-      },
-      in: (coluna: string, valor: unknown) => {
-        ch.filtros[coluna] = valor;
-        return q;
-      },
-      not: () => q,
-      order: () => q,
-      limit: () => q,
-      single: resolver,
-      maybeSingle: resolver,
-      then: (ok: (r: Resposta) => unknown, falha?: (e: unknown) => unknown) =>
-        resolver().then(ok, falha),
-    };
-    return q;
-  }
-  return {
-    client: { from } as unknown as Awaited<ReturnType<typeof createClient>>,
-    chamadas,
-  };
+  return criarSupabaseFake<Awaited<ReturnType<typeof createClient>>>(responder);
 }
 
 const CAMPANHA = {

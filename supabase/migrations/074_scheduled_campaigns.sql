@@ -20,7 +20,7 @@ create table if not exists public.mtproto_scheduled_campaigns (
   source_clone_job_id uuid,
 
   status text not null default 'draft'
-    check (status in ('draft','ai_processing','ready','running','paused','completed','failed')),
+    check (status in ('draft','ai_processing','running','paused','completed','failed')),
 
   start_at timestamptz,
   default_delay_seconds int not null default 900,

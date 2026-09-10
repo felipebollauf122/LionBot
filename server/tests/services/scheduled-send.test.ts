@@ -3,6 +3,8 @@ import { GrammyError } from "grammy";
 import {
   nextFloodSchedule,
   handleScheduledSend,
+  decidirDesfecho,
+  assentarCampanhaSeVazia,
 } from "../../src/workers/scheduled-campaign-handler.js";
 
 const AGORA = new Date("2026-09-10T12:00:00.000Z");
@@ -371,5 +373,115 @@ describe("handleScheduledSend — fiação do flood da Bot API", () => {
     expect(
       h.chamadas.some((c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update"),
     ).toBe(false);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Desfecho da campanha. NADA neste branch jamais escrevia status='failed' nem
+// last_error: `concluirSeUltima` contava só pending/sending, então uma
+// campanha em que TODAS as mensagens falharam terminava 'completed' e o
+// cabeçalho anunciava "concluída · 0/12 enviadas" — com a faixa vermelha de
+// last_error (campaign-composer.tsx) como código inalcançável.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("decidirDesfecho", () => {
+  it("qualquer publicação bem-sucedida conclui a campanha, sem erro na faixa", () => {
+    expect(decidirDesfecho({ enviadas: 1, falhadas: 11 })).toEqual({
+      status: "completed",
+      lastError: null,
+    });
+  });
+
+  it("nenhuma enviada e várias falhas: a campanha FALHOU, com motivo legível", () => {
+    const r = decidirDesfecho({ enviadas: 0, falhadas: 12 });
+    expect(r.status).toBe("failed");
+    expect(r.lastError).toContain("todas as 12 mensagens falharam");
+  });
+
+  it("uma mensagem só, e ela falhou: o texto não fica no plural", () => {
+    const r = decidirDesfecho({ enviadas: 0, falhadas: 1 });
+    expect(r.status).toBe("failed");
+    expect(r.lastError).toContain("a única mensagem falhou");
+    expect(r.lastError).not.toContain("as 1");
+  });
+
+  it("fila esvaziada sem envio nem falha (o dono apagou tudo) também não é conclusão", () => {
+    const r = decidirDesfecho({ enviadas: 0, falhadas: 0 });
+    expect(r.status).toBe("failed");
+    expect(r.lastError).toMatch(/sem publicar nenhuma mensagem/);
+  });
+});
+
+describe("assentarCampanhaSeVazia — fiação do desfecho", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(AGORA);
+    h.chamadas = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Contagens por status de mensagem; o resto responde uma linha qualquer. */
+  function contando(contagens: Record<string, number>) {
+    h.responder = (ch) => {
+      if (ch.table === "mtproto_scheduled_messages" && ch.op === "select") {
+        return { count: contagens[String(ch.filtros.status)] ?? 0 };
+      }
+      return { data: { id: "camp-1" } };
+    };
+  }
+
+  function escritaDaCampanha() {
+    return h.chamadas.find(
+      (c) => c.table === "mtproto_scheduled_campaigns" && c.op === "update",
+    );
+  }
+
+  it("tudo falhou: grava status='failed' com last_error em português", async () => {
+    contando({ sending: 0, pending: 0, sent: 0, failed: 12 });
+
+    await assentarCampanhaSeVazia("camp-1");
+
+    expect(escritaDaCampanha()?.payload?.status).toBe("failed");
+    expect(String(escritaDaCampanha()?.payload?.last_error)).toContain(
+      "todas as 12 mensagens falharam",
+    );
+  });
+
+  it("com pelo menos uma enviada, conclui e LIMPA o last_error de uma rodada anterior", async () => {
+    contando({ sending: 0, pending: 0, sent: 5, failed: 2 });
+
+    await assentarCampanhaSeVazia("camp-1");
+
+    expect(escritaDaCampanha()?.payload?.status).toBe("completed");
+    expect(escritaDaCampanha()?.payload?.last_error).toBeNull();
+  });
+
+  it("a escrita do desfecho é presa a quem estava em curso", async () => {
+    contando({ sending: 0, pending: 0, sent: 1, failed: 0 });
+
+    await assentarCampanhaSeVazia("camp-1");
+
+    expect(escritaDaCampanha()?.filtros.id).toBe("camp-1");
+    expect(escritaDaCampanha()?.filtros.status).toEqual(["running", "paused"]);
+  });
+
+  it("ainda há mensagem em voo: não assenta nada", async () => {
+    contando({ sending: 1, pending: 0, sent: 0, failed: 0 });
+
+    await assentarCampanhaSeVazia("camp-1");
+
+    expect(escritaDaCampanha()).toBeUndefined();
+  });
+
+  it("ainda há pendente agendada: não assenta nada", async () => {
+    contando({ sending: 0, pending: 3, sent: 1, failed: 0 });
+
+    await assentarCampanhaSeVazia("camp-1");
+
+    expect(escritaDaCampanha()).toBeUndefined();
   });
 });

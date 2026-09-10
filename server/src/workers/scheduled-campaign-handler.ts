@@ -47,6 +47,44 @@ export function nextFloodSchedule(input: FloodInput): {
 export const POLLER_LIMITE_CAMPANHAS = 50;
 
 /**
+ * Desfecho de uma campanha cuja fila esvaziou.
+ *
+ * O que este branch não tinha: NADA jamais escrevia status='failed' nem
+ * `last_error`. `concluirSeUltima` só olhava se ainda havia pendente, então
+ * uma campanha em que TODAS as mensagens falharam terminava 'completed' e o
+ * cabeçalho anunciava "concluída · 0/12 enviadas" — e a faixa vermelha de
+ * `last_error` (campaign-composer.tsx) era código inalcançável.
+ *
+ * A regra é a mais simples que não mente: campanha que não publicou NADA não
+ * foi concluída. O texto vai em português porque é ele que o dono lê na
+ * faixa vermelha da tela — não é log.
+ */
+export function decidirDesfecho(contagem: { enviadas: number; falhadas: number }): {
+  status: "completed" | "failed";
+  lastError: string | null;
+} {
+  if (contagem.enviadas > 0) return { status: "completed", lastError: null };
+
+  if (contagem.falhadas > 0) {
+    const detalhe =
+      contagem.falhadas === 1
+        ? "a única mensagem falhou"
+        : `todas as ${contagem.falhadas} mensagens falharam`;
+    return {
+      status: "failed",
+      lastError: `Nenhuma mensagem foi publicada: ${detalhe}. Abra a fila e veja o erro de cada uma.`,
+    };
+  }
+
+  // Nem enviada, nem falha: a fila esvaziou por outro caminho (o dono apagou
+  // ou descartou tudo). Também não é conclusão.
+  return {
+    status: "failed",
+    lastError: "A campanha terminou sem publicar nenhuma mensagem: a fila ficou vazia.",
+  };
+}
+
+/**
  * Leituras que o tick do poller precisa. Injetadas em vez de chamadas direto,
  * mesmo padrão de CloneRunnerDeps/RunnerDeps, pra a decisão do poller —
  * "quem é pulado e quem é enfileirado" — ser testável sem banco nem fila.
@@ -60,9 +98,19 @@ export interface PollerDeps {
   campanhasRodando(limite: number): Promise<string[]>;
   /** Dentre as candidatas, as que já têm mensagem em 'sending'. */
   comEnvioEmVoo(campaignIds: string[]): Promise<string[]>;
+  /**
+   * Dentre as candidatas, as que ainda têm mensagem AGENDADA por publicar
+   * (`status='pending'` COM `scheduled_at`). Sem o `scheduled_at` a mensagem
+   * não pertence a esta rodada — é o caso de uma criada no composer depois do
+   * disparo, ou restaurada de um descarte — e o poller nunca conseguiria
+   * publicá-la: contá-la aqui prenderia a campanha em 'running' pra sempre.
+   */
+  comFilaPendente(campaignIds: string[]): Promise<string[]>;
   /** Id da mensagem vencida mais antiga da campanha, ou null se não há. */
   proximaVencida(campaignId: string, agoraIso: string): Promise<string | null>;
   enfileirar(messageId: string): Promise<void>;
+  /** Fecha a campanha (completed/failed) por `decidirDesfecho`. */
+  assentar(campaignId: string): Promise<void>;
 }
 
 /**
@@ -78,19 +126,34 @@ export async function tickCampanhasAgendadas(
   deps: PollerDeps,
   agora: Date,
   limite: number = POLLER_LIMITE_CAMPANHAS,
-): Promise<{ enfileiradas: string[]; puladas: string[] }> {
+): Promise<{ enfileiradas: string[]; puladas: string[]; assentadas: string[] }> {
   const campanhas = await deps.campanhasRodando(limite);
-  if (campanhas.length === 0) return { enfileiradas: [], puladas: [] };
+  if (campanhas.length === 0) return { enfileiradas: [], puladas: [], assentadas: [] };
 
-  // Uma consulta responde por todas as candidatas, não uma por campanha.
+  // Duas consultas respondem por todas as candidatas, não duas por campanha.
   const ocupadas = new Set(await deps.comEnvioEmVoo(campanhas));
+  const comFila = new Set(await deps.comFilaPendente(campanhas));
   const agoraIso = agora.toISOString();
   const enfileiradas: string[] = [];
   const puladas: string[] = [];
+  const assentadas: string[] = [];
 
   for (const campaignId of campanhas) {
     if (ocupadas.has(campaignId)) {
       puladas.push(campaignId);
+      continue;
+    }
+    // Nada em voo E nada agendado por publicar: a campanha acabou, seja lá
+    // por que caminho a fila esvaziou.
+    //
+    // Antes, só um envio ou uma falha chamavam `concluirSeUltima` — então
+    // apagar a última pendente de uma campanha em curso a deixava 'running'
+    // PRA SEMPRE, e como o poller ordena por started_at crescente ela ficava
+    // ocupando o topo de uma janela de 50 vagas, matando de fome as
+    // campanhas dos outros tenants.
+    if (!comFila.has(campaignId)) {
+      await deps.assentar(campaignId);
+      assentadas.push(campaignId);
       continue;
     }
     const messageId = await deps.proximaVencida(campaignId, agoraIso);
@@ -98,7 +161,7 @@ export async function tickCampanhasAgendadas(
     await deps.enfileirar(messageId);
     enfileiradas.push(messageId);
   }
-  return { enfileiradas, puladas };
+  return { enfileiradas, puladas, assentadas };
 }
 
 export async function handleScheduledSend(messageId: string): Promise<void> {
@@ -194,7 +257,7 @@ export async function handleScheduledSend(messageId: string): Promise<void> {
     if (claimed.is_pinned) {
       await bot.pin(destMsgId).catch((e) => console.warn("[postcampaign] pin falhou:", e));
     }
-    await concluirSeUltima(campaign.id);
+    await assentarCampanhaSeVazia(campaign.id);
   } catch (err) {
     const wait = extractWaitSeconds(err);
     if (wait !== null) {
@@ -385,7 +448,7 @@ async function falhar(
     return;
   }
   await incrementar(campaignId, "failed");
-  await concluirSeUltima(campaignId);
+  await assentarCampanhaSeVazia(campaignId);
 }
 
 async function incrementar(campaignId: string, kind: "sent" | "failed"): Promise<void> {
@@ -402,16 +465,59 @@ async function incrementar(campaignId: string, kind: "sent" | "failed"): Promise
     .eq("id", campaignId);
 }
 
-/** Sem nenhuma pendente nem enviando, a campanha acabou. */
-async function concluirSeUltima(campaignId: string): Promise<void> {
+/** Quantas linhas da campanha estão neste status. */
+async function contar(campaignId: string, status: string): Promise<number> {
   const { count } = await supabase
     .from("mtproto_scheduled_messages")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", campaignId)
-    .in("status", ["pending", "sending"]);
-  if ((count ?? 0) > 0) return;
+    .eq("status", status);
+  return count ?? 0;
+}
+
+/**
+ * Fecha a campanha se não sobrou nada por publicar — com o desfecho REAL
+ * (completed ou failed), não só 'completed'.
+ *
+ * Chamada dos dois lados: por cada envio/falha aqui no worker, e pelo tick do
+ * poller (a campanha cuja fila esvaziou por qualquer outro caminho — o dono
+ * apagou a última pendente, por exemplo).
+ */
+export async function assentarCampanhaSeVazia(campaignId: string): Promise<void> {
+  const { count: emVoo } = await supabase
+    .from("mtproto_scheduled_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .eq("status", "sending");
+  if ((emVoo ?? 0) > 0) return;
+
+  // Pendente SEM scheduled_at não pertence a esta rodada (criada no composer
+  // depois do disparo, ou restaurada de um descarte) e o poller nunca a
+  // publicaria — contá-la aqui prenderia a campanha em 'running' pra sempre.
+  // Ela volta a valer no próximo "Publicar campanha".
+  const { count: agendadas } = await supabase
+    .from("mtproto_scheduled_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .eq("status", "pending")
+    .not("scheduled_at", "is", null);
+  if ((agendadas ?? 0) > 0) return;
+
+  const desfecho = decidirDesfecho({
+    enviadas: await contar(campaignId, "sent"),
+    falhadas: await contar(campaignId, "failed"),
+  });
+
   await supabase
     .from("mtproto_scheduled_campaigns")
-    .update({ status: "completed", completed_at: new Date().toISOString() })
-    .eq("id", campaignId);
+    .update({
+      status: desfecho.status,
+      last_error: desfecho.lastError,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId)
+    // Só quem estava de fato em curso. Sem o CAS, uma campanha reaberta como
+    // rascunho (ou já republicada) entre a contagem e a escrita seria
+    // carimbada como encerrada por cima.
+    .in("status", ["running", "paused"]);
 }

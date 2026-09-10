@@ -537,8 +537,17 @@ export async function setCampaignSchedule(
   });
 }
 
-/** Inverte `ai_discarded` — usado tanto pra descartar manualmente quanto,
- *  com `discarded=false`, pra restaurar uma mensagem que a IA descartou. */
+/**
+ * Inverte `ai_discarded` — usado tanto pra descartar manualmente quanto, com
+ * `discarded=false`, pra restaurar uma mensagem que a IA descartou.
+ *
+ * `ai_discarded` sozinho NÃO bastava, e é por isso que o botão "Restaurar"
+ * dizia sucesso e a mensagem nunca publicava: `launchScheduledCampaign`
+ * carimba toda descartada como `status='skipped'`, e o poller só enxerga
+ * 'pending'. Limpar a alavanca deixava a linha num estado do qual nada a
+ * tirava. Cada direção agora leva o status junto — e só quando ele ainda faz
+ * sentido: uma mensagem já enviada ou já falhada nunca é mexida.
+ */
 export async function toggleDiscarded(
   id: string,
   campaignId: string,
@@ -546,6 +555,36 @@ export async function toggleDiscarded(
 ): Promise<ActionResult> {
   return comGuarda("toggleDiscarded", async () => {
     const supabase = await createClient();
+
+    const { data: msg } = await supabase
+      .from("mtproto_scheduled_messages")
+      .select("status, scheduled_at")
+      .eq("id", id)
+      .eq("campaign_id", campaignId)
+      .maybeSingle();
+    if (!msg) {
+      return { ok: false, error: "Mensagem não encontrada nesta campanha (ou sem permissão)." };
+    }
+
+    // Restaurar no meio de uma campanha em curso: a mensagem foi pulada no
+    // disparo e por isso ficou SEM horário, e o poller só publica pendente
+    // com `scheduled_at`. Devolvê-la pra 'pending' aqui seria a mesma mentira
+    // por outra porta — ela voltaria pra fila e nunca sairia. Diz o que
+    // realmente destrava a situação, em vez de fingir que resolveu.
+    if (!discarded && msg.status === "skipped" && msg.scheduled_at === null) {
+      const { data: campanha } = await supabase
+        .from("mtproto_scheduled_campaigns")
+        .select("status")
+        .eq("id", campaignId)
+        .maybeSingle();
+      if (campanha?.status === "running") {
+        return {
+          ok: false,
+          error:
+            "A campanha já está publicando e esta mensagem ficou sem horário. Pause a campanha e publique de novo pra incluir ela.",
+        };
+      }
+    }
 
     const { data, error } = await supabase
       .from("mtproto_scheduled_messages")
@@ -557,6 +596,22 @@ export async function toggleDiscarded(
     if (error) return { ok: false, error: `Não deu pra atualizar: ${error.message}` };
     if (!data || data.length === 0) {
       return { ok: false, error: "Mensagem não encontrada nesta campanha (ou sem permissão)." };
+    }
+
+    // O status acompanha a decisão, preso ao valor de origem: descartar só
+    // pega 'pending', restaurar só pega 'skipped'. Zero linha aqui é o caso
+    // NORMAL (a mensagem já estava no status certo, ou já foi enviada), então
+    // não há contagem de linhas afetadas a conferir.
+    const deStatus = discarded ? "pending" : "skipped";
+    const paraStatus = discarded ? "skipped" : "pending";
+    const { error: erroStatus } = await supabase
+      .from("mtproto_scheduled_messages")
+      .update({ status: paraStatus })
+      .eq("id", id)
+      .eq("campaign_id", campaignId)
+      .eq("status", deStatus);
+    if (erroStatus) {
+      return { ok: false, error: `Não deu pra atualizar a fila: ${erroStatus.message}` };
     }
 
     revalidatePath(rota(campaignId));

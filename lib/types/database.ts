@@ -334,7 +334,6 @@ export interface SocialProofMessage {
 export type ScheduledCampaignStatus =
   | "draft"
   | "ai_processing"
-  | "ready"
   | "running"
   | "paused"
   | "completed"

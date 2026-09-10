@@ -1,7 +1,6 @@
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: "RASCUNHO", badge: "badge-inactive" },
   ai_processing: { label: "IA", badge: "badge-info" },
-  ready: { label: "PRONTA", badge: "badge-pending" },
   running: { label: "PUBLICANDO", badge: "badge-info" },
   paused: { label: "PAUSADA", badge: "badge-pending" },
   completed: { label: "CONCLUÍDA", badge: "badge-active" },

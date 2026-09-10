@@ -522,9 +522,8 @@ export function startWorkers(): void {
         // A decisão do tick — quem é pulado e quem é enfileirado — mora no
         // handler, atrás de PollerDeps, e é testada lá. Aqui ficam só as
         // leituras. Import dinâmico pelo mesmo motivo do enqueueMtproto.
-        const { tickCampanhasAgendadas, POLLER_LIMITE_CAMPANHAS } = await import(
-          "./workers/scheduled-campaign-handler.js"
-        );
+        const { tickCampanhasAgendadas, POLLER_LIMITE_CAMPANHAS, assentarCampanhaSeVazia } =
+          await import("./workers/scheduled-campaign-handler.js");
         await tickCampanhasAgendadas(
           {
             // Ordem determinística e por antiguidade: com `limit` e sem ordem,
@@ -549,6 +548,19 @@ export function startWorkers(): void {
                 .in("campaign_id", ids);
               return (data ?? []).map((m) => m.campaign_id as string);
             },
+            // Quem ainda tem fila AGENDADA. `scheduled_at not null` é o que
+            // separa "vai sair nesta rodada" de "pendente que o poller nunca
+            // publicaria" (criada no composer depois do disparo, ou restaurada
+            // de um descarte) — ver o comentário em PollerDeps.
+            comFilaPendente: async (ids) => {
+              const { data } = await supabase
+                .from("mtproto_scheduled_messages")
+                .select("campaign_id")
+                .eq("status", "pending")
+                .not("scheduled_at", "is", null)
+                .in("campaign_id", ids);
+              return (data ?? []).map((m) => m.campaign_id as string);
+            },
             proximaVencida: async (campaignId, agoraIso) => {
               const { data } = await supabase
                 .from("mtproto_scheduled_messages")
@@ -569,6 +581,7 @@ export function startWorkers(): void {
             },
             enfileirar: (messageId) =>
               enqueueMtproto({ kind: "postcampaign.send-one", messageId }),
+            assentar: (campaignId) => assentarCampanhaSeVazia(campaignId),
           },
           new Date(),
           POLLER_LIMITE_CAMPANHAS,

@@ -277,7 +277,7 @@ Config nova em `server/src/config.ts`, toda com `envOptional` — nenhuma delas 
 | `GEMINI_MODEL` | `"gemini-3.8-flash"` | Trocável sem deploy. O nome exato do modelo é confirmado contra a documentação da Google na Fase 6, antes da primeira chamada real |
 | `INTERNAL_API_SECRET` | `""` | Segredo compartilhado Next ↔ worker do endpoint de assistente (§5.5). Vazio = endpoint recusa toda chamada |
 
-O mesmo par de variáveis vai pro `.env` do Next apenas como `BOT_SERVER_URL` + `INTERNAL_API_SECRET`; a chave do Gemini **não** é replicada lá.
+O mesmo par de variáveis vai pro `.env` do Next apenas como `NEXT_PUBLIC_BOT_SERVER_URL` + `INTERNAL_API_SECRET`; a chave do Gemini **não** é replicada lá. (O nome com o prefixo `NEXT_PUBLIC_` é o que o código sempre leu — este parágrafo dizia `BOT_SERVER_URL`, que não existe em lugar nenhum.)
 
 ### 5.2 Núcleo puro
 
@@ -337,7 +337,7 @@ Novo `kind` na fila: `campaign.ai-process`. O `clone-handler`, ao completar um j
 
 ### 5.5 Assistente manual no editor
 
-Server Action `aiAssist(messageId, action)` com `action in ('rewrite','caption','summarize')`. Ela chama `POST {BOT_SERVER_URL}/api/ai/assist`, mesmo hop que `enqueueClone` já usa.
+Server Action `aiAssist(messageId, action)` com `action in ('rewrite','caption','summarize')`. Ela chama `POST {NEXT_PUBLIC_BOT_SERVER_URL}/api/ai/assist`, mesmo hop que `enqueueClone` já usa.
 
 O motivo de não chamar o Gemini direto do Next: a chave mora **só** no worker. Um lugar pra configurar, um rate-limit pra aplicar, um arquivo de prompt pra manter. O endpoint novo exige header de segredo compartilhado (`config.internalApiSecret`).
 

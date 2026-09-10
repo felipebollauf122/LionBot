@@ -13,6 +13,7 @@ import {
   reorderScheduledMessages,
 } from "@/app/dashboard/automations/scheduled/actions";
 import { campaignTimeline } from "@/lib/composer/schedule";
+import { earliestFloodWait, describeFloodWait } from "@/lib/composer/flood-wait";
 import type { ComposerMessageRow } from "@/lib/composer/types";
 import type { ScheduledCampaign, ScheduledMessage } from "@/lib/types/database";
 import type { ChannelInput, MessageInput } from "@/lib/social-proof/types";
@@ -85,6 +86,12 @@ export function CampaignComposer({
   const enviadas = messages.filter((m) => m.status === "sent").length;
   const total = campaign.total_messages || messages.length;
 
+  // Espera de limite do Telegram em curso (Ruling 23): sem isto a tela fica
+  // parada por horas sem dizer por quê, e uma campanha esperando parece
+  // travada. Calculado das linhas reais, não do status da campanha — ela
+  // continua 'running' durante a espera.
+  const flood = earliestFloodWait(messages);
+
   return (
     <ComposerShell
       title={campaign.name}
@@ -118,10 +125,20 @@ export function CampaignComposer({
       )}
       messageBadge={(row) => {
         const original = porId.get(row.id);
-        return original ? <StatusBadge status={original.status} /> : null;
+        return original ? (
+          <StatusBadge
+            status={original.status}
+            errorMessage={original.error_message}
+            scheduledAt={original.scheduled_at}
+          />
+        ) : null;
       }}
       notice={
-        campaign.last_error ? (
+        flood ? (
+          <p className="mb-4 rounded-lg border border-(--amber) bg-(--amber-muted) px-3 py-2 text-sm text-(--amber)">
+            {describeFloodWait(flood)}
+          </p>
+        ) : campaign.last_error ? (
           <p className="mb-4 rounded-lg border border-(--red) bg-(--red)/10 px-3 py-2 text-sm text-(--red)">
             {campaign.last_error}
           </p>

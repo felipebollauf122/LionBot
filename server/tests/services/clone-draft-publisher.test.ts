@@ -133,6 +133,78 @@ describe("createDraftPublisher", () => {
     expect(d.saved[0].media).toHaveLength(3);
   });
 
+  it("álbum com item grande demais no meio: só ele cai, e a linha fica ancorada no primeiro sobrevivente", async () => {
+    const d = deps({
+      rehost: vi.fn(async (_raw, hint) => (hint === "msg_11" ? null : `https://cdn.test/${hint}`)),
+    });
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(10, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g1" }),
+      m(11, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g1" }),
+      m(12, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g1" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "copied", destMsgId: 10 },
+      { status: "skipped", reason: "file_too_large" },
+      { status: "copied", destMsgId: 12 },
+    ]);
+    expect(d.saved).toHaveLength(1);
+    expect(d.saved[0].media).toHaveLength(2);
+    expect(d.saved[0].sourceMsgId).toBe(10);
+  });
+
+  it("álbum cujo primeiro item cai: sourceMsgId migra pro sobrevivente, mas a legenda continua vindo de raws[0]", async () => {
+    const d = deps({
+      rehost: vi.fn(async (_raw, hint) => (hint === "msg_20" ? null : `https://cdn.test/${hint}`)),
+    });
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(20, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g2" }),
+      m(21, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g2" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "skipped", reason: "file_too_large" },
+      { status: "copied", destMsgId: 21 },
+    ]);
+    expect(d.saved[0].sourceMsgId).toBe(21);
+    expect(d.saved[0].contentText).toBe("capa");
+  });
+
+  it("álbum com item de mídia não suportada: esse índice vira skipped com o motivo do plano, não copied", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(30, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g3" }),
+      m(31, { media: { className: "MessageMediaGame" } }, { groupedId: "g3" }),
+      m(32, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g3" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "copied", destMsgId: 30 },
+      { status: "skipped", reason: "media_game" },
+      { status: "copied", destMsgId: 32 },
+    ]);
+    expect(d.saved[0].media).toHaveLength(2);
+  });
+
+  it("enquete sem dados (pollData devolve null) vira skipped poll_sem_dados, sem gravar linha", async () => {
+    const d = deps({ pollData: vi.fn(() => null), copyPolls: true });
+    const publish = createDraftPublisher(d);
+
+    const out = await publish([m(60, { media: { className: "MessageMediaPoll" } })], null);
+
+    expect(out).toEqual([{ status: "skipped", reason: "poll_sem_dados" }]);
+    expect(d.saved).toHaveLength(0);
+  });
+
   it("replyToDestId chega na linha como replyToSourceMsgId", async () => {
     const d = deps();
     const publish = createDraftPublisher(d);

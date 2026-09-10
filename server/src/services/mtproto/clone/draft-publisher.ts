@@ -171,15 +171,42 @@ export function createDraftPublisher(
       return group.map((g) => ({ status: "copied" as const, destMsgId: g.id }));
     }
 
-    // ── Mídia: rehospeda cada item que couber no teto.
+    // ── Mídia: rehospeda cada item que couber no teto, guardando o outcome
+    // por índice. Um item que cai (tamanho, ou plano skip) não pode virar
+    // "copied": isso infla o contador do runner e some com o conteúdo sem
+    // deixar rastro no relatório de skip (achado de revisão — publish-router
+    // já resolve o mesmo caso na rota download).
     const media: StagedMedia[] = [];
+    const outcomes: CloneOutcome[] = new Array(raws.length);
+    let firstSurvivingIndex: number | null = null;
+
     for (let i = 0; i < raws.length; i++) {
       const plan = plans[i];
-      if (plan.kind !== "media") continue;
+
+      if (plan.kind === "skip") {
+        // Álbum pode ter um item de mídia não suportada no meio dos outros.
+        outcomes[i] = { status: "skipped", reason: plan.reason };
+        continue;
+      }
+
+      if (plan.kind !== "media") {
+        // Não deveria acontecer num grupo de mídia na prática, mas um item
+        // texto/poll misturado não pode sair como copied.
+        outcomes[i] = { status: "skipped", reason: "sem_midia_no_album" };
+        continue;
+      }
+
       const nomeArquivo = deps.originalFileName(raws[i]) ?? `arquivo.${EXT[plan.mediaKind]}`;
       const url = await deps.rehost(raws[i], `msg_${group[i].id}`, nomeArquivo);
-      if (url === null) continue; // grande demais: some do álbum, não derruba os irmãos
+      if (url === null) {
+        // Grande demais: some do álbum, não derruba os irmãos.
+        outcomes[i] = { status: "skipped", reason: "file_too_large" };
+        continue;
+      }
+
+      if (firstSurvivingIndex === null) firstSurvivingIndex = i;
       media.push({ url, type: toStagedMediaType(plan.mediaKind) });
+      outcomes[i] = { status: "copied", destMsgId: group[i].id };
     }
 
     if (media.length === 0) {
@@ -192,16 +219,30 @@ export function createDraftPublisher(
       media.length > 1 &&
       plans.every((p) => p.kind === "media" && ALBUMABLE.has(p.mediaKind));
 
+    // A linha é ancorada no primeiro item que SOBREVIVEU, não em group[0]:
+    // se o item 0 caiu por tamanho mas os irmãos sobreviveram, ancorar em
+    // group[0].id apontaria o índice único (campaign_id, source_msg_id) pra
+    // uma mensagem que o relatório de skip diz nunca ter sido copiada — e uma
+    // resposta mirando um dos sobreviventes não encontraria a linha. Sempre
+    // definido aqui: media.length === 0 já retornou acima.
+    const anchor = firstSurvivingIndex ?? 0;
+
     await deps.upsert([
       {
         ...base,
+        sourceMsgId: group[anchor].id,
         kind: ehAlbum ? "album" : toRowKind(first.mediaKind),
         media,
         poll: null,
-        fileName: deps.originalFileName(raws[0]),
+        // Nome do arquivo também migra pro sobrevivente-âncora: o de raws[0]
+        // pode ser exatamente o item que caiu. A legenda (em `base`) continua
+        // vindo de raws[0] sempre — o Telegram ancora ela no primeiro item do
+        // álbum, sobreviva ele ou não, e perder texto que o usuário escreveu
+        // só porque a foto era grande demais seria pior que perder a foto.
+        fileName: deps.originalFileName(raws[anchor]),
       },
     ]);
 
-    return group.map((g) => ({ status: "copied" as const, destMsgId: g.id }));
+    return outcomes;
   };
 }

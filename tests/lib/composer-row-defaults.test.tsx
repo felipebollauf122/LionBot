@@ -154,8 +154,20 @@ describe("slot de badge por bolha", () => {
   it("sem a prop, o DOM da prévia é exatamente o mesmo", () => {
     // É esta a garantia que a Prova Social tem: ela não passa `messageBadge`,
     // e nenhum contêiner extra nasce por causa do slot.
+    //
+    // `now` fixo nos dois renders de propósito: sem `now`, o FeedPreview usa
+    // `new Date()` como default — e como o teste chama render() duas vezes,
+    // uma virada de minuto entre as duas chamadas faz o "HH:MM" da bolha
+    // divergir e o teste piscar (falha aleatória, sem nada errado no código).
+    const now = new Date("2026-09-08T09:00:00-03:00");
     const sem = render(
-      <FeedPreview channel={canal} messages={[linhaDeCampanha]} draft={null} pinnedText="" />,
+      <FeedPreview
+        channel={canal}
+        messages={[linhaDeCampanha]}
+        draft={null}
+        pinnedText=""
+        now={now}
+      />,
     ).container.innerHTML;
 
     cleanup();
@@ -166,6 +178,7 @@ describe("slot de badge por bolha", () => {
         messages={[linhaDeCampanha]}
         draft={null}
         pinnedText=""
+        now={now}
         messageBadge={() => null}
       />,
     ).container.innerHTML;

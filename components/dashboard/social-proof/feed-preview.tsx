@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SocialProofMessage } from "@/lib/types/database";
+import type { ComposerMessageRow } from "@/lib/composer/types";
 import type {
   ChannelInput,
   FeedChannel,
@@ -27,8 +27,8 @@ const LARGURA: Record<TelegramDevice, number> = { iphone: 402, android: 411 };
 
 /** Resolve a citação contra as mensagens já carregadas, como lib/social-proof/feed.ts faz. */
 function resolverCitacao(
-  m: SocialProofMessage,
-  porId: Map<string, SocialProofMessage>,
+  m: ComposerMessageRow,
+  porId: Map<string, ComposerMessageRow>,
   channel: ChannelInput,
 ): { replyToText: string | null; replyToSender: string | null } {
   const alvo = m.reply_to_id ? porId.get(m.reply_to_id) : undefined;
@@ -37,36 +37,59 @@ function resolverCitacao(
   return {
     replyToText: alvo.content_text,
     replyToSender:
-      alvo.sender_kind === "owner"
-        ? channel.owner_name || channel.title
-        : alvo.sender_name,
+      alvo.sender_kind === "member"
+        ? (alvo.sender_name ?? "")
+        : channel.owner_name || channel.title,
   };
 }
 
 function toFeedMessage(
-  m: SocialProofMessage,
-  porId: Map<string, SocialProofMessage>,
+  m: ComposerMessageRow,
+  porId: Map<string, ComposerMessageRow>,
   channel: ChannelInput,
 ): FeedMessage {
+  // Achado do Plano 1: uma linha "document" carrega media[].type "photo",
+  // porque StagedMedia herda o union de MediaItem (que não tem "document").
+  // O union não muda — é o contrato com a UI reusada e com a tabela — então
+  // aqui vira um chip de arquivo (ícone genérico + nome), nunca uma imagem.
+  if (m.kind === "document") {
+    const nomeArquivo = m.file_name || "Arquivo";
+    const legenda = (m.content_text ?? "").trim();
+    return {
+      id: m.id,
+      senderKind: m.sender_kind === "member" ? "member" : "owner",
+      senderName: m.sender_name ?? "",
+      senderAvatarUrl: m.sender_avatar_url ?? null,
+      kind: "text",
+      contentText: legenda ? `📄 ${nomeArquivo}\n${legenda}` : `📄 ${nomeArquivo}`,
+      media: [],
+      reactions: normalizeReactions(m.reactions),
+      ...resolverCitacao(m, porId, channel),
+      offsetSeconds: m.offset_seconds ?? 0,
+      displayTime: m.display_time ?? null,
+      viewsCount: m.views_count ?? 0,
+    };
+  }
+
   return {
     id: m.id,
-    senderKind: m.sender_kind === "owner" ? "owner" : "member",
-    senderName: m.sender_name,
-    senderAvatarUrl: m.sender_avatar_url,
+    senderKind: m.sender_kind === "member" ? "member" : "owner",
+    senderName: m.sender_name ?? "",
+    senderAvatarUrl: m.sender_avatar_url ?? null,
     kind: m.kind as FeedMessage["kind"],
     contentText: m.content_text,
-    media: normalizeMedia(m.media, m.media_url, m.media_type),
+    media: normalizeMedia(m.media, m.media_url ?? null, m.media_type ?? null),
     reactions: normalizeReactions(m.reactions),
     ...resolverCitacao(m, porId, channel),
-    offsetSeconds: m.offset_seconds,
-    displayTime: m.display_time,
-    viewsCount: m.views_count,
+    offsetSeconds: m.offset_seconds ?? 0,
+    displayTime: m.display_time ?? null,
+    viewsCount: m.views_count ?? 0,
   };
 }
 
 function draftToFeedMessage(
   d: MessageInput,
-  porId: Map<string, SocialProofMessage>,
+  porId: Map<string, ComposerMessageRow>,
   channel: ChannelInput,
 ): FeedMessage | null {
   const temTexto = (d.content_text ?? "").trim() !== "";
@@ -93,9 +116,9 @@ function draftToFeedMessage(
     reactions: d.reactions,
     replyToText: alvo ? alvo.content_text : null,
     replyToSender: alvo
-      ? alvo.sender_kind === "owner"
-        ? channel.owner_name || channel.title
-        : alvo.sender_name
+      ? alvo.sender_kind === "member"
+        ? (alvo.sender_name ?? "")
+        : channel.owner_name || channel.title
       : null,
     offsetSeconds: d.offset_seconds,
     displayTime: d.display_time,
@@ -118,7 +141,7 @@ export function FeedPreview({
   onDelete,
 }: {
   channel: ChannelInput;
-  messages: SocialProofMessage[];
+  messages: ComposerMessageRow[];
   draft: MessageInput | null;
   pinnedText: string;
   /** Id da mensagem fixada, para a miniatura da barra quando ela tem foto. */
@@ -162,7 +185,7 @@ export function FeedPreview({
 
   const fixada = pinnedId ? porId.get(pinnedId) : undefined;
   const fixadaFoto = fixada
-    ? normalizeMedia(fixada.media, fixada.media_url, fixada.media_type).find((m) => m.type === "photo")?.url ?? null
+    ? normalizeMedia(fixada.media, fixada.media_url ?? null, fixada.media_type ?? null).find((m) => m.type === "photo")?.url ?? null
     : null;
   const temFixada = pinnedText.trim() !== "" || fixadaFoto !== null;
 

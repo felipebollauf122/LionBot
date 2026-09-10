@@ -13,10 +13,24 @@ async function enqueueClone(cloneJobId: string): Promise<void> {
   );
   const res = await fetch(`${serverUrl}/api/mtproto/enqueue`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // A rota do worker exige segredo compartilhado desde que passou a
+      // aceitar `postcampaign.send-one` e `campaign.ai-process`: os dois
+      // despacham pra handlers de SERVICE ROLE que confiam no id recebido,
+      // então um POST anônimo publicava mensagem agendada de outro tenant ou
+      // queimava quota do Gemini. Ver server/src/index.ts.
+      "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+    },
     body: JSON.stringify({ kind: "clone.run", cloneJobId }),
   });
-  if (!res.ok) throw new Error(`Falha ao enfileirar clone (${res.status})`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 503
+        ? "O servidor de automações recusou a chamada interna. Confira INTERNAL_API_SECRET nos dois lados."
+        : `Falha ao enfileirar clone (${res.status})`,
+    );
+  }
 }
 
 export type SaveBotResult = { ok: true; username: string } | { ok: false; error: string };

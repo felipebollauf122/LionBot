@@ -559,9 +559,29 @@ app.post("/api/mtproto/inbox/close", async (req, res) => {
   }
 });
 
-// MTProto job enqueue — called from dashboard server actions
+// MTProto job enqueue — called from dashboard server actions.
+//
+// Segredo compartilhado, a MESMA `isAuthorizedInternalRequest` de
+// /api/mtproto/ensure-bot-access e /api/ai/assist. Isto já foi débito aceito
+// enquanto a rota carregava só clone.run; o Plano 3 acrescentou
+// `postcampaign.send-one` e `campaign.ai-process` ao union
+// (queue-mtproto.ts), e os dois despacham pra handlers de SERVICE ROLE que
+// confiam cegamente no id recebido: um POST anônimo forçava a publicação de
+// uma mensagem agendada de outro tenant, ou queimava quota do Gemini numa
+// campanha qualquer. Ampliar a superfície invalidou a aceitação do débito.
+//
+// Secret não configurado responde 503 e NUNCA autoriza — "sem segredo" é
+// "não pronto pra uso", não "aberto pra todo mundo" (ver internal-auth.ts).
 app.post("/api/mtproto/enqueue", async (req, res) => {
   try {
+    if (!isAuthorizedInternalRequest(config.internalApiSecret, req.headers["x-internal-secret"])) {
+      const status = config.internalApiSecret ? 401 : 503;
+      res.status(status).json({
+        error: config.internalApiSecret ? "não autorizado" : "fila interna não configurada",
+      });
+      return;
+    }
+
     const job = req.body as MtprotoJobData;
     if (!job?.kind) {
       res.status(400).json({ error: "invalid job" });
@@ -577,10 +597,11 @@ app.post("/api/mtproto/enqueue", async (req, res) => {
 
 // Assistente de IA sob demanda, chamado pela Server Action do painel.
 //
-// Este endpoint tem segredo compartilhado, diferente do /api/mtproto/enqueue
-// logo acima, que não tem nenhuma autenticação. Quota de LLM aberta custa
-// dinheiro de um jeito que fila aberta não custa. (Fechar o enqueue é um
-// débito conhecido, registrado no spec §5.5.)
+// Segredo compartilhado, como /api/mtproto/enqueue logo acima e
+// /api/mtproto/ensure-bot-access logo abaixo — os três endpoints internos
+// hoje exigem o mesmo header. (O enqueue ficou aberto enquanto carregava só
+// clone.run; o Plano 3 pôs jobs de publicação e de LLM nele e a exceção
+// deixou de se justificar.)
 //
 // A checagem usa `isAuthorizedInternalRequest` — a MESMA função de
 // /api/mtproto/ensure-bot-access logo abaixo, não uma segunda comparação de

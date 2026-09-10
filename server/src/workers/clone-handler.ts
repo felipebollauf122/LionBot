@@ -18,7 +18,12 @@ import { ensureDestination } from "../services/mtproto/clone/dest-builder.js";
 import {
   chooseStrategy,
   createPublisher,
+  MAX_FILE_BYTES,
 } from "../services/mtproto/clone/publish-router.js";
+import { createDraftPublisher } from "../services/mtproto/clone/draft-publisher.js";
+import type { StagedRow } from "../services/mtproto/clone/draft-publisher.js";
+import { downloadAndRehostMedia } from "../services/mtproto/bot-clone/media-rehost.js";
+import { rewriteMessageLinks } from "../services/mtproto/clone/link-replace.js";
 import { iterHistoryAscending } from "../services/mtproto/clone/history-iterator.js";
 import { CloneRunner } from "../services/mtproto/clone/clone-runner.js";
 import { syncTopics, finalizeTopics } from "../services/mtproto/clone/topic-sync.js";
@@ -27,9 +32,11 @@ import { extractWaitSeconds } from "../services/mtproto/flood.js";
 import { isUserRestricted } from "../services/mtproto/clone/user-restricted.js";
 import type {
   CloneMapRow,
+  CloneOutcome,
   CloneStatus,
   ClonePeer,
   CloneTopicMapRow,
+  SourceMessage,
 } from "../services/mtproto/clone/types.js";
 
 /**
@@ -85,6 +92,81 @@ async function scheduleCloneResume(cloneJobId: string, seconds: number): Promise
     .update({ resume_after: new Date(Date.now() + waitMs).toISOString() })
     .eq("id", cloneJobId);
   await enqueueMtproto({ kind: "clone.run", cloneJobId }, { delayMs: waitMs });
+}
+
+/**
+ * Grava um lote de linhas de rascunho. Upsert em (campaign_id, source_msg_id)
+ * — ver 074: é o que torna a retomada pós-FLOOD_WAIT idempotente, coisa que o
+ * clone live não tem (050).
+ *
+ * `reply_to_id` é resolvido aqui e não no publisher: o publisher só conhece o
+ * id NA ORIGEM da mensagem respondida (é o que resolveReply devolve, porque o
+ * destMsgId sintético é o próprio source id), e o uuid só existe no banco.
+ */
+async function upsertStagedRows(
+  campaignId: string,
+  tenantId: string,
+  rows: StagedRow[],
+): Promise<void> {
+  const payload = [];
+  for (const r of rows) {
+    let replyToId: string | null = null;
+    if (r.replyToSourceMsgId !== null) {
+      const { data } = await supabase
+        .from("mtproto_scheduled_messages")
+        .select("id")
+        .eq("campaign_id", campaignId)
+        .eq("source_msg_id", r.replyToSourceMsgId)
+        .maybeSingle();
+      // Alvo fora do messageLimit não foi gravado: degrada pra envio sem
+      // resposta, exatamente como o clone live faz quando o idMap não tem o id.
+      replyToId = (data?.id as string | undefined) ?? null;
+    }
+    payload.push({
+      campaign_id: campaignId,
+      tenant_id: tenantId,
+      kind: r.kind,
+      content_text: r.contentText,
+      media: r.media,
+      entities: r.entities,
+      inline_links: r.inlineLinks,
+      poll: r.poll,
+      file_name: r.fileName,
+      position: r.position,
+      source_msg_id: r.sourceMsgId,
+      reply_to_id: replyToId,
+    });
+  }
+  const { error } = await supabase
+    .from("mtproto_scheduled_messages")
+    .upsert(payload, { onConflict: "campaign_id,source_msg_id" });
+  if (error) {
+    // Sobe pro runner: uma linha perdida em silêncio vira post faltando no
+    // rascunho, e o usuário não teria como saber qual.
+    throw new Error(`falha ao gravar rascunho: ${error.message}`);
+  }
+}
+
+/**
+ * Renumera `position` como 1..N na ordem de `source_msg_id`, uma vez, no fim
+ * do job. O publisher grava position=0 de propósito: calcular max+1 durante a
+ * publicação abriria buraco e colisão numa retomada, que reprocessa lotes já
+ * gravados.
+ */
+async function renumberDraftPositions(campaignId: string): Promise<number> {
+  const { data } = await supabase
+    .from("mtproto_scheduled_messages")
+    .select("id")
+    .eq("campaign_id", campaignId)
+    .order("source_msg_id", { ascending: true });
+  const rows = data ?? [];
+  for (let i = 0; i < rows.length; i++) {
+    await supabase
+      .from("mtproto_scheduled_messages")
+      .update({ position: i + 1 })
+      .eq("id", rows[i].id);
+  }
+  return rows.length;
 }
 
 export async function handleCloneRun(cloneJobId: string): Promise<void> {
@@ -190,12 +272,17 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
     // publicação (nem "batch"/forward, que ainda depende do bot pra promoção
     // a admin do destino), então falha o job com mensagem clara em vez de
     // seguir e quebrar mais adiante numa chamada qualquer.
+    //
+    // Pré-requisito só do modo live, que publica de verdade. No rascunho
+    // ninguém publica nada — o bot só entra quando a campanha for lançada
+    // (Plano 2), e exigi-lo aqui bloquearia um clone que não precisa dele.
+    const ehRascunho = job.mode === "draft";
     const { data: botRow } = await supabase
       .from("automation_bots")
       .select("id, token, username, session_string, status")
       .eq("tenant_id", job.tenant_id)
       .single();
-    if (!botRow || botRow.status !== "active") {
+    if (!ehRascunho && (!botRow || botRow.status !== "active")) {
       await fail(cloneJobId, "bot companheiro não cadastrado — cadastre o token antes de clonar");
       return;
     }
@@ -226,198 +313,286 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       await client.connect();
       if (crossAccount) await destClient.connect();
 
-      // 0) Fórum: grupo legacy (peerType "chat") nunca é fórum — Topics só
-      // existe em supergrupo. Recalculado do zero em toda execução (mesmo
-      // idioma de effective_strategy, mais abaixo) e persistido só pro
-      // dashboard; nunca é lido de volta pra decidir fluxo.
-      const sourceIsForum = source.peerType === "channel" && (await reader.isForum());
-      await supabase
-        .from("clone_jobs")
-        .update({ source_is_forum: sourceIsForum })
-        .eq("id", cloneJobId);
-      // Fórum só existe em supergrupo — Api.Channel.forum nunca é true sem
-      // megagroup no Telegram, e deriveDestKind já garante isso pro lado da
-      // origem; o check aqui é defensivo (ex.: dest_kind desatualizado), não
-      // a fonte de verdade.
-      const wantsForum = sourceIsForum && job.dest_kind === "megagroup";
-
-      // 1) Destino (idempotente na retomada — ensureDestination devolve
-      // `existing` direto se o job já tiver dest_channel_id persistido, mas
-      // sempre repromove o bot: ver defeito I4 em dest-builder.ts).
-      // A LEITURA da identidade usa o client de ORIGEM (reader); a CRIAÇÃO
-      // (canal, about, foto, promoção do bot, invite) usa o destClient.
-      const dest = await ensureDestination(
-        {
-          readIdentity: () => reader.readIdentity(),
-          createChannel: async (title, about, opts) => {
-            const created = await destClient.createChannel(title, about, opts);
-            // CreateChannel deu certo → a conta de destino NÃO está restrita.
-            // Limpa o flag reativo (ela pode ter sido marcada num job antigo).
-            await supabase
-              .from("mtproto_accounts")
-              .update({ create_restricted: false })
-              .eq("id", destAccountId);
-            return created;
-          },
-          setAbout: (cid, hash, about) => destClient.setChannelAbout(cid, hash, about),
-          setPhoto: (cid, hash, photo) => destClient.setChannelPhoto(cid, hash, photo),
-          promoteBot: (cid, hash, username) => promoteBotTolerant(destClient, cid, hash, username),
-          exportInvite: (cid, hash) => destClient.exportChannelInvite(cid, hash),
-          // Chamado até 2x por job: uma vez logo após createChannel (com
-          // inviteLink: null, pra retomada não recriar o canal e queimar
-          // outra unidade da cota diária de CreateChannel) e outra no final
-          // com o link pronto. Um UPDATE idempotente cobre as duas.
-          persist: async (id, d) => {
-            await supabase
-              .from("clone_jobs")
-              .update({
-                dest_channel_id: d.channelId,
-                dest_access_hash: d.accessHash,
-                dest_invite_link: d.inviteLink,
-              })
-              .eq("id", id);
-          },
-        },
-        {
-          jobId: cloneJobId,
-          source,
-          destKind: job.dest_kind,
-          destTitle: job.dest_title,
-          copyIdentity: job.copy_identity,
-          botUsername: botRow.username,
-          forum: wantsForum,
-          existing: job.dest_channel_id
-            ? {
-                channelId: job.dest_channel_id,
-                accessHash: job.dest_access_hash,
-                inviteLink: job.dest_invite_link,
-              }
-            : null,
-        },
-      );
-
-      // 1b) Tópicos de fórum: cria no destino os que faltam e monta o mapa
-      // origem->destino ANTES de qualquer publicação (createPublisher
-      // precisa do mapa pronto pra rotear cada grupo pro tópico certo).
-      // Igual à promoção do bot, roda inteiro dentro do try de setup — um
-      // FLOOD_WAIT aqui sobe pro catch de baixo, que já sabe agendar
-      // retomada em vez de falhar o job (syncTopics relança flood de
-      // propósito, ver topic-sync.ts).
+      // ── Modo rascunho: sem destino, sem tópicos, sem bot. O job só lê a
+      //    origem e grava. Tudo que depende de um canal de destino
+      //    (ensureDestination, syncTopics, promoção do bot, invite) não roda.
+      let publish: (
+        group: SourceMessage[],
+        replyToDestId: number | null,
+      ) => Promise<CloneOutcome[]>;
       let topicSync: Awaited<ReturnType<typeof syncTopics>> | null = null;
-      if (wantsForum) {
-        topicSync = await syncTopics(
+      let wantsForum = false;
+      // `dest` só é escrito e só é lido no caminho live — os usos posteriores
+      // ficam todos sob `wantsForum`, que no rascunho nunca vira true. A
+      // asserção de atribuição definida mantém o tipo não-nulo dentro das
+      // arrow functions de syncTopics/finalizeTopics: um `| null` ali perderia
+      // o estreitamento e obrigaria a reescrever o caminho live.
+      let dest!: Awaited<ReturnType<typeof ensureDestination>>;
+
+      if (ehRascunho) {
+        const campaignId = job.draft_campaign_id as string | null;
+        if (!campaignId) {
+          await fail(cloneJobId, "job em modo rascunho sem campanha vinculada");
+          return;
+        }
+        const linkReplaceConfiguradoDraft = Boolean(
+          job.link_replace_bot || job.link_replace_group || job.link_replace_channel,
+        );
+
+        // A estratégia sai de chooseStrategy, não de uma string cravada aqui:
+        // a decisão mora numa função só, e sem esta chamada o parâmetro
+        // draftMode da Task 3 ficaria testado e morto. `draftMode: true` é a
+        // primeira guarda de lá, então nenhum dos outros campos muda o
+        // resultado — sourceHasNoForwards vai false pra não gastar uma RPC
+        // (reader.hasNoForwards) cuja resposta seria ignorada.
+        const estrategiaDraft = chooseStrategy({
+          requested: job.strategy,
+          sourceHasNoForwards: false,
+          copyButtons: job.copy_buttons,
+          copyReplies: job.copy_replies,
+          crossAccount: false,
+          linkReplaceConfigured: linkReplaceConfiguradoDraft,
+          draftMode: true,
+        });
+        await supabase
+          .from("clone_jobs")
+          .update({ effective_strategy: estrategiaDraft })
+          .eq("id", cloneJobId);
+        publish = createDraftPublisher({
+          rehost: async (raw, hint, fileName) =>
+            downloadAndRehostMedia(
+              { raw: client.raw, supabase },
+              {
+                media: raw.media,
+                tenantId: job.tenant_id,
+                jobId: cloneJobId,
+                nodeIdHint: hint,
+                fileName,
+                tmpDir,
+                maxBytes: MAX_FILE_BYTES,
+                keyPrefix: "campaign",
+              },
+            ),
+          upsert: (rows) => upsertStagedRows(campaignId, job.tenant_id, rows),
+          planInput: (raw, copyPolls) => SourceReader.mediaPlanInput(raw, copyPolls),
+          extractInlineLinks: (raw) => SourceReader.extractInlineLinks(raw),
+          pollData: (raw) => SourceReader.pollData(raw),
+          originalFileName: (raw) => SourceReader.originalFileName(raw),
+          copyPolls: job.copy_polls,
+          copyButtons: job.copy_buttons,
+          rewrite: linkReplaceConfiguradoDraft
+            ? (input) =>
+                rewriteMessageLinks(
+                  input,
+                  {
+                    classify: (identifier: string) => {
+                      const parsed = parseLinkIdentifier(identifier);
+                      return parsed
+                        ? client.classifyLink(parsed)
+                        : Promise.resolve("unknown" as PeerKind);
+                    },
+                  },
+                  {
+                    botUsername: job.link_replace_bot ?? undefined,
+                    groupLink: job.link_replace_group ?? undefined,
+                    channelLink: job.link_replace_channel ?? undefined,
+                  },
+                )
+            : null,
+        });
+      } else {
+        // 0) Fórum: grupo legacy (peerType "chat") nunca é fórum — Topics só
+        // existe em supergrupo. Recalculado do zero em toda execução (mesmo
+        // idioma de effective_strategy, mais abaixo) e persistido só pro
+        // dashboard; nunca é lido de volta pra decidir fluxo.
+        const sourceIsForum = source.peerType === "channel" && (await reader.isForum());
+        await supabase
+          .from("clone_jobs")
+          .update({ source_is_forum: sourceIsForum })
+          .eq("id", cloneJobId);
+        // Fórum só existe em supergrupo — Api.Channel.forum nunca é true sem
+        // megagroup no Telegram, e deriveDestKind já garante isso pro lado da
+        // origem; o check aqui é defensivo (ex.: dest_kind desatualizado), não
+        // a fonte de verdade.
+        wantsForum = sourceIsForum && job.dest_kind === "megagroup";
+
+        // 1) Destino (idempotente na retomada — ensureDestination devolve
+        // `existing` direto se o job já tiver dest_channel_id persistido, mas
+        // sempre repromove o bot: ver defeito I4 em dest-builder.ts).
+        // A LEITURA da identidade usa o client de ORIGEM (reader); a CRIAÇÃO
+        // (canal, about, foto, promoção do bot, invite) usa o destClient.
+        dest = await ensureDestination(
           {
-            listSourceTopics: () => reader.listTopics(),
-            createDestTopic: (topicInput) =>
-              destClient.createForumTopic(dest.channelId, dest.accessHash, topicInput),
-            setClosed: (topicId, closed) =>
-              destClient.setForumTopicClosed(dest.channelId, dest.accessHash, topicId, closed),
-            setPinned: (topicId, pinned) =>
-              destClient.setForumTopicPinned(dest.channelId, dest.accessHash, topicId, pinned),
-            loadExisting: async (id) => {
-              const { data } = await supabase
-                .from("clone_topic_map")
-                .select("source_topic_id, dest_topic_id, title, status, reason")
-                .eq("job_id", id);
-              return (data ?? []).map(
-                (r): CloneTopicMapRow => ({
-                  sourceTopicId: Number(r.source_topic_id),
-                  destTopicId: r.dest_topic_id === null ? null : Number(r.dest_topic_id),
-                  title: r.title,
-                  status: r.status,
-                  reason: r.reason,
-                }),
-              );
+            readIdentity: () => reader.readIdentity(),
+            createChannel: async (title, about, opts) => {
+              const created = await destClient.createChannel(title, about, opts);
+              // CreateChannel deu certo → a conta de destino NÃO está restrita.
+              // Limpa o flag reativo (ela pode ter sido marcada num job antigo).
+              await supabase
+                .from("mtproto_accounts")
+                .update({ create_restricted: false })
+                .eq("id", destAccountId);
+              return created;
             },
-            persist: async (id, row) => {
-              // upsert, não insert: um tópico 'failed' é retentado a cada
-              // resume (ver topic-sync.ts) — sem onConflict, a 2ª tentativa
-              // bateria na unique (job_id, source_topic_id) da 1ª.
-              await supabase.from("clone_topic_map").upsert(
-                {
-                  job_id: id,
-                  source_topic_id: row.sourceTopicId,
-                  dest_topic_id: row.destTopicId,
-                  title: row.title,
-                  status: row.status,
-                  reason: row.reason,
-                },
-                { onConflict: "job_id,source_topic_id" },
-              );
+            setAbout: (cid, hash, about) => destClient.setChannelAbout(cid, hash, about),
+            setPhoto: (cid, hash, photo) => destClient.setChannelPhoto(cid, hash, photo),
+            promoteBot: (cid, hash, username) => promoteBotTolerant(destClient, cid, hash, username),
+            exportInvite: (cid, hash) => destClient.exportChannelInvite(cid, hash),
+            // Chamado até 2x por job: uma vez logo após createChannel (com
+            // inviteLink: null, pra retomada não recriar o canal e queimar
+            // outra unidade da cota diária de CreateChannel) e outra no final
+            // com o link pronto. Um UPDATE idempotente cobre as duas.
+            persist: async (id, d) => {
+              await supabase
+                .from("clone_jobs")
+                .update({
+                  dest_channel_id: d.channelId,
+                  dest_access_hash: d.accessHash,
+                  dest_invite_link: d.inviteLink,
+                })
+                .eq("id", id);
             },
           },
-          { jobId: cloneJobId },
+          {
+            jobId: cloneJobId,
+            source,
+            destKind: job.dest_kind,
+            destTitle: job.dest_title,
+            copyIdentity: job.copy_identity,
+            botUsername: botRow!.username,
+            forum: wantsForum,
+            existing: job.dest_channel_id
+              ? {
+                  channelId: job.dest_channel_id,
+                  accessHash: job.dest_access_hash,
+                  inviteLink: job.dest_invite_link,
+                }
+              : null,
+          },
         );
-      }
 
-      // 2) Estratégia
-      const linkReplaceConfigured = Boolean(
-        job.link_replace_bot || job.link_replace_group || job.link_replace_channel,
-      );
-      const strategy = chooseStrategy({
-        requested: job.strategy,
-        sourceHasNoForwards: await reader.hasNoForwards(),
-        copyButtons: job.copy_buttons,
-        // Defeito I5: sem isso, "copiar respostas" ligado escolhia a rota
-        // batch/forward (que não carrega reply_to), e o runner calculava o
-        // replyToDestId à toa — descartado em silêncio no forward.
-        copyReplies: job.copy_replies,
-        // Cross-account: forward entre sessões diferentes não existe → download.
-        crossAccount,
-        // Troca de link: ForwardMessages copia server-side, o app nunca vê
-        // texto/entities nessa rota — impossível trocar link ali.
-        linkReplaceConfigured,
-      });
-      await supabase
-        .from("clone_jobs")
-        .update({ effective_strategy: strategy })
-        .eq("id", cloneJobId);
-      if (linkReplaceConfigured) {
-        console.log(
-          `[clone] job ${cloneJobId}: troca de link ativada — RPCs extras de resolução podem alongar o tempo total do clone`,
+        // 1b) Tópicos de fórum: cria no destino os que faltam e monta o mapa
+        // origem->destino ANTES de qualquer publicação (createPublisher
+        // precisa do mapa pronto pra rotear cada grupo pro tópico certo).
+        // Igual à promoção do bot, roda inteiro dentro do try de setup — um
+        // FLOOD_WAIT aqui sobe pro catch de baixo, que já sabe agendar
+        // retomada em vez de falhar o job (syncTopics relança flood de
+        // propósito, ver topic-sync.ts).
+        if (wantsForum) {
+          topicSync = await syncTopics(
+            {
+              listSourceTopics: () => reader.listTopics(),
+              createDestTopic: (topicInput) =>
+                destClient.createForumTopic(dest.channelId, dest.accessHash, topicInput),
+              setClosed: (topicId, closed) =>
+                destClient.setForumTopicClosed(dest.channelId, dest.accessHash, topicId, closed),
+              setPinned: (topicId, pinned) =>
+                destClient.setForumTopicPinned(dest.channelId, dest.accessHash, topicId, pinned),
+              loadExisting: async (id) => {
+                const { data } = await supabase
+                  .from("clone_topic_map")
+                  .select("source_topic_id, dest_topic_id, title, status, reason")
+                  .eq("job_id", id);
+                return (data ?? []).map(
+                  (r): CloneTopicMapRow => ({
+                    sourceTopicId: Number(r.source_topic_id),
+                    destTopicId: r.dest_topic_id === null ? null : Number(r.dest_topic_id),
+                    title: r.title,
+                    status: r.status,
+                    reason: r.reason,
+                  }),
+                );
+              },
+              persist: async (id, row) => {
+                // upsert, não insert: um tópico 'failed' é retentado a cada
+                // resume (ver topic-sync.ts) — sem onConflict, a 2ª tentativa
+                // bateria na unique (job_id, source_topic_id) da 1ª.
+                await supabase.from("clone_topic_map").upsert(
+                  {
+                    job_id: id,
+                    source_topic_id: row.sourceTopicId,
+                    dest_topic_id: row.destTopicId,
+                    title: row.title,
+                    status: row.status,
+                    reason: row.reason,
+                  },
+                  { onConflict: "job_id,source_topic_id" },
+                );
+              },
+            },
+            { jobId: cloneJobId },
+          );
+        }
+
+        // 2) Estratégia
+        const linkReplaceConfigured = Boolean(
+          job.link_replace_bot || job.link_replace_group || job.link_replace_channel,
         );
+        const strategy = chooseStrategy({
+          requested: job.strategy,
+          sourceHasNoForwards: await reader.hasNoForwards(),
+          copyButtons: job.copy_buttons,
+          // Defeito I5: sem isso, "copiar respostas" ligado escolhia a rota
+          // batch/forward (que não carrega reply_to), e o runner calculava o
+          // replyToDestId à toa — descartado em silêncio no forward.
+          copyReplies: job.copy_replies,
+          // Cross-account: forward entre sessões diferentes não existe → download.
+          crossAccount,
+          // Troca de link: ForwardMessages copia server-side, o app nunca vê
+          // texto/entities nessa rota — impossível trocar link ali.
+          linkReplaceConfigured,
+        });
+        await supabase
+          .from("clone_jobs")
+          .update({ effective_strategy: strategy })
+          .eq("id", cloneJobId);
+        if (linkReplaceConfigured) {
+          console.log(
+            `[clone] job ${cloneJobId}: troca de link ativada — RPCs extras de resolução podem alongar o tempo total do clone`,
+          );
+        }
+
+        // 3) Bot publicador. Creds injetadas (não importadas de config.ts dentro
+        // de bot-client.ts) — só usadas de fato se bot.mtproto() for chamado;
+        // aqui vêm do config.ts do worker, que já garante as envs carregadas.
+        bot = new CompanionBot(
+          botRow!.token,
+          CompanionBot.destChatIdFromChannelId(dest.channelId),
+          botRow!.session_string,
+          { apiId: config.telegramApiId, apiHash: config.telegramApiHash },
+        );
+
+        // Resolve pela conta de LEITURA (mesma que lê a origem) — nunca pelo
+        // bot nem pela conta de destino. classify() nunca lança pra erro
+        // não-flood (client.classifyLink já degrada pra "unknown"); flood
+        // propaga e é pego pelo catch já existente do CloneRunner.flush().
+        const linkReplace = linkReplaceConfigured
+          ? {
+              classify: (identifier: string): Promise<PeerKind> => {
+                const parsed = parseLinkIdentifier(identifier);
+                return parsed ? client.classifyLink(parsed) : Promise.resolve("unknown" as PeerKind);
+              },
+              values: {
+                botUsername: job.link_replace_bot ?? undefined,
+                groupLink: job.link_replace_group ?? undefined,
+                channelLink: job.link_replace_channel ?? undefined,
+              },
+            }
+          : null;
+
+        publish = createPublisher({
+          reader,
+          bot,
+          destChannelId: dest.channelId,
+          destAccessHash: dest.accessHash,
+          strategy,
+          copyPolls: job.copy_polls,
+          copyButtons: job.copy_buttons,
+          tmpDir,
+          topicMap: topicSync?.topicMap ?? null,
+          linkReplace,
+        });
       }
-
-      // 3) Bot publicador. Creds injetadas (não importadas de config.ts dentro
-      // de bot-client.ts) — só usadas de fato se bot.mtproto() for chamado;
-      // aqui vêm do config.ts do worker, que já garante as envs carregadas.
-      bot = new CompanionBot(
-        botRow.token,
-        CompanionBot.destChatIdFromChannelId(dest.channelId),
-        botRow.session_string,
-        { apiId: config.telegramApiId, apiHash: config.telegramApiHash },
-      );
-
-      // Resolve pela conta de LEITURA (mesma que lê a origem) — nunca pelo
-      // bot nem pela conta de destino. classify() nunca lança pra erro
-      // não-flood (client.classifyLink já degrada pra "unknown"); flood
-      // propaga e é pego pelo catch já existente do CloneRunner.flush().
-      const linkReplace = linkReplaceConfigured
-        ? {
-            classify: (identifier: string): Promise<PeerKind> => {
-              const parsed = parseLinkIdentifier(identifier);
-              return parsed ? client.classifyLink(parsed) : Promise.resolve("unknown" as PeerKind);
-            },
-            values: {
-              botUsername: job.link_replace_bot ?? undefined,
-              groupLink: job.link_replace_group ?? undefined,
-              channelLink: job.link_replace_channel ?? undefined,
-            },
-          }
-        : null;
-
-      const publish = createPublisher({
-        reader,
-        bot,
-        destChannelId: dest.channelId,
-        destAccessHash: dest.accessHash,
-        strategy,
-        copyPolls: job.copy_polls,
-        copyButtons: job.copy_buttons,
-        tmpDir,
-        topicMap: topicSync?.topicMap ?? null,
-        linkReplace,
-      });
 
       // Defeito I8: "últimas N mensagens" tem que clonar as N mais NOVAS, não
       // as N mais antigas. O runner só sabe iterar em ordem ascendente (pra
@@ -556,6 +731,17 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
           scheduleResume: (id, seconds) => scheduleCloneResume(id, seconds),
           sourcePinnedIds: () => reader.pinnedIds(),
           pinInDest: async (ids) => {
+            if (ehRascunho) {
+              // Sem destino pra fixar: marca a linha, e o worker de disparo
+              // chama bot.pin() depois de publicar de verdade.
+              const campaignId = job.draft_campaign_id as string;
+              await supabase
+                .from("mtproto_scheduled_messages")
+                .update({ is_pinned: true })
+                .eq("campaign_id", campaignId)
+                .in("source_msg_id", ids);
+              return;
+            }
             for (const id of ids) {
               await bot!.pin(id).catch((err) => console.warn("[clone] pin falhou:", err));
             }
@@ -574,6 +760,32 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       );
 
       await runner.run();
+
+      // Rascunho: renumera as posições e leva a campanha pro estado certo.
+      // Releitura fresca do status pelo mesmo motivo do finalizeTopics abaixo:
+      // run() também retorna em pausa, flood e falha.
+      if (ehRascunho) {
+        const { data: finalRow } = await supabase
+          .from("clone_jobs")
+          .select("status")
+          .eq("id", cloneJobId)
+          .maybeSingle();
+        if (finalRow?.status === "completed") {
+          const campaignId = job.draft_campaign_id as string;
+          const total = await renumberDraftPositions(campaignId);
+          const querIa = job.ai_clean || job.ai_rewrite || job.ai_smart_delay;
+          await supabase
+            .from("mtproto_scheduled_campaigns")
+            .update({
+              total_messages: total,
+              // A fase de IA (Plano 3) consome 'queued'. Sem alavanca ligada,
+              // o rascunho já nasce pronto pra revisão humana.
+              status: querIa ? "ai_processing" : "draft",
+              ai_status: querIa ? "queued" : "idle",
+            })
+            .eq("id", campaignId);
+        }
+      }
 
       // Fecha/fixa tópicos só depois de confirmar (releitura fresca, não o
       // simples retorno de run() — que também acontece em pausa/flood/falha)

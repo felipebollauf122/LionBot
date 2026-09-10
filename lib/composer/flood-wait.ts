@@ -12,7 +12,7 @@
  * string crua.
  */
 
-import { formatClock, formatDaySeparator } from "@/lib/social-proof/format";
+import { formatClock, formatDaySeparator, isSameDay } from "@/lib/social-proof/format";
 
 export interface FloodWait {
   waitSeconds: number;
@@ -48,11 +48,27 @@ export function parseFloodWait(
  * seguinte) lê como se fosse resolver ainda hoje. Parâmetro em vez de
  * `new Date()` interno pelo mesmo motivo do `agora` fixo em
  * `campaign-composer.tsx`: quem CHAMA decide o instante de referência.
+ *
+ * A decisão de qual moldura usar (só hora / "ontem" / "no dia D de MÊS") é
+ * feita comparando DATAS (`isSameDay`), não casando a string que
+ * `formatDaySeparator` devolve — um worker parado deixa uma linha pending
+ * cujo `resumesAt` já passou, às vezes de ontem, e tratar só "Hoje" como
+ * caso especial produzia "no dia Ontem, às 12:05", que não é português.
+ * Acoplar a frase à string de apresentação foi o que deixou isto frágil.
  */
 export function describeFloodWait(flood: FloodWait, now: Date = new Date()): string {
   const hora = formatClock(flood.resumesAt);
-  const dia = formatDaySeparator(flood.resumesAt, now);
-  const quando = dia === "Hoje" ? `às ${hora}` : `no dia ${dia}, às ${hora}`;
+  const ontem = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  let quando: string;
+  if (isSameDay(flood.resumesAt, now)) {
+    quando = `às ${hora}`;
+  } else if (isSameDay(flood.resumesAt, ontem)) {
+    quando = `ontem, às ${hora}`;
+  } else {
+    quando = `no dia ${formatDaySeparator(flood.resumesAt, now)}, às ${hora}`;
+  }
+
   return `O Telegram limitou o envio temporariamente. A publicação continua ${quando} — nada foi perdido, é só aguardar.`;
 }
 

@@ -68,6 +68,22 @@ describe("describeFloodWait", () => {
     expect(texto).toMatch(/dia 11 de setembro/);
   });
 
+  it("resume já passou e foi ONTEM: gramática correta, sem 'no dia' colado com Ontem/Hoje", () => {
+    // Fix A da rodada: um worker parado deixa uma linha pending cujo
+    // scheduled_at (resumesAt) já passou — pode ser de ontem. O código velho
+    // só tratava "Hoje" como caso especial; "Ontem" caía no ramo genérico e
+    // produzia "no dia Ontem, às 12:05", que não é português. A comparação
+    // certa é por DATA (isSameDay), não por casar a string que
+    // formatDaySeparator devolve.
+    const texto = describeFloodWait(
+      { waitSeconds: 300, resumesAt: new Date("2026-09-09T12:05:00-03:00") },
+      new Date("2026-09-10T10:00:00-03:00"),
+    );
+    expect(texto).toContain("12:05");
+    expect(texto.toLowerCase()).toContain("ontem");
+    expect(texto).not.toMatch(/no dia ontem/i);
+  });
+
   it("sem `now` explícito, usa o agora real (não quebra)", () => {
     const texto = describeFloodWait({
       waitSeconds: 300,

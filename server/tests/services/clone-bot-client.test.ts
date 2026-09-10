@@ -178,3 +178,84 @@ describe("CompanionBot — message_thread_id (tópicos de fórum)", () => {
     });
   });
 });
+
+/**
+ * O default silencioso é do clone: 500 posts de uma vez não podem tocar o
+ * celular do inscrito 500 vezes. A campanha de conteúdo passa silent:false,
+ * onde a notificação é justamente o ponto.
+ */
+describe("CompanionBot — silent", () => {
+  it("silent:false publica com notificação; o default continua silencioso", async () => {
+    const { bot, fake } = makeCompanionBot();
+
+    await bot.publishText("com som", { silent: false });
+    await bot.publishText("sem som", {});
+
+    expect(fake.api.sendMessage).toHaveBeenNthCalledWith(
+      1,
+      "-100999",
+      "com som",
+      expect.objectContaining({ disable_notification: false }),
+    );
+    expect(fake.api.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      "-100999",
+      "sem som",
+      expect.objectContaining({ disable_notification: true }),
+    );
+  });
+
+  it("publishMedia respeita silent no objeto common e no branch do sticker", async () => {
+    const { bot, fake } = makeCompanionBot();
+
+    await bot.publishMedia("/tmp/x.jpg", "photo", "legenda", { silent: false });
+    await bot.publishMedia("/tmp/x.webp", "sticker", "", { silent: false });
+
+    expect(fake.api.sendPhoto).toHaveBeenCalledWith(
+      "-100999",
+      expect.anything(),
+      expect.objectContaining({ disable_notification: false }),
+    );
+    expect(fake.api.sendSticker).toHaveBeenCalledWith(
+      "-100999",
+      expect.anything(),
+      expect.objectContaining({ disable_notification: false }),
+    );
+  });
+
+  it("publishAlbum e publishPoll aceitam silent, com o mesmo default", async () => {
+    const { bot, fake } = makeCompanionBot();
+
+    await bot.publishAlbum([{ filePath: "/tmp/a.jpg", kind: "photo", caption: "" }], {
+      silent: false,
+    });
+    await bot.publishPoll(
+      { question: "q", options: ["a", "b"], isAnonymous: true, allowsMultipleAnswers: false },
+      { silent: false },
+    );
+    await bot.publishPoll(
+      { question: "q2", options: ["a", "b"], isAnonymous: true, allowsMultipleAnswers: false },
+      {},
+    );
+
+    expect(fake.api.sendMediaGroup).toHaveBeenCalledWith(
+      "-100999",
+      expect.any(Array),
+      expect.objectContaining({ disable_notification: false }),
+    );
+    expect(fake.api.sendPoll).toHaveBeenNthCalledWith(
+      1,
+      "-100999",
+      "q",
+      expect.any(Array),
+      expect.objectContaining({ disable_notification: false }),
+    );
+    expect(fake.api.sendPoll).toHaveBeenNthCalledWith(
+      2,
+      "-100999",
+      "q2",
+      expect.any(Array),
+      expect.objectContaining({ disable_notification: true }),
+    );
+  });
+});

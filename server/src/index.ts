@@ -10,6 +10,7 @@ import { TelegramApi } from "./telegram/api.js";
 import { botCache, flowCache, flowByIdCache } from "./cache.js";
 import { MtprotoClient } from "./services/mtproto/client.js";
 import { ensureBotAccess } from "./services/mtproto/ensure-bot-access.js";
+import { isAuthorizedInternalRequest } from "./services/mtproto/internal-auth.js";
 
 interface Bot {
   id: string;
@@ -577,6 +578,22 @@ app.post("/api/mtproto/enqueue", async (req, res) => {
 // a resposta pra dizer ao dono se ele já pode publicar.
 app.post("/api/mtproto/ensure-bot-access", async (req, res) => {
   try {
+    // Segredo compartilhado (achado de segurança: sem isto, qualquer um que
+    // adivinhasse/visse um campaignId de outro tenant na URL fazia a conta
+    // MTProto e o bot DAQUELE tenant promoverem admin num canal que não é
+    // seu — IDOR entre tenants). `isAuthorizedInternalRequest` também
+    // recusa quando `config.internalApiSecret` está vazio: endpoint sem
+    // segredo configurado é "não pronto pra uso", nunca "aberto pra todo
+    // mundo". Status diferenciado só pra quem opera o serviço saber qual é
+    // qual — a recusa em si é genérica nos dois casos.
+    if (!isAuthorizedInternalRequest(config.internalApiSecret, req.headers["x-internal-secret"])) {
+      const status = config.internalApiSecret ? 401 : 503;
+      res.status(status).json({
+        error: config.internalApiSecret ? "não autorizado" : "endpoint não configurado",
+      });
+      return;
+    }
+
     const { campaignId } = req.body as { campaignId?: string };
     if (!campaignId) {
       res.status(400).json({ error: "campaignId ausente" });

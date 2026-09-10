@@ -244,6 +244,21 @@ export async function ensureBotAccessOnDestination(
   campaignId: string,
 ): Promise<ActionResult> {
   return comGuarda("ensureBotAccessOnDestination", async () => {
+    // Achado de segurança (IDOR entre tenants, corrigido nesta rodada): sem
+    // este passo o campaignId cru seguia direto pro worker, que lê a
+    // campanha com o client de SERVICE ROLE (RLS não se aplica) e promove o
+    // bot usando a conta MTProto de QUALQUER tenant — bastava
+    // adivinhar/ver o id na URL (`/dashboard/automations/scheduled/[campaignId]`).
+    // Esta leitura passa pelo client com RLS (mesmo raciocínio de
+    // `launchClone` em clones/actions.ts: "não pode disparar o worker
+    // externo, que só recebe o id e confiaria cegamente nele"). Sem linha
+    // visível — campanha inexistente OU de outro tenant —, nada é mandado
+    // pro worker, e a recusa não distingue os dois casos.
+    const tenantId = await tenantDaCampanha(campaignId);
+    if (!tenantId) {
+      return { ok: false, error: "Campanha não encontrada (ou sem permissão)." };
+    }
+
     const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(
       /\/+$/,
       "",
@@ -251,7 +266,13 @@ export async function ensureBotAccessOnDestination(
     try {
       const res = await fetch(`${serverUrl}/api/mtproto/ensure-bot-access`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Segunda camada: prova que quem chama o worker é ESTE servidor
+          // Next, não um request direto ao endpoint interno (que não tem
+          // nenhuma outra autenticação, como o /api/mtproto/enqueue vizinho).
+          "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+        },
         body: JSON.stringify({ campaignId }),
       });
       if (!res.ok) {

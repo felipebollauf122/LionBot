@@ -102,9 +102,18 @@ create table if not exists public.mtproto_scheduled_messages (
 -- dois runners no mesmo lote duplicam posts no destino. No modo rascunho o
 -- publish vira upsert nesta chave, então uma retomada pós-FLOOD_WAIT que
 -- reprocesse um lote já gravado sobrescreve em vez de duplicar.
+--
+-- Índice CHEIO, nunca parcial. Um predicado `where source_msg_id is not null`
+-- aqui não compra nada — o Postgres já trata NULL como distinto em índice
+-- único, então linhas sem source_msg_id (mensagem criada à mão na campanha)
+-- convivem sem colidir de qualquer jeito. E ele QUEBRA o upsert: o
+-- `ON CONFLICT` só infere índice parcial se a instrução repetir o mesmo
+-- predicado, coisa que o PostgREST não emite (o on_conflict dele só carrega
+-- nomes de coluna) — o que dava 42P10 na primeira gravação de todo job de
+-- rascunho. Não recoloque o predicado.
+drop index if exists public.idx_sched_msgs_source;
 create unique index if not exists idx_sched_msgs_source
-  on public.mtproto_scheduled_messages (campaign_id, source_msg_id)
-  where source_msg_id is not null;
+  on public.mtproto_scheduled_messages (campaign_id, source_msg_id);
 
 -- O poller do worker de disparo. Parcial porque só 'pending' é consultado.
 create index if not exists idx_sched_msgs_due

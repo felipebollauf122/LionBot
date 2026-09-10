@@ -154,12 +154,28 @@ async function upsertStagedRows(
  * gravados.
  */
 async function renumberDraftPositions(campaignId: string): Promise<number> {
-  const { data } = await supabase
-    .from("mtproto_scheduled_messages")
-    .select("id")
-    .eq("campaign_id", campaignId)
-    .order("source_msg_id", { ascending: true });
-  const rows = data ?? [];
+  // Leitura paginada de propósito: o PostgREST corta toda resposta em
+  // db.max_rows (1000 por padrão), e um select sem .range() devolveria só a
+  // primeira página — renumerando parte da campanha e gravando um
+  // total_messages menor que o real, em silêncio, que é o número que a tela
+  // de lançamento lê depois. O teto de rascunho é menor que isso hoje, mas
+  // álbum colapsa várias mensagens numa linha só e teto muda; não dá pra
+  // depender disso. Ordem por source_msg_id é total (o unique da 074 proíbe
+  // empate) e nada insere durante esta varredura, então a paginação é estável.
+  const PAGINA = 1000;
+  const rows: { id: string }[] = [];
+  for (let offset = 0; ; offset += PAGINA) {
+    const { data } = await supabase
+      .from("mtproto_scheduled_messages")
+      .select("id")
+      .eq("campaign_id", campaignId)
+      .order("source_msg_id", { ascending: true })
+      .range(offset, offset + PAGINA - 1);
+    const pagina = data ?? [];
+    rows.push(...pagina);
+    // Página curta (ou vazia) = acabou. Página cheia pode ter mais atrás.
+    if (pagina.length < PAGINA) break;
+  }
   for (let i = 0; i < rows.length; i++) {
     await supabase
       .from("mtproto_scheduled_messages")
@@ -311,7 +327,11 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
 
     try {
       await client.connect();
-      if (crossAccount) await destClient.connect();
+      // O rascunho não tem destino: o destClient nunca é usado ali, então
+      // abrir uma segunda sessão MTProto seria desperdício e mais uma
+      // superfície de flood. No live a condição é a de sempre (ehRascunho é
+      // false), e o disconnect no finally usa exatamente a mesma guarda.
+      if (crossAccount && !ehRascunho) await destClient.connect();
 
       // ── Modo rascunho: sem destino, sem tópicos, sem bot. O job só lê a
       //    origem e grava. Tudo que depende de um canal de destino
@@ -793,6 +813,17 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       // topic-sync.ts: fechar um tópico antes de terminar de publicar nele
       // arriscaria bloquear posts futuros do bot mesmo sendo admin.
       if (wantsForum && topicSync) {
+        // Guarda explícita do invariante que a asserção de atribuição
+        // definida de `dest` promete mas o compilador não checa: fórum só
+        // existe no caminho live, e lá `dest` sempre foi atribuído antes
+        // daqui. Se um dia alguém alcançar este ponto sem destino, é melhor
+        // um erro nomeado que um `undefined.channelId` três frames abaixo.
+        // Inalcançável hoje: no rascunho `wantsForum` nunca deixa de ser false.
+        if (!dest) {
+          throw new Error(
+            "DESTINO_AUSENTE_NO_FINALIZE: tópicos a finalizar sem destino — invariante do modo live quebrada",
+          );
+        }
         const { data: finalRow } = await supabase
           .from("clone_jobs")
           .select("status")
@@ -855,7 +886,9 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       await client.disconnect().catch(() => {});
       // destClient só é objeto separado no cross-account; senão é o mesmo
       // `client` já desconectado acima.
-      if (crossAccount) await destClient.disconnect().catch(() => {});
+      // A guarda é idêntica à do connect lá em cima — desconecta exatamente o
+      // que foi aberto, e no rascunho não foi aberto nada.
+      if (crossAccount && !ehRascunho) await destClient.disconnect().catch(() => {});
       await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   } finally {

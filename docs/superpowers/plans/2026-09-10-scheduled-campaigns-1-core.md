@@ -29,7 +29,7 @@
 
 **Interfaces:**
 - Consumes: nada.
-- Produces: tabelas `public.mtproto_scheduled_campaigns` e `public.mtproto_scheduled_messages`, com o unique parcial `idx_sched_msgs_source (campaign_id, source_msg_id) where source_msg_id is not null` do qual a Task 6 depende pro upsert.
+- Produces: tabelas `public.mtproto_scheduled_campaigns` e `public.mtproto_scheduled_messages`, com o unique CHEIO `idx_sched_msgs_source (campaign_id, source_msg_id)` do qual a Task 6 depende pro upsert. Sem predicado de propósito: `ON CONFLICT` não infere índice parcial sem repetir o predicado, e o PostgREST não tem como emitir isso — parcial dava 42P10 em toda gravação de rascunho.
 
 - [ ] **Step 1: Escrever a migration**
 
@@ -140,9 +140,18 @@ create table if not exists public.mtproto_scheduled_messages (
 -- dois runners no mesmo lote duplicam posts no destino. No modo rascunho o
 -- publish vira upsert nesta chave, então uma retomada pós-FLOOD_WAIT que
 -- reprocesse um lote já gravado sobrescreve em vez de duplicar.
+--
+-- Índice CHEIO, nunca parcial. Um predicado `where source_msg_id is not null`
+-- aqui não compra nada — o Postgres já trata NULL como distinto em índice
+-- único, então linhas sem source_msg_id (mensagem criada à mão na campanha)
+-- convivem sem colidir de qualquer jeito. E ele QUEBRA o upsert: o
+-- `ON CONFLICT` só infere índice parcial se a instrução repetir o mesmo
+-- predicado, coisa que o PostgREST não emite (o on_conflict dele só carrega
+-- nomes de coluna) — o que dava 42P10 na primeira gravação de todo job de
+-- rascunho. Não recoloque o predicado.
+drop index if exists public.idx_sched_msgs_source;
 create unique index if not exists idx_sched_msgs_source
-  on public.mtproto_scheduled_messages (campaign_id, source_msg_id)
-  where source_msg_id is not null;
+  on public.mtproto_scheduled_messages (campaign_id, source_msg_id);
 
 -- O poller do worker de disparo. Parcial porque só 'pending' é consultado.
 create index if not exists idx_sched_msgs_due
@@ -189,7 +198,7 @@ Não há banco local neste projeto — as migrations são aplicadas no Supabase 
 - os nomes do bloco "espelho" batem exatamente com `supabase/migrations/071_social_proof.sql` e `073_social_proof_v2.sql`.
 
 Run: `grep -c "if not exists" supabase/migrations/074_scheduled_campaigns.sql`
-Expected: `7`
+Expected: `5` — dois `create table`, um `create unique index` e dois `create index`. As duas policies são guardadas por `drop policy if exists`, que casa com `if exists` e não com `if not exists`; some com elas e todos os 7 statements do arquivo estão cobertos.
 
 - [ ] **Step 3: Commit**
 
@@ -383,7 +392,7 @@ git commit -m "feat(db): modo rascunho no clone e tipos das campanhas agendadas 
 
 **Interfaces:**
 - Consumes: nada.
-- Produces: `chooseStrategy` aceita `draftMode?: boolean` e devolve `"download"` quando ele é `true`, antes de qualquer outra guarda.
+- Produces: `chooseStrategy` aceita `draftMode?: boolean` e devolve `"download"` quando ele é `true`, antes de qualquer outra guarda. A Task 6 chama a função com esse campo — o parâmetro é usado em produção, não só em teste.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
@@ -817,9 +826,14 @@ export interface StagedRow {
 export interface DraftPublisherDeps {
   /**
    * Baixa a mídia da mensagem e devolve a URL pública, ou null se ela passar
-   * do teto de tamanho. `hint` é o nome lógico do arquivo no Storage.
+   * do teto de tamanho.
+   *
+   * `hint` identifica a mensagem na chave do Storage; `fileName` carrega a
+   * EXTENSÃO. Os dois são separados porque guessContentType (media-rehost.ts)
+   * deduz o content-type pela extensão: sem ela tudo vira
+   * application/octet-stream, e o <video> da prévia recusa tocar.
    */
-  rehost(raw: Api.Message, hint: string): Promise<string | null>;
+  rehost(raw: Api.Message, hint: string, fileName: string): Promise<string | null>;
   /** Upsert por (campaign_id, source_msg_id). Nunca recebe lista vazia. */
   upsert(rows: StagedRow[]): Promise<void>;
   /**
@@ -853,6 +867,20 @@ export interface DraftPublisherDeps {
 
 /** Só foto e vídeo entram num álbum do Telegram — mesma regra do publish-router. */
 const ALBUMABLE = new Set<CloneMediaKind>(["photo", "video"]);
+
+/**
+ * Extensão de fallback por tipo de mídia. Só entra quando a origem não trouxe
+ * DocumentAttributeFilename (foto e vídeo nunca trazem). É ela que faz o
+ * Storage servir o content-type certo pra prévia.
+ */
+const EXT: Record<CloneMediaKind, string> = {
+  photo: "jpg",
+  video: "mp4",
+  animation: "mp4",
+  audio: "mp3",
+  sticker: "webp",
+  document: "bin",
+};
 
 /** CloneMediaKind -> o `type` que a UI entende. Áudio é o único caso separado. */
 function toStagedMediaType(kind: CloneMediaKind): StagedMedia["type"] {
@@ -945,7 +973,8 @@ export function createDraftPublisher(
     for (let i = 0; i < raws.length; i++) {
       const plan = plans[i];
       if (plan.kind !== "media") continue;
-      const url = await deps.rehost(raws[i], `msg_${group[i].id}`);
+      const nomeArquivo = deps.originalFileName(raws[i]) ?? `arquivo.${EXT[plan.mediaKind]}`;
+      const url = await deps.rehost(raws[i], `msg_${group[i].id}`, nomeArquivo);
       if (url === null) continue; // grande demais: some do álbum, não derruba os irmãos
       media.push({ url, type: toStagedMediaType(plan.mediaKind) });
     }
@@ -985,7 +1014,7 @@ Expected: PASS, 9 testes.
 - [ ] **Step 5: Rodar a suíte inteira do server**
 
 Run: `cd server && npm test`
-Expected: PASS. Nenhum teste existente pode quebrar — nada foi modificado fora do arquivo novo.
+Expected: as 3 suítes de `tests/engine/*` falham ao CARREGAR com `Missing environment variable: SUPABASE_URL` — condição pré-existente do repositório (`tests/setup.ts` mocka `src/db`, não `src/config`), sem relação com este plano. Compare a CONTAGEM de testes que passam, não um sinal verde. Não tente consertar isso aqui. Nenhum teste existente pode quebrar — nada foi modificado fora do arquivo novo.
 
 - [ ] **Step 6: Commit**
 
@@ -1139,16 +1168,31 @@ Dentro do `try` interno, substitua o trecho que vai de `// 0) Fórum` até a cri
           await fail(cloneJobId, "job em modo rascunho sem campanha vinculada");
           return;
         }
-        await supabase
-          .from("clone_jobs")
-          .update({ effective_strategy: "download" })
-          .eq("id", cloneJobId);
-
         const linkReplaceConfiguradoDraft = Boolean(
           job.link_replace_bot || job.link_replace_group || job.link_replace_channel,
         );
+
+        // A estratégia sai de chooseStrategy, não de uma string cravada aqui:
+        // a decisão mora numa função só, e sem esta chamada o parâmetro
+        // draftMode da Task 3 ficaria testado e morto. `draftMode: true` é a
+        // primeira guarda de lá, então nenhum dos outros campos muda o
+        // resultado — sourceHasNoForwards vai false pra não gastar uma RPC
+        // (reader.hasNoForwards) cuja resposta seria ignorada.
+        const estrategiaDraft = chooseStrategy({
+          requested: job.strategy,
+          sourceHasNoForwards: false,
+          copyButtons: job.copy_buttons,
+          copyReplies: job.copy_replies,
+          crossAccount: false,
+          linkReplaceConfigured: linkReplaceConfiguradoDraft,
+          draftMode: true,
+        });
+        await supabase
+          .from("clone_jobs")
+          .update({ effective_strategy: estrategiaDraft })
+          .eq("id", cloneJobId);
         publish = createDraftPublisher({
-          rehost: async (raw, hint) =>
+          rehost: async (raw, hint, fileName) =>
             downloadAndRehostMedia(
               { raw: client.raw, supabase },
               {
@@ -1156,7 +1200,7 @@ Dentro do `try` interno, substitua o trecho que vai de `// 0) Fórum` até a cri
                 tenantId: job.tenant_id,
                 jobId: cloneJobId,
                 nodeIdHint: hint,
-                fileName: hint,
+                fileName,
                 tmpDir,
                 maxBytes: MAX_FILE_BYTES,
                 keyPrefix: "campaign",
@@ -1262,7 +1306,7 @@ Run: `cd server && npx tsc --noEmit`
 Expected: sem erro.
 
 Run: `cd server && npm test`
-Expected: PASS — 43 testes existentes mais os 9 da Task 5.
+Expected: as 3 suítes de `tests/engine/*` falham ao CARREGAR com `Missing environment variable: SUPABASE_URL` — condição pré-existente do repositório (`tests/setup.ts` mocka `src/db`, não `src/config`), sem relação com este plano. Compare a CONTAGEM de testes que passam, não um sinal verde. Não tente consertar isso aqui. A baseline antes desta task era 498.
 
 - [ ] **Step 7: Commit**
 
@@ -1504,6 +1548,14 @@ Na chamada de `createCloneJob`, acrescente:
 
 O `mode === "draft" &&` importa: sem ele, alternar pra rascunho, marcar as alavancas e voltar pra "publicar direto" gravaria flags de IA num job live, que nunca as lê — estado morto no banco esperando pra confundir alguém.
 
+- [ ] **Step 4b: Soltar o botão de submit no modo rascunho**
+
+O botão hoje é `disabled={pending || !destAccountId}` (`clone-form.tsx:219`), e `destAccountId` nasce vazio quando o tenant não tem nenhuma conta elegível pra criar destino — todas com `create_restricted`. O modo rascunho não cria destino nenhum, então essa exigência bloquearia um fluxo que não precisa dela:
+
+```tsx
+        disabled={pending || (mode === "live" && !destAccountId)}
+```
+
 - [ ] **Step 5: Redirecionar pro rascunho**
 
 Onde o formulário trata o retorno de sucesso, mande o usuário pro lugar certo:
@@ -1540,7 +1592,7 @@ git commit -m "feat(clones): formulário escolhe entre publicar direto e mandar 
 - [ ] **Step 1: Rodar as duas suítes**
 
 Run: `cd server && npm test`
-Expected: PASS.
+Expected: as 3 suítes de `tests/engine/*` falham ao CARREGAR com `Missing environment variable: SUPABASE_URL` — condição pré-existente do repositório (`tests/setup.ts` mocka `src/db`, não `src/config`), sem relação com este plano. Compare a CONTAGEM de testes que passam, não um sinal verde. Não tente consertar isso aqui.
 
 Run: `npm test`
 Expected: PASS — os 25 arquivos de `tests/lib/` continuam verdes (nada deste plano tocou a Prova Social).

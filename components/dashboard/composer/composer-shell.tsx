@@ -72,6 +72,7 @@ export function ComposerShell({
   messageBadge,
   now,
   emptyEditorHint = "Selecione ou crie uma mensagem para editar seus detalhes.",
+  busy = false,
 }: {
   actions: ComposerActions;
   messages: ComposerMessageRow[];
@@ -101,6 +102,19 @@ export function ComposerShell({
    *  Prova Social; a campanha ancora na última postagem da sequência. */
   now?: Date;
   emptyEditorHint?: string;
+  /**
+   * Trabalho EM VOO do adaptador, fora do transition deste shell.
+   *
+   * Antes do refactor a Prova Social tinha um `useTransition` só, e salvar o
+   * canal travava a tela inteira. Ao dividir em dois (um aqui, outro no
+   * SocialProofComposer) a prévia, a composição rápida e o editor ficaram
+   * vivos durante o salvamento do canal — e na configuração inicial dava pra
+   * mandar uma mensagem antes de a linha do canal existir, recebendo "Salve
+   * os dados do canal antes de criar mensagens.", um erro que a UI antiga
+   * tornava inalcançável. Quem tem transition próprio devolve o `pending`
+   * dele por aqui.
+   */
+  busy?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [erroMensagem, setErroMensagem] = useState<string | null>(null);
@@ -108,6 +122,10 @@ export function ComposerShell({
   const [rascunho, setRascunho] = useState<MessageInput | null>(null);
   const [senderRapido, setSenderRapido] = useState<SenderKind>("owner");
   const [mobileTab, setMobileTab] = useState<"canal" | "chat">("chat");
+
+  // Uma trava só pra tela inteira: o transition deste shell OU o do
+  // adaptador. É o que o `useTransition` único garantia antes do refactor.
+  const ocupado = pending || busy;
 
   const indice = selecionada ? messages.findIndex((m) => m.id === selecionada) : -1;
 
@@ -179,7 +197,7 @@ export function ComposerShell({
                 pinnedText={pinnedText}
                 pinnedId={pinnedId}
                 selectedId={selecionada}
-                disabled={pending}
+                disabled={ocupado}
                 onSelect={selecionar}
                 messageBadge={messageBadge}
                 now={now}
@@ -203,8 +221,13 @@ export function ComposerShell({
                 <QuickCompose
                   senderKind={senderRapido}
                   onSenderKindChange={setSenderRapido}
-                  disabled={pending}
+                  disabled={ocupado}
                   onSend={async (text) => {
+                    // O `disabled` acima cobre o botão; o Enter no textarea
+                    // chega aqui direto. Enviar durante um salvamento do
+                    // canal é justamente o que faz a mensagem chegar antes da
+                    // linha do canal existir.
+                    if (ocupado) return false;
                     setErroMensagem(null);
                     const r = await actions.saveMessage({
                       ...mensagemVazia(senderRapido),
@@ -220,7 +243,7 @@ export function ComposerShell({
 
                 <button
                   type="button"
-                  disabled={pending}
+                  disabled={ocupado}
                   onClick={() => {
                     setSelecionada(null);
                     setErroMensagem(null);
@@ -263,7 +286,7 @@ export function ComposerShell({
                     value={rascunho}
                     index={indice >= 0 ? indice : messages.length}
                     onChange={setRascunho}
-                    saving={pending}
+                    saving={ocupado}
                     error={erroMensagem}
                     extras={editorExtras?.(rascunho, setRascunho)}
                     onSave={() => correr(() => actions.saveMessage(rascunho))}

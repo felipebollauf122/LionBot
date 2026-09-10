@@ -65,6 +65,13 @@ export function SocialProofComposer({
       messages={messages}
       pinnedId={pinnedId}
       pinnedText={pinnedText}
+      // O salvamento do canal roda no transition DESTE componente, não no do
+      // shell. Sem devolver o pending, a prévia, a composição rápida e o
+      // editor seguem clicáveis durante a gravação — e na configuração
+      // inicial dá pra mandar mensagem antes de a linha do canal existir,
+      // recebendo "Salve os dados do canal antes de criar mensagens.". A UI
+      // de antes do refactor (um `useTransition` só) tornava isso impossível.
+      busy={salvandoCanal}
       leftColumn={
         <>
           <ChannelCard value={canal} onChange={setCanal} />

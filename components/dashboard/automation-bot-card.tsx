@@ -19,6 +19,7 @@ export function AutomationBotCard({
 
   if (bot) {
     return (
+      <div className="space-y-2">
       <div className="row-hover reveal flex items-center justify-between gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
         <div className="min-w-0">
           <div className="text-foreground font-medium truncate">@{bot.username}</div>
@@ -27,12 +28,24 @@ export function AutomationBotCard({
           </div>
         </div>
         <button
-          onClick={() => start(() => void removeAutomationBot(bot.tenant_id))}
+          onClick={() =>
+            start(async () => {
+              setError(null);
+              // A action devolve recusa como DADO (erro lançado de Server
+              // Action é apagado em produção e chega em inglês genérico).
+              // Descartar o resultado deixava o botão "Trocar" sem efeito e
+              // sem explicação nenhuma.
+              const r = await removeAutomationBot(bot.tenant_id);
+              if (!r.ok) setError(r.error);
+            })
+          }
           disabled={pending}
           className="btn-ghost text-xs px-3 py-1.5 shrink-0 disabled:opacity-40"
         >
           Trocar
         </button>
+      </div>
+      {error && <p className="text-(--red) text-xs">{error}</p>}
       </div>
     );
   }

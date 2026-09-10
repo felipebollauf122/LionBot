@@ -288,18 +288,13 @@ export function CloneForm({
               setError(res.error);
               return;
             }
-            // launchClone lanca (throw) se o bot-server estiver fora do ar. O
-            // job "draft" ja foi criado no banco, entao mesmo se isso falhar a
-            // gente navega pra tela de progresso: la o usuario ve o status real
+            // launchClone agora devolve recusa como DADO (nao lanca mais). O
+            // job "draft" ja foi criado no banco, entao mesmo falhando a gente
+            // navega pra tela de progresso: la o usuario ve o status real
             // (inclusive last_error) e pode tentar "Retomar", em vez de travar
-            // o formulario ou deixar o throw sem catch derrubar a pagina.
-            // Isso vale tambem pro rascunho: launchClone e o que dispara o
-            // scraping que preenche a campanha.
-            try {
-              await launchClone(res.cloneJobId);
-            } catch {
-              // Ignorado de proposito: a tela de progresso e quem reporta a falha.
-            }
+            // o formulario. Isso vale tambem pro rascunho: launchClone e o que
+            // dispara o scraping que preenche a campanha.
+            await launchClone(res.cloneJobId);
             // No modo rascunho o destino do usuario e a tela da campanha: e la
             // que ele edita, agenda e publica. Sem campanha (modo live), a tela
             // de progresso do clone continua sendo o lugar certo.

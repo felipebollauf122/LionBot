@@ -36,6 +36,9 @@ export function MtprotoAccounts({
   const [password, setPassword] = useState("");
   const [step, setStep] = useState<"form" | "code" | "password">("form");
   const [error, setError] = useState<string | null>(null);
+  /** Recusa de "marcar como liberada", por conta. O `error` acima pertence ao
+   *  painel de adicionar conta e não é renderizado na lista. */
+  const [erroRestricao, setErroRestricao] = useState<Record<string, string>>({});
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -136,15 +139,22 @@ export function MtprotoAccounts({
                 </span>
                 <button
                   onClick={() =>
-                    startTransition(() =>
-                      clearAccountRestriction(a.id).then(() => window.location.reload()),
-                    )
+                    startTransition(async () => {
+                      // Recusa vem como dado. Recarregar de qualquer jeito
+                      // apagaria a mensagem antes de o usuário ler.
+                      const r = await clearAccountRestriction(a.id);
+                      if (r.ok) window.location.reload();
+                      else setErroRestricao((e) => ({ ...e, [a.id]: r.error }));
+                    })
                   }
                   className="btn-ghost text-xs px-3 py-1.5"
                 >
                   marcar como liberada
                 </button>
               </div>
+            )}
+            {erroRestricao[a.id] && (
+              <div className="text-(--red) text-xs mt-1">{erroRestricao[a.id]}</div>
             )}
             {a.last_error && (
               <div className="text-(--red) text-xs">{a.last_error}</div>

@@ -127,11 +127,10 @@ export function CloneProgress({ initial }: { initial: Job }) {
             onClick={() =>
               start(async () => {
                 setActionError(null);
-                try {
-                  await pauseClone(job.id);
-                } catch (err) {
-                  setActionError(err instanceof Error ? err.message : String(err));
-                }
+                // A action devolve recusa como DADO desde que este arquivo
+                // entrou na convenção do repo — nada mais lança daqui.
+                const r = await pauseClone(job.id);
+                if (!r.ok) setActionError(r.error);
               })
             }
             disabled={pending}
@@ -145,11 +144,10 @@ export function CloneProgress({ initial }: { initial: Job }) {
               onClick={() =>
                 start(async () => {
                   setActionError(null);
-                  try {
-                    await launchClone(job.id);
-                  } catch (err) {
-                    setActionError(err instanceof Error ? err.message : String(err));
-                  }
+                  // A action devolve recusa como DADO desde que este arquivo
+                  // entrou na convenção do repo — nada mais lança daqui.
+                  const r = await launchClone(job.id);
+                  if (!r.ok) setActionError(r.error);
                 })
               }
               disabled={pending}
@@ -163,11 +161,10 @@ export function CloneProgress({ initial }: { initial: Job }) {
           onClick={() =>
             start(async () => {
               setActionError(null);
-              try {
-                await deleteClone(job.id);
-              } catch (err) {
-                setActionError(err instanceof Error ? err.message : String(err));
-              }
+              // A action devolve recusa como DADO desde que este arquivo
+              // entrou na convenção do repo — nada mais lança daqui.
+              const r = await deleteClone(job.id);
+              if (!r.ok) setActionError(r.error);
             })
           }
           disabled={pending}

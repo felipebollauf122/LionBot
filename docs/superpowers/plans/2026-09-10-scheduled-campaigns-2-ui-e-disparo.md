@@ -173,6 +173,8 @@ git commit -m "feat(composer): accumulateSchedule converte delays relativos em h
 - Consumes: `MediaItem`, `Reaction` de `@/lib/social-proof/types`.
 - Produces: `export interface ComposerMessageRow` e `export interface ComposerActions` (esta última usada pela Task 3).
 
+> **Achado carregado do Plano 1 — requisito desta task, não observação.** Uma linha com `kind: "document"` guarda `media[].type: "photo"`, porque `StagedMedia` herda o union de `MediaItem` (`"photo" | "video" | "audio"`), que não tem `"document"`. Sem tratamento, a prévia renderiza um PDF como `<img>` quebrado. **Não mude o union** — ele é o contrato com a UI reusada e com a tabela. Em vez disso, no mapeamento para `FeedMessage`, uma linha cujo `kind` é `"document"` desenha um chip de arquivo (nome vindo de `file_name`, ícone genérico), nunca uma imagem. Acrescente um teste para isso em `tests/lib/composer-row-defaults.test.tsx`.
+
 **O que o implementador precisa saber:** `FeedPreview` hoje tipa `messages: SocialProofMessage[]` e lê sete campos que **não existem** na tabela de campanha — `sender_kind`, `sender_name`, `sender_avatar_url`, `reactions`, `offset_seconds`, `views_count`, `display_time`. Eles viram opcionais no tipo neutro, e `toFeedMessage`/`draftToFeedMessage` passam a aplicar default. Os defaults descrevem exatamente o comportamento certo no modo campanha: canal posta como ele mesmo, sem reação, sem contador falso.
 
 - [ ] **Step 1: Escrever o teste que falha**
@@ -1037,6 +1039,20 @@ Três pontos que exigem atenção:
 
 3. **`setPinned` não é passado**: a campanha não fixa pela UI (o `is_pinned` vem do clone). Omitir a prop faz o shell esconder o botão de fixar, que é o comportamento certo.
 
+- [ ] **Step 2b: Chip de documento de verdade (dívida carregada da Task 2)**
+
+A Task 2 resolveu o `kind: "document"` do jeito que dava dentro dos arquivos dela: prefixando `📄 <nome do arquivo>` no `contentText`. Isso tirou o `<img>` quebrado, mas cria uma quebra de fidelidade — a prévia passa a exibir uma linha de texto que o post real no Telegram **não terá**, numa tela cuja promessa inteira é "isto é exatamente o que vai ser publicado". Aqui os componentes de bolha estão no escopo, então é aqui que se paga.
+
+Substitua o prefixo em texto por um elemento visual: em `components/telegram/message-bubble.tsx` (ou no `media-container.tsx`, onde couber no desenho existente), uma linha com ícone de arquivo genérico e o nome vindo de `file_name`, no estilo do anexo de documento do Telegram. Remova a concatenação no `contentText` de `feed-preview.tsx` — o `contentText` volta a ser só a legenda real.
+
+Mantenha o teste que a Task 2 criou em `tests/lib/composer-row-defaults.test.tsx` passando: ajuste a asserção para procurar o elemento novo em vez do texto `📄`, mas **não** afrouxe o que ela prova — que uma linha `document` nunca vira `<img>` e que o nome do arquivo aparece.
+
+- [ ] **Step 2c: Abrir o slot de badge por bolha (dívida carregada da Task 3)**
+
+A Task 3 declarou `messageBadge` no contrato de props do `ComposerShell`, mas **não o renderiza**: `FeedPreview` e `ChannelFeed` não têm ponto de extensão por bolha, e abri-lo estava fora da lista de arquivos daquela task. Hoje é uma prop que não faz nada — exatamente o tipo de contrato pendurado que engana quem lê o tipo.
+
+Abra o slot: `FeedPreview` repassa `messageBadge` para `ChannelFeed`, que o chama por mensagem e renderiza o retorno junto da bolha (o chip de status da campanha: pendente / enviando / enviada / falhou / descartada). Quando a prop não é passada — que é o caso da Prova Social — nada muda no DOM. Prove isso: os 8 testes de `tests/lib/social-proof-*` continuam passando sem edição.
+
 - [ ] **Step 3: Card na página de automações**
 
 Em `app/dashboard/automations/page.tsx`, acrescente a query e o `CardShell`, copiando o formato do bloco "Clonagem":
@@ -1601,7 +1617,7 @@ E em cada um dos cinco métodos, troque `disable_notification: true` por `disabl
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `cd server && npm test`
-Expected: PASS — o novo teste e todos os existentes (o default preserva o comportamento do clone).
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 5: Commit**
 
@@ -1743,7 +1759,7 @@ O `source_clone_job_id = null` no fim é o que evita a varredura eterna, e é se
 - [ ] **Step 3: Verificar que compila**
 
 Run: `cd server && npx tsc --noEmit && npm test`
-Expected: sem erro, todos os testes passam.
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 4: Commit**
 
@@ -2058,7 +2074,7 @@ git commit -m "feat(campanhas): promover o bot no canal de destino antes de publ
 - [ ] **Step 1: Suítes**
 
 Run: `npm test && cd server && npm test`
-Expected: PASS nas duas. **Nenhum arquivo em `tests/lib/social-proof-*` pode ter sido editado** — confirme com `git log --oneline -- tests/lib/social-proof-*`.
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 2: Regressão da Prova Social no navegador**
 

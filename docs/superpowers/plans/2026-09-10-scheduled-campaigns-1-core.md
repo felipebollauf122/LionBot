@@ -1014,7 +1014,7 @@ Expected: PASS, 9 testes.
 - [ ] **Step 5: Rodar a suíte inteira do server**
 
 Run: `cd server && npm test`
-Expected: as 3 suítes de `tests/engine/*` falham ao CARREGAR com `Missing environment variable: SUPABASE_URL` — condição pré-existente do repositório (`tests/setup.ts` mocka `src/db`, não `src/config`), sem relação com este plano. Compare a CONTAGEM de testes que passam, não um sinal verde. Não tente consertar isso aqui. Nenhum teste existente pode quebrar — nada foi modificado fora do arquivo novo.
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 6: Commit**
 
@@ -1306,7 +1306,7 @@ Run: `cd server && npx tsc --noEmit`
 Expected: sem erro.
 
 Run: `cd server && npm test`
-Expected: as 3 suítes de `tests/engine/*` falham ao CARREGAR com `Missing environment variable: SUPABASE_URL` — condição pré-existente do repositório (`tests/setup.ts` mocka `src/db`, não `src/config`), sem relação com este plano. Compare a CONTAGEM de testes que passam, não um sinal verde. Não tente consertar isso aqui. A baseline antes desta task era 498.
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 7: Commit**
 
@@ -1592,7 +1592,7 @@ git commit -m "feat(clones): formulário escolhe entre publicar direto e mandar 
 - [ ] **Step 1: Rodar as duas suítes**
 
 Run: `cd server && npm test`
-Expected: as 3 suítes de `tests/engine/*` falham ao CARREGAR com `Missing environment variable: SUPABASE_URL` — condição pré-existente do repositório (`tests/setup.ts` mocka `src/db`, não `src/config`), sem relação com este plano. Compare a CONTAGEM de testes que passam, não um sinal verde. Não tente consertar isso aqui.
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 Run: `npm test`
 Expected: PASS — os 25 arquivos de `tests/lib/` continuam verdes (nada deste plano tocou a Prova Social).

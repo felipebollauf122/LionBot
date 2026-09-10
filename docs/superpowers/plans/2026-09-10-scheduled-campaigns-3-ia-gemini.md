@@ -1192,7 +1192,7 @@ git commit -m "feat(ai): botões de assistente no editor da campanha"
 - [ ] **Step 1: Suítes**
 
 Run: `npm test && cd server && npm test`
-Expected: suite VERDE. O `server/` roda 45 arquivos e o root 30 — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
+Expected: suite VERDE. O `server/` roda 53 arquivos e o root 41 (contagem de 2026-09-10; ela sobe conforme o plano avança, entao compare com a sua baseline, nao com este numero) — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 2: Configurar e checar a degradação**
 

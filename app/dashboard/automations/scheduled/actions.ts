@@ -9,6 +9,7 @@ import { validateMessage } from "@/lib/social-proof/validate-message";
 import { nextPosition } from "@/lib/social-proof/position";
 import type { ActionResult, MessageInput } from "@/lib/social-proof/types";
 import type { ScheduledCampaign, ScheduledMessage } from "@/lib/types/database";
+import type { AiAssistAction, AiAssistResult } from "@/lib/composer/types";
 
 function rota(campaignId: string): string {
   return `/dashboard/automations/scheduled/${campaignId}`;
@@ -31,8 +32,17 @@ function rota(campaignId: string): string {
  * encontrada, RLS barrando, validação — já voltam como `return`, nunca
  * chegam a lançar); loga com o nome da action pra não perder o rastro no
  * servidor, e devolve uma mensagem honesta mas sem vazar detalhe interno.
+ *
+ * Genérico em `T` (em vez de fixo em `ActionResult`) só pra `aiAssist` poder
+ * devolver `{ ok: true; text }` — o texto que o Gemini gerou, que o editor
+ * precisa pra atualizar a tela sem esperar um reload. Para todo outro
+ * chamador (que já passa um corpo `Promise<ActionResult>`), `T` infere como
+ * `ActionResult` e o comportamento é IDÊNTICO a antes.
  */
-async function comGuarda(acao: string, corpo: () => Promise<ActionResult>): Promise<ActionResult> {
+async function comGuarda<T extends ActionResult>(
+  acao: string,
+  corpo: () => Promise<T>,
+): Promise<T | { ok: false; error: string }> {
   try {
     await requireAutomationsAccess();
   } catch {
@@ -590,6 +600,101 @@ export async function revertAiText(id: string, campaignId: string): Promise<Acti
 
     revalidatePath(rota(campaignId));
     return { ok: true };
+  });
+}
+
+/**
+ * Assistente sob demanda (reescrever / legendar / resumir). Passa pelo
+ * worker (mesmo hop de ensureBotAccessOnDestination/enqueueClone) e não
+ * chama o Gemini daqui: a chave mora só lá, em um lugar só.
+ *
+ * Mesmo formato de `ensureBotAccessOnDestination` (id cru chegando de uma
+ * Server Action invocável direto) e mesmo risco de IDOR entre tenants — a
+ * correção é a mesma: a leitura abaixo passa pelo client sob RLS, escopada
+ * pelos DOIS ids (`id` E `campaign_id`), e sem linha visível (mensagem
+ * inexistente OU de outra campanha/tenant) nada é mandado pro worker. A
+ * recusa não distingue os dois casos.
+ *
+ * Devolve `AiAssistResult` (não o `ActionResult` liso) porque o texto novo
+ * só existe depois da chamada ao Gemini — diferente de reverter/restaurar,
+ * que já têm o dado no cliente e só ecoam de volta via `onChange`.
+ */
+export async function aiAssist(
+  messageId: string,
+  campaignId: string,
+  action: AiAssistAction,
+): Promise<AiAssistResult> {
+  return comGuarda("aiAssist", async (): Promise<AiAssistResult> => {
+    const supabase = await createClient();
+
+    const { data: row } = await supabase
+      .from("mtproto_scheduled_messages")
+      .select("id, content_text, content_text_original, media")
+      .eq("id", messageId)
+      .eq("campaign_id", campaignId)
+      .maybeSingle();
+    if (!row) return { ok: false, error: "Mensagem não encontrada (ou sem permissão)." };
+
+    const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(
+      /\/+$/,
+      "",
+    );
+    let texto: string;
+    try {
+      const res = await fetch(`${serverUrl}/api/ai/assist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+        },
+        body: JSON.stringify({
+          action,
+          text: row.content_text,
+          mediaKinds: ((row.media as Array<{ type: string }>) ?? []).map((m) => m.type),
+        }),
+      });
+      if (!res.ok) {
+        // Recusa prevista volta como DADO: erro lançado em Server Action é
+        // apagado em produção e chega ao usuário em inglês genérico.
+        return {
+          ok: false,
+          error:
+            res.status === 503
+              ? "O assistente de IA não está configurado no servidor."
+              : `O assistente falhou (${res.status}). Tente de novo em instantes.`,
+        };
+      }
+      texto = ((await res.json()) as { text: string }).text;
+    } catch {
+      return { ok: false, error: "Não deu pra falar com o assistente de IA." };
+    }
+
+    const patch: Record<string, unknown> = {
+      content_text: texto,
+      ai_action: action === "rewrite" ? "rewritten" : "cleaned",
+    };
+    // Uma vez só, mesma regra do tratamento em lote.
+    if (row.content_text_original === null) {
+      patch.content_text_original = row.content_text;
+    }
+
+    // Mesma contagem de linhas afetadas das outras actions do arquivo:
+    // update sem linha alterada não vira `error` no supabase-js, e sem isto
+    // uma RLS que barrasse tudo devolveria { ok: true } com o texto do
+    // Gemini já perdido — sucesso silencioso sobre nada gravado.
+    const { data, error } = await supabase
+      .from("mtproto_scheduled_messages")
+      .update(patch)
+      .eq("id", messageId)
+      .eq("campaign_id", campaignId)
+      .select("id");
+    if (error) return { ok: false, error: `Não deu pra salvar: ${error.message}` };
+    if (!data || data.length === 0) {
+      return { ok: false, error: "Mensagem não encontrada (ou sem permissão)." };
+    }
+
+    revalidatePath(rota(campaignId));
+    return { ok: true, text: texto };
   });
 }
 

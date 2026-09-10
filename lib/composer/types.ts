@@ -46,6 +46,16 @@ export interface ComposerMessageRow {
  */
 export type AiAssistAction = "rewrite" | "caption" | "summarize";
 
+/**
+ * Retorno de `aiAssist`: mais específico que `ActionResult` porque o texto
+ * novo vem do Gemini — diferente de reverter/restaurar (que só ecoam dado
+ * que o cliente já tinha), o editor não tem como mostrar o resultado sem
+ * ele. `{ ok: true; text }` é estruturalmente compatível com
+ * `{ ok: true }`, então continua atribuível a `ComposerActions.aiAssist`
+ * abaixo sem alterar essa assinatura.
+ */
+export type AiAssistResult = { ok: true; text: string } | { ok: false; error: string };
+
 export interface ComposerActions {
   saveMessage(input: MessageInput): Promise<ActionResult>;
   deleteMessage(id: string): Promise<ActionResult>;

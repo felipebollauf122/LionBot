@@ -5,16 +5,18 @@ import { ComposerShell } from "@/components/dashboard/composer/composer-shell";
 import { DestinationCard } from "./destination-card";
 import { ScheduleCard } from "./schedule-card";
 import { CampaignExtras } from "./campaign-extras";
+import { AiCard } from "./ai-card";
 import { StatusBadge } from "./status-badge";
 import {
   saveScheduledMessage,
   deleteScheduledMessage,
   duplicateScheduledMessage,
   reorderScheduledMessages,
+  aiAssist,
 } from "@/app/dashboard/automations/scheduled/actions";
 import { campaignTimeline } from "@/lib/composer/schedule";
 import { earliestFloodWait, describeFloodWait } from "@/lib/composer/flood-wait";
-import type { ComposerMessageRow } from "@/lib/composer/types";
+import type { AiAssistAction, ComposerMessageRow } from "@/lib/composer/types";
 import type { ScheduledCampaign, ScheduledMessage } from "@/lib/types/database";
 import type { ChannelInput, MessageInput } from "@/lib/social-proof/types";
 
@@ -92,6 +94,12 @@ export function CampaignComposer({
   // continua 'running' durante a espera.
   const flood = earliestFloodWait(messages);
 
+  // Ligado uma vez só e reusado em dois lugares (`actions.aiAssist`, que
+  // completa a interface, e o `onAssist` que de fato chega no editor via
+  // `editorExtras` — ver o comentário em CampaignExtras sobre por que
+  // `editorExtras` não recebe `actions` do ComposerShell).
+  const aiAssistBound = (id: string, action: AiAssistAction) => aiAssist(id, campaign.id, action);
+
   return (
     <ComposerShell
       title={campaign.name}
@@ -118,11 +126,27 @@ export function CampaignComposer({
             hasDestination={campaign.dest_channel_id !== null}
             messages={messages}
           />
+          <AiCard
+            aiStatus={campaign.ai_status}
+            aiProcessedCount={campaign.ai_processed_count}
+            totalMessages={total}
+            aiError={campaign.ai_error}
+          />
         </>
       }
-      editorExtras={(value: MessageInput, onChange: (v: MessageInput) => void) => (
-        <CampaignExtras value={value} onChange={onChange} campaignId={campaign.id} />
-      )}
+      editorExtras={(value: MessageInput, onChange: (v: MessageInput) => void) => {
+        const original = value.id ? porId.get(value.id) : undefined;
+        return (
+          <CampaignExtras
+            value={value}
+            onChange={onChange}
+            campaignId={campaign.id}
+            status={original?.status ?? null}
+            errorMessage={original?.error_message ?? null}
+            onAssist={aiAssistBound}
+          />
+        );
+      }}
       messageBadge={(row) => {
         const original = porId.get(row.id);
         return original ? (
@@ -181,6 +205,7 @@ export function CampaignComposer({
         reorderMessages: (ids) => reorderScheduledMessages(campaign.id, ids),
         // `setPinned` ausente de propósito: sem ele o shell esconde o botão de
         // fixar, em vez de mostrar um botão morto.
+        aiAssist: aiAssistBound,
       }}
     />
   );

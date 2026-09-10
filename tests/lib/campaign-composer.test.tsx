@@ -27,6 +27,7 @@ vi.mock("@/app/dashboard/automations/scheduled/actions", () => ({
   revertAiText: vi.fn(async () => ({ ok: true })),
   toggleDiscarded: vi.fn(async () => ({ ok: true })),
   ensureBotAccessOnDestination: vi.fn(async () => ({ ok: true })),
+  aiAssist: vi.fn(async () => ({ ok: true, text: "" })),
 }));
 
 function campanha(over: Partial<ScheduledCampaign> = {}): ScheduledCampaign {

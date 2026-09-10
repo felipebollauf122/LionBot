@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Diretórios de trabalho de agente e artefatos de build: não é código do
+    // projeto, e lintar isso afogava os problemas reais em ~20 mil ruídos.
+    ".claude/**",
+    ".superpowers/**",
+    "server/dist/**",
   ]),
 ]);
 

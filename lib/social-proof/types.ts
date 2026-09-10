@@ -96,4 +96,15 @@ export interface MessageInput {
   offset_seconds: number;
   views_count: number;
   // `position` NÃO entra aqui: quem calcula é a Server Action (max+1).
+
+  /**
+   * Campos da campanha agendada. Opcionais porque a Prova Social não os tem:
+   * o mesmo MessageInput serve às duas features, e o composer não precisa
+   * saber qual delas está montando a mensagem.
+   */
+  delay_seconds?: number;
+  silent?: boolean;
+  ai_discarded?: boolean;
+  content_text_original?: string | null;
+  ai_reason?: string | null;
 }

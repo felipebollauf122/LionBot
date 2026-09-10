@@ -177,8 +177,8 @@ export function createDraftPublisher(
     // deixar rastro no relatório de skip (achado de revisão — publish-router
     // já resolve o mesmo caso na rota download).
     const media: StagedMedia[] = [];
+    const survivingIndices: number[] = [];
     const outcomes: CloneOutcome[] = new Array(raws.length);
-    let firstSurvivingIndex: number | null = null;
 
     for (let i = 0; i < raws.length; i++) {
       const plan = plans[i];
@@ -204,7 +204,7 @@ export function createDraftPublisher(
         continue;
       }
 
-      if (firstSurvivingIndex === null) firstSurvivingIndex = i;
+      survivingIndices.push(i);
       media.push({ url, type: toStagedMediaType(plan.mediaKind) });
       outcomes[i] = { status: "copied", destMsgId: group[i].id };
     }
@@ -213,11 +213,19 @@ export function createDraftPublisher(
       return plans.map(() => ({ status: "skipped" as const, reason: "file_too_large" }));
     }
 
-    // Álbum de verdade só quando sobrou mais de um item albumável. Um item
-    // sozinho é envio simples, e preservar o mediaKind real importa pro worker.
+    // Álbum de verdade só quando sobrou mais de um item albumável — e
+    // "sobrou" é sobre quem SOBREVIVEU, não sobre o grupo original. Um item
+    // skip no meio (ex.: MessageMediaGame) não pode derrubar `ehAlbum` se os
+    // outros dois sobreviventes são fotos/vídeos de verdade (achado de
+    // revisão: `plans.every` sobre o grupo inteiro gravava `kind: "photo"`
+    // com 2 fotos em `media[]` — o worker de envio despacha só `media[0]`
+    // pra kind não-álbum, e a segunda foto sumia sem deixar rastro).
     const ehAlbum =
       media.length > 1 &&
-      plans.every((p) => p.kind === "media" && ALBUMABLE.has(p.mediaKind));
+      survivingIndices.every((i) => {
+        const p = plans[i];
+        return p.kind === "media" && ALBUMABLE.has(p.mediaKind);
+      });
 
     // A linha é ancorada no primeiro item que SOBREVIVEU, não em group[0]:
     // se o item 0 caiu por tamanho mas os irmãos sobreviveram, ancorar em
@@ -225,14 +233,39 @@ export function createDraftPublisher(
     // uma mensagem que o relatório de skip diz nunca ter sido copiada — e uma
     // resposta mirando um dos sobreviventes não encontraria a linha. Sempre
     // definido aqui: media.length === 0 já retornou acima.
-    const anchor = firstSurvivingIndex ?? 0;
+    const anchor = survivingIndices[0];
+    const anchorPlan = plans[anchor];
+    // `kind` sai do plano do ÂNCORA, não de plans[0] (`first`): se o item 0
+    // é a foto que caiu e o item 1 é o vídeo que sobrou, a linha tem que
+    // dizer "video" — media[0] É o vídeo, e o worker de envio despacha pelo
+    // `kind` (achado de revisão: `kind` vinha de `first` antes e podia
+    // divergir do que `media[0]` continha, fazendo o worker chamar sendPhoto
+    // num arquivo de vídeo). anchorPlan.kind é sempre "media" já que `anchor`
+    // vem de survivingIndices; o fallback é só pro narrowing do TS.
+    const anchorMediaKind = anchorPlan.kind === "media" ? anchorPlan.mediaKind : first.mediaKind;
+
+    // A linha só carrega um `kind`, então só pode levar UM item de mídia
+    // quando não é álbum de verdade. Se sobrou mais de um sobrevivente mesmo
+    // assim (grupo com foto + documento, digamos), mantém só o âncora em
+    // `media` e derruba os outros sobreviventes pra skipped — nunca deixa
+    // `media[]` maior do que o `kind` aguenta: o worker despacha só
+    // `media[0]` pra kind não-álbum, e o resto sumiria sem deixar rastro.
+    // O Telegram não costuma produzir esse grupo — exatamente por isso não
+    // pode falhar calado se algum dia produzir.
+    let finalMedia = media;
+    if (!ehAlbum && media.length > 1) {
+      finalMedia = [media[0]];
+      for (let k = 1; k < survivingIndices.length; k++) {
+        outcomes[survivingIndices[k]] = { status: "skipped", reason: "grupo_nao_albumavel" };
+      }
+    }
 
     await deps.upsert([
       {
         ...base,
         sourceMsgId: group[anchor].id,
-        kind: ehAlbum ? "album" : toRowKind(first.mediaKind),
-        media,
+        kind: ehAlbum ? "album" : toRowKind(anchorMediaKind),
+        media: finalMedia,
         poll: null,
         // Nome do arquivo também migra pro sobrevivente-âncora: o de raws[0]
         // pode ser exatamente o item que caiu. A legenda (em `base`) continua

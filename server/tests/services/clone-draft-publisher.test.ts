@@ -195,6 +195,83 @@ describe("createDraftPublisher", () => {
     expect(d.saved[0].media).toHaveLength(2);
   });
 
+  it("duas fotos e um item não suportado no meio: kind fica album e media leva as duas fotos (defeito A)", async () => {
+    const d = deps();
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(80, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g5" }),
+      m(81, { media: { className: "MessageMediaPhoto" } }, { groupedId: "g5" }),
+      m(82, { media: { className: "MessageMediaGame" } }, { groupedId: "g5" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "copied", destMsgId: 80 },
+      { status: "copied", destMsgId: 81 },
+      { status: "skipped", reason: "media_game" },
+    ]);
+    expect(d.saved[0].kind).toBe("album");
+    expect(d.saved[0].media).toHaveLength(2);
+  });
+
+  it("item 0 cai (foto grande demais), item 1 é vídeo: kind vira video, não photo (defeito B)", async () => {
+    const d = deps({
+      rehost: vi.fn(async (_raw, hint) => (hint === "msg_70" ? null : `https://cdn.test/${hint}`)),
+      planInput: (raw) => {
+        const id = (raw as unknown as { id: number }).id;
+        return {
+          mediaClassName: id === 70 ? "MessageMediaPhoto" : "MessageMediaDocument",
+          documentAttributeClassNames: id === 70 ? [] : ["DocumentAttributeVideo"],
+          hasText: false,
+          copyPolls: false,
+        };
+      },
+    });
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(70, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g4" }),
+      m(71, { media: { className: "MessageMediaDocument" } }, { groupedId: "g4" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "skipped", reason: "file_too_large" },
+      { status: "copied", destMsgId: 71 },
+    ]);
+    expect(d.saved[0].kind).toBe("video");
+    expect(d.saved[0].media).toEqual([{ url: "https://cdn.test/msg_71", type: "video" }]);
+  });
+
+  it("dois sobreviventes não albumáveis (foto + documento): media fica só com o âncora, o outro vira skipped grupo_nao_albumavel", async () => {
+    const d = deps({
+      planInput: (raw) => {
+        const id = (raw as unknown as { id: number }).id;
+        return {
+          mediaClassName: id === 90 ? "MessageMediaPhoto" : "MessageMediaDocument",
+          documentAttributeClassNames: [],
+          hasText: false,
+          copyPolls: false,
+        };
+      },
+    });
+    const publish = createDraftPublisher(d);
+    const grupo = [
+      m(90, { message: "capa", media: { className: "MessageMediaPhoto" } }, { groupedId: "g6" }),
+      m(91, { media: { className: "MessageMediaDocument" } }, { groupedId: "g6" }),
+    ];
+
+    const out = await publish(grupo, null);
+
+    expect(out).toEqual([
+      { status: "copied", destMsgId: 90 },
+      { status: "skipped", reason: "grupo_nao_albumavel" },
+    ]);
+    expect(d.saved[0].media).toHaveLength(1);
+    expect(d.saved[0].kind).toBe("photo");
+  });
+
   it("enquete sem dados (pollData devolve null) vira skipped poll_sem_dados, sem gravar linha", async () => {
     const d = deps({ pollData: vi.fn(() => null), copyPolls: true });
     const publish = createDraftPublisher(d);

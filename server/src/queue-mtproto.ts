@@ -12,7 +12,10 @@ export type MtprotoJobData =
   | { kind: "account.sync-dialogs"; accountId: string }
   | { kind: "clone.run"; cloneJobId: string }
   | { kind: "botclone.explore"; cloneJobId: string }
-  | { kind: "botclone.build-flow"; cloneJobId: string };
+  | { kind: "botclone.build-flow"; cloneJobId: string }
+  // Uma mensagem agendada por job: o poller enfileira no máximo uma por
+  // campanha por tick, e o job publica exatamente essa e termina.
+  | { kind: "postcampaign.send-one"; messageId: string };
 
 export const mtprotoQueue = new Queue<MtprotoJobData>("mtproto", { connection });
 

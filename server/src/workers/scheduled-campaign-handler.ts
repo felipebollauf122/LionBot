@@ -1,0 +1,292 @@
+import path from "node:path";
+import os from "node:os";
+import { rm, writeFile, mkdir } from "node:fs/promises";
+import { supabase } from "../db.js";
+import { config } from "../config.js";
+import { CompanionBot } from "../services/mtproto/clone/bot-client.js";
+import { extractWaitSeconds } from "../services/mtproto/flood.js";
+import type { CloneMediaKind } from "../services/mtproto/clone/media-plan.js";
+import type { Api } from "telegram";
+
+/** Tentativas antes de desistir de uma mensagem. */
+const MAX_ATTEMPTS = 3;
+
+/** Janela de obsolescência do claim, mesmo padrão de clone-handler. */
+export const SEND_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+export interface FloodInput {
+  now: Date;
+  waitSeconds: number;
+  /** Pendentes da MESMA campanha, com scheduled_at futuro ou passado. */
+  pendentes: Array<{ id: string; scheduledAt: Date }>;
+}
+
+/**
+ * Reagendamento após FLOOD_WAIT.
+ *
+ * O ponto não óbvio: empurrar SÓ a mensagem que bateu no flood faz a fila
+ * inteira vencer durante a espera, e quando ela passa o bot publica tudo de
+ * uma vez — exatamente o comportamento que queima a conta. O delta é aplicado
+ * a todas as pendentes, com piso em `retryAt` pra que uma já atrasada não saia
+ * junto da reagendada.
+ */
+export function nextFloodSchedule(input: FloodInput): {
+  retryAt: Date;
+  empurradas: Array<{ id: string; scheduledAt: Date }>;
+} {
+  const deltaMs = (input.waitSeconds + 5) * 1000;
+  const retryAt = new Date(input.now.getTime() + deltaMs);
+  const empurradas = input.pendentes.map((p) => ({
+    id: p.id,
+    scheduledAt: new Date(Math.max(p.scheduledAt.getTime() + deltaMs, retryAt.getTime())),
+  }));
+  return { retryAt, empurradas };
+}
+
+export async function handleScheduledSend(messageId: string): Promise<void> {
+  // 1) Claim CAS. Sem linha de volta, outro worker pegou (ou já não é pending).
+  const { data: claimed } = await supabase
+    .from("mtproto_scheduled_messages")
+    .update({ status: "sending", claimed_at: new Date().toISOString() })
+    .eq("id", messageId)
+    .eq("status", "pending")
+    .select("*")
+    .maybeSingle();
+  if (!claimed) {
+    console.log(`[postcampaign] mensagem ${messageId} não reivindicada, ignorando`);
+    return;
+  }
+
+  const { data: campaign } = await supabase
+    .from("mtproto_scheduled_campaigns")
+    .select("*")
+    .eq("id", claimed.campaign_id)
+    .single();
+  if (!campaign || campaign.status !== "running") {
+    await supabase
+      .from("mtproto_scheduled_messages")
+      .update({ status: "pending", claimed_at: null })
+      .eq("id", messageId);
+    return;
+  }
+
+  // Sem destino não existe chat_id: `-100null` viraria três tentativas de
+  // Bot API com erro obscuro antes de falhar. Falha logo, com o motivo.
+  if (!campaign.dest_channel_id) {
+    await falhar(messageId, campaign.id, "campanha sem canal de destino");
+    return;
+  }
+
+  const { data: botRow } = await supabase
+    .from("automation_bots")
+    .select("token, username, status")
+    .eq("tenant_id", campaign.tenant_id)
+    .single();
+  if (!botRow || botRow.status !== "active") {
+    await falhar(messageId, campaign.id, "bot companheiro não cadastrado ou inválido");
+    return;
+  }
+
+  const bot = new CompanionBot(
+    botRow.token,
+    CompanionBot.destChatIdFromChannelId(campaign.dest_channel_id as string),
+    null,
+    { apiId: config.telegramApiId, apiHash: config.telegramApiHash },
+  );
+  const tmpDir = path.join(os.tmpdir(), "eaglebot-postcampaign", messageId);
+
+  try {
+    const destMsgId = await publicar(bot, claimed, tmpDir);
+    await supabase
+      .from("mtproto_scheduled_messages")
+      .update({
+        status: "sent",
+        dest_msg_id: destMsgId,
+        sent_at: new Date().toISOString(),
+        claimed_at: null,
+        error_message: null,
+      })
+      .eq("id", messageId);
+    await incrementar(campaign.id, "sent");
+    if (claimed.is_pinned) {
+      await bot.pin(destMsgId).catch((e) => console.warn("[postcampaign] pin falhou:", e));
+    }
+    await concluirSeUltima(campaign.id);
+  } catch (err) {
+    const wait = extractWaitSeconds(err);
+    if (wait !== null) {
+      await reagendarPorFlood(messageId, campaign.id, wait);
+      return;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    const tentativas = (claimed.attempts as number) + 1;
+    if (tentativas >= MAX_ATTEMPTS) {
+      await falhar(messageId, campaign.id, msg);
+    } else {
+      // Volta pra pending com uma tentativa a mais contabilizada; o poller
+      // reenfileira no próximo tick porque scheduled_at já venceu.
+      await supabase
+        .from("mtproto_scheduled_messages")
+        .update({ status: "pending", claimed_at: null, attempts: tentativas, error_message: msg })
+        .eq("id", messageId);
+    }
+  } finally {
+    await bot.disconnect().catch(() => {});
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Baixa uma URL pública do Storage pro disco, pro InputFile do grammy. */
+async function baixar(url: string, dir: string, nome: string): Promise<string> {
+  await mkdir(dir, { recursive: true });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download da mídia falhou (${res.status}): ${url}`);
+  const destino = path.join(dir, nome);
+  await writeFile(destino, Buffer.from(await res.arrayBuffer()));
+  return destino;
+}
+
+async function publicar(
+  bot: CompanionBot,
+  row: Record<string, unknown>,
+  tmpDir: string,
+): Promise<number> {
+  const texto = (row.content_text as string | null) ?? "";
+  const entities = (row.entities as Api.TypeMessageEntity[] | null) ?? undefined;
+  const inlineLinks =
+    (row.inline_links as Array<{ label: string; url: string }> | null) ?? undefined;
+  const silent = row.silent !== false;
+  const opts = { entities, inlineLinks, silent };
+  const media = (row.media as Array<{ url: string; type: string }> | null) ?? [];
+
+  switch (row.kind as string) {
+    case "text":
+      return bot.publishText(texto, opts);
+
+    case "poll": {
+      const poll = row.poll as {
+        question: string;
+        options: string[];
+        isAnonymous: boolean;
+        allowsMultipleAnswers: boolean;
+      };
+      return bot.publishPoll(poll, { silent });
+    }
+
+    case "album": {
+      const itens: Array<{
+        filePath: string;
+        kind: "photo" | "video";
+        caption: string;
+        entities?: Api.TypeMessageEntity[];
+      }> = [];
+      for (let i = 0; i < media.length; i++) {
+        itens.push({
+          filePath: await baixar(media[i].url, tmpDir, `item_${i}`),
+          kind: media[i].type === "video" ? ("video" as const) : ("photo" as const),
+          caption: i === 0 ? texto : "",
+          entities: i === 0 ? entities : undefined,
+        });
+      }
+      const ids = await bot.publishAlbum(itens, { silent });
+      if (ids.length === 0) throw new Error("álbum publicado sem devolver id");
+      return ids[0];
+    }
+
+    default: {
+      // photo | video | audio | document
+      const item = media[0];
+      if (!item) throw new Error(`mensagem ${String(row.kind)} sem mídia gravada`);
+      const nome = (row.file_name as string | null) ?? `arquivo_${String(row.id)}`;
+      const filePath = await baixar(item.url, tmpDir, nome);
+      const kind: CloneMediaKind =
+        row.kind === "video"
+          ? "video"
+          : row.kind === "audio"
+            ? "audio"
+            : row.kind === "document"
+              ? "document"
+              : "photo";
+      return bot.publishMedia(filePath, kind, texto, { ...opts, fileName: nome });
+    }
+  }
+}
+
+async function reagendarPorFlood(
+  messageId: string,
+  campaignId: string,
+  waitSeconds: number,
+): Promise<void> {
+  const { data: pendentes } = await supabase
+    .from("mtproto_scheduled_messages")
+    .select("id, scheduled_at")
+    .eq("campaign_id", campaignId)
+    .eq("status", "pending")
+    .not("scheduled_at", "is", null);
+
+  const { retryAt, empurradas } = nextFloodSchedule({
+    now: new Date(),
+    waitSeconds,
+    pendentes: (pendentes ?? []).map((p) => ({
+      id: p.id as string,
+      scheduledAt: new Date(p.scheduled_at as string),
+    })),
+  });
+
+  await supabase
+    .from("mtproto_scheduled_messages")
+    .update({
+      status: "pending",
+      claimed_at: null,
+      scheduled_at: retryAt.toISOString(),
+      error_message: `flood_wait_${waitSeconds}s`,
+    })
+    .eq("id", messageId);
+
+  for (const e of empurradas) {
+    await supabase
+      .from("mtproto_scheduled_messages")
+      .update({ scheduled_at: e.scheduledAt.toISOString() })
+      .eq("id", e.id);
+  }
+  console.warn(
+    `[postcampaign] flood de ${waitSeconds}s na campanha ${campaignId}: ${empurradas.length} mensagens empurradas`,
+  );
+}
+
+async function falhar(messageId: string, campaignId: string, erro: string): Promise<void> {
+  await supabase
+    .from("mtproto_scheduled_messages")
+    .update({ status: "failed", error_message: erro, claimed_at: null })
+    .eq("id", messageId);
+  await incrementar(campaignId, "failed");
+  await concluirSeUltima(campaignId);
+}
+
+async function incrementar(campaignId: string, kind: "sent" | "failed"): Promise<void> {
+  const coluna = kind === "sent" ? "sent_count" : "failed_count";
+  const { data } = await supabase
+    .from("mtproto_scheduled_campaigns")
+    .select(coluna)
+    .eq("id", campaignId)
+    .single();
+  const atual = ((data as Record<string, number> | null)?.[coluna] ?? 0) + 1;
+  await supabase
+    .from("mtproto_scheduled_campaigns")
+    .update({ [coluna]: atual })
+    .eq("id", campaignId);
+}
+
+/** Sem nenhuma pendente nem enviando, a campanha acabou. */
+async function concluirSeUltima(campaignId: string): Promise<void> {
+  const { count } = await supabase
+    .from("mtproto_scheduled_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .in("status", ["pending", "sending"]);
+  if ((count ?? 0) > 0) return;
+  await supabase
+    .from("mtproto_scheduled_campaigns")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .eq("id", campaignId);
+}

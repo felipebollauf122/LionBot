@@ -516,8 +516,8 @@ Documentadas aqui e não em `server/.env.example` porque aquele arquivo está no
 
 | Variável | Onde | Sem ela |
 |---|---|---|
-| `INTERNAL_API_SECRET` | worker **e** app Next, com o MESMO valor | `/api/mtproto/ensure-bot-access` recusa toda chamada (fail-closed, de propósito) e o botão "Preparar o bot neste canal" devolve 503 para sempre |
-| `GEMINI_API_KEY` | só o worker | O tratamento por IA fica desativado em silêncio; o rascunho do clone continua funcionando, sem limpeza nem cadência automática |
+| `INTERNAL_API_SECRET` | worker **e** app Next, com o MESMO valor | `/api/mtproto/ensure-bot-access` e `/api/ai/assist` (Task 4) recusam toda chamada (fail-closed, de propósito): o botão "Preparar o bot neste canal" e os três botões de assistente sob demanda (reescrever/legendar/resumir, Task 5) devolvem 503 para sempre |
+| `GEMINI_API_KEY` | só o worker | O tratamento por IA fica desativado em silêncio — tanto o em lote (limpeza/cadência automática do clone) quanto o sob demanda (os três botões do editor, que devolvem 503) |
 | `GEMINI_MODEL` | só o worker (opcional) | Usa `gemini-3.8-flash`, confirmado contra ai.google.dev em 2026-09-10 |
 
 Nenhuma delas usa `env()` com assert: o worker roda a automação inteira do

@@ -41,7 +41,7 @@
 
 - [ ] **Step 1: Confirmar o identificador do modelo**
 
-Antes de escrever qualquer chamada, **confirme na documentação oficial da Google** (ai.google.dev) o identificador exato do modelo flash atual e o formato do endpoint `generateContent`. Não escreva um nome de modelo de memória. O default do plano é `gemini-2.5-flash`; se a documentação indicar outro, use o da documentação e ajuste o default no `config.ts`.
+Antes de escrever qualquer chamada, **confirme na documentação oficial da Google** (ai.google.dev) o identificador exato do modelo flash atual e o formato do endpoint `generateContent`. Não escreva um nome de modelo de memória. Isto JÁ FOI feito em 2026-09-10: o flash estável atual é `gemini-3.8-flash`, e o `gemini-3.8-flash` que este plano trazia de memória estava várias gerações atrás. Reconfirme mesmo assim antes de mudar o default — este texto também envelhece.
 
 Confirme especificamente: o path (`/v1beta/models/{model}:generateContent`), como a chave é enviada (query `?key=` ou header `x-goog-api-key`), e os nomes `generationConfig.responseMimeType` / `generationConfig.responseSchema`.
 
@@ -66,8 +66,8 @@ function respostaOk(payload: unknown) {
 
 describe("GeminiClient", () => {
   it("isConfigured é falso sem chave", () => {
-    expect(new GeminiClient("", "gemini-2.5-flash").isConfigured()).toBe(false);
-    expect(new GeminiClient("k", "gemini-2.5-flash").isConfigured()).toBe(true);
+    expect(new GeminiClient("", "gemini-3.8-flash").isConfigured()).toBe(false);
+    expect(new GeminiClient("k", "gemini-3.8-flash").isConfigured()).toBe(true);
   });
 
   it("manda o schema e devolve o JSON já parseado", async () => {
@@ -77,7 +77,7 @@ describe("GeminiClient", () => {
       return respostaOk({ itens: [{ id: "a" }] });
     });
 
-    const client = new GeminiClient("k", "gemini-2.5-flash", {
+    const client = new GeminiClient("k", "gemini-3.8-flash", {
       fetch: fetchFake as unknown as typeof fetch,
     });
     const out = await client.generateJson<{ itens: Array<{ id: string }> }>({
@@ -224,7 +224,7 @@ Em `server/src/config.ts`, ao objeto `config`:
   geminiApiKey: envOptional("GEMINI_API_KEY", ""),
   // Trocável sem deploy. Confirme o identificador na doc da Google antes de
   // mudar o default.
-  geminiModel: envOptional("GEMINI_MODEL", "gemini-2.5-flash"),
+  geminiModel: envOptional("GEMINI_MODEL", "gemini-3.8-flash"),
   // Segredo compartilhado Next -> worker no endpoint do assistente de IA.
   // Vazio = o endpoint recusa toda chamada.
   internalApiSecret: envOptional("INTERNAL_API_SECRET", ""),
@@ -234,7 +234,7 @@ E em `server/.env.example`:
 
 ```
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 INTERNAL_API_SECRET=
 ```
 
@@ -1192,7 +1192,7 @@ git commit -m "feat(ai): botões de assistente no editor da campanha"
 - [ ] **Step 1: Suítes**
 
 Run: `npm test && cd server && npm test`
-Expected: PASS nas duas.
+Expected: suite VERDE. O `server/` roda 45 arquivos e o root 30 — qualquer suite que falhe ou nao carregue e regressao SUA, nao condicao pre-existente. (Ate 2026-09-10 tres suites de `tests/engine/*` nao carregavam por falta de SUPABASE_URL; isso foi corrigido em `ac945ad` e nao deve ser usado como desculpa.)
 
 - [ ] **Step 2: Configurar e checar a degradação**
 

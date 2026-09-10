@@ -259,7 +259,7 @@ export interface GeminiDeps { fetch: typeof fetch }
 export class GeminiClient {
   constructor(
     private apiKey: string,
-    private model: string,          // config.geminiModel, default "gemini-2.5-flash"
+    private model: string,          // config.geminiModel, default "gemini-3.8-flash"
     private deps: GeminiDeps = { fetch },
   ) {}
   isConfigured(): boolean;
@@ -274,7 +274,7 @@ Config nova em `server/src/config.ts`, toda com `envOptional` — nenhuma delas 
 | Chave | Default | Papel |
 |---|---|---|
 | `GEMINI_API_KEY` | `""` | Vazia = IA silenciosamente desativada, mesmo padrão de `vapidPublicKey` |
-| `GEMINI_MODEL` | `"gemini-2.5-flash"` | Trocável sem deploy. O nome exato do modelo é confirmado contra a documentação da Google na Fase 6, antes da primeira chamada real |
+| `GEMINI_MODEL` | `"gemini-3.8-flash"` | Trocável sem deploy. O nome exato do modelo é confirmado contra a documentação da Google na Fase 6, antes da primeira chamada real |
 | `INTERNAL_API_SECRET` | `""` | Segredo compartilhado Next ↔ worker do endpoint de assistente (§5.5). Vazio = endpoint recusa toda chamada |
 
 O mesmo par de variáveis vai pro `.env` do Next apenas como `BOT_SERVER_URL` + `INTERNAL_API_SECRET`; a chave do Gemini **não** é replicada lá.

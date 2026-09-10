@@ -78,7 +78,7 @@ export async function removeAutomationBot(actingTenantId?: string): Promise<void
 }
 
 export type CreateCloneResult =
-  | { ok: true; cloneJobId: string }
+  | { ok: true; cloneJobId: string; draftCampaignId?: string }
   | { ok: false; error: string };
 
 /** Vazio vira null (categoria não é trocada); '@' na frente do bot é ignorado. */
@@ -106,6 +106,11 @@ export async function createCloneJob(input: {
   linkReplaceGroup: string;
   /** Link pra trocar todo canal mencionado/linkado. Vazio = não troca. */
   linkReplaceChannel: string;
+  /** 'draft' manda o conteúdo pro rascunho de uma campanha em vez de publicar. */
+  mode: "live" | "draft";
+  aiClean: boolean;
+  aiRewrite: boolean;
+  aiSmartDelay: boolean;
   actingTenantId?: string;
 }): Promise<CreateCloneResult> {
   try {
@@ -136,6 +141,15 @@ export async function createCloneJob(input: {
       return { ok: false, error: "O limite de mensagens vai de 1 a 50.000." };
     }
 
+    // Teto do modo rascunho: um clone de 20 mil posts com vídeo viraria
+    // dezenas de GB no Storage e horas só pra montar o rascunho, e nenhuma
+    // campanha de conteúdo real tem esse tamanho. 500 é o default; 1000 o
+    // máximo aceito.
+    const ehRascunho = input.mode === "draft";
+    const messageLimit = ehRascunho
+      ? Math.min(input.messageLimit ?? 500, 1000)
+      : input.messageLimit;
+
     // Conta que cria o destino: default = a mesma da origem. Se for outra,
     // valida que é do tenant, ativa e NÃO restrita (senão o createChannel
     // falharia com USER_RESTRICTED).
@@ -155,6 +169,24 @@ export async function createCloneJob(input: {
       }
     }
 
+    let draftCampaignId: string | null = null;
+    if (ehRascunho) {
+      const { data: campaign, error: campErr } = await supabase
+        .from("mtproto_scheduled_campaigns")
+        .insert({
+          tenant_id: tenantId,
+          name: input.destTitle.trim() || `${dialog.title ?? "Clone"} (campanha)`,
+          status: "draft",
+          ai_clean: input.aiClean,
+          ai_rewrite: input.aiRewrite,
+          ai_smart_delay: input.aiSmartDelay,
+        })
+        .select("id")
+        .single();
+      if (campErr) return { ok: false, error: campErr.message };
+      draftCampaignId = campaign.id;
+    }
+
     const { data: job, error } = await supabase
       .from("clone_jobs")
       .insert({
@@ -169,7 +201,7 @@ export async function createCloneJob(input: {
         dest_kind: deriveDestKind(dialog.kind),
         dest_title: input.destTitle.trim() || `${dialog.title ?? "Clone"} (clone)`,
         copy_identity: input.copyIdentity,
-        message_limit: input.messageLimit,
+        message_limit: messageLimit,
         throttle_ms: input.throttleMs,
         copy_replies: input.copyReplies,
         copy_pins: input.copyPins,
@@ -179,13 +211,30 @@ export async function createCloneJob(input: {
         link_replace_group: normalizeLinkReplace(input.linkReplaceGroup),
         link_replace_channel: normalizeLinkReplace(input.linkReplaceChannel),
         status: "draft",
+        mode: input.mode,
+        draft_campaign_id: draftCampaignId,
+        ai_clean: input.aiClean,
+        ai_rewrite: input.aiRewrite,
+        ai_smart_delay: input.aiSmartDelay,
       })
       .select("id")
       .single();
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      if (draftCampaignId) {
+        await supabase.from("mtproto_scheduled_campaigns").delete().eq("id", draftCampaignId);
+      }
+      return { ok: false, error: error.message };
+    }
+
+    if (draftCampaignId) {
+      await supabase
+        .from("mtproto_scheduled_campaigns")
+        .update({ source_clone_job_id: job.id })
+        .eq("id", draftCampaignId);
+    }
 
     revalidatePath("/dashboard/automations");
-    return { ok: true, cloneJobId: job.id };
+    return { ok: true, cloneJobId: job.id, draftCampaignId: draftCampaignId ?? undefined };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[createCloneJob] unexpected:", err);

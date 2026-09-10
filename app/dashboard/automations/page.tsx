@@ -4,6 +4,7 @@ import { MtprotoCampaignList } from "@/components/dashboard/mtproto-campaign-lis
 import { AutomationBotCard } from "@/components/dashboard/automation-bot-card";
 import { CloneList } from "@/components/dashboard/clone-list";
 import { BotCloneList } from "@/components/dashboard/bot-clone-list";
+import { ScheduledCampaignList } from "@/components/dashboard/campaigns/scheduled-campaign-list";
 import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
@@ -58,12 +59,19 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
     .order("created_at", { ascending: false });
   if (viewTenantId) botClonesQuery = botClonesQuery.eq("tenant_id", viewTenantId);
 
-  const [{ data: accounts }, { data: campaigns }, { data: botRows }, { data: clones }, { data: botClones }, viewUsers] = await Promise.all([
+  let scheduledQuery = supabase
+    .from("mtproto_scheduled_campaigns")
+    .select("id, name, status, dest_title, total_messages, sent_count, failed_count, start_at")
+    .order("created_at", { ascending: false });
+  if (viewTenantId) scheduledQuery = scheduledQuery.eq("tenant_id", viewTenantId);
+
+  const [{ data: accounts }, { data: campaigns }, { data: botRows }, { data: clones }, { data: botClones }, { data: scheduled }, viewUsers] = await Promise.all([
     accountsQuery,
     campaignsQuery,
     botQuery,
     clonesQuery,
     botClonesQuery,
+    scheduledQuery,
     scope.isAdmin ? getViewableUsers() : Promise.resolve([]),
   ]);
   const bot = (botRows ?? [])[0] ?? null;
@@ -216,6 +224,29 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
         </CardShell>
       </div>
 
+      {/* Postagens agendadas */}
+      <div className="mb-6">
+        <CardShell
+          title="Postagens agendadas"
+          subtitle="conteúdo contínuo em canal"
+          icon={icons.calendar}
+          accent="cyan"
+          revealIndex={6}
+          right={
+            canCreate && (
+              <a
+                href={`/dashboard/automations/scheduled/new${createQuery}`}
+                className="btn-primary text-xs px-4 py-2"
+              >
+                Nova campanha
+              </a>
+            )
+          }
+        >
+          <ScheduledCampaignList campaigns={scheduled ?? []} />
+        </CardShell>
+      </div>
+
       {/* Campanhas */}
       <div className="mb-6">
         <CardShell
@@ -223,7 +254,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
           subtitle="disparo em massa"
           icon={icons.megaphone}
           accent="amber"
-          revealIndex={6}
+          revealIndex={7}
           right={
             canCreate && (
               <a href={`/dashboard/automations/new-campaign${createQuery}`} className="btn-primary text-xs px-4 py-2">

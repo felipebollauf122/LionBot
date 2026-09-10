@@ -300,9 +300,14 @@ export function CloneForm({
             } catch {
               // Ignorado de proposito: a tela de progresso e quem reporta a falha.
             }
-            // A tela da campanha so existe a partir do Plano 2. Ate la, o
-            // rascunho criado e inspecionavel pela tela do clone.
-            router.push(`/dashboard/automations/clones/${res.cloneJobId}`);
+            // No modo rascunho o destino do usuario e a tela da campanha: e la
+            // que ele edita, agenda e publica. Sem campanha (modo live), a tela
+            // de progresso do clone continua sendo o lugar certo.
+            router.push(
+              res.draftCampaignId
+                ? `/dashboard/automations/scheduled/${res.draftCampaignId}`
+                : `/dashboard/automations/clones/${res.cloneJobId}`,
+            );
           })
         }
         disabled={pending || (mode === "live" && !destAccountId)}

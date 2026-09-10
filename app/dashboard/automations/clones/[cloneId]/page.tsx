@@ -18,7 +18,7 @@ export default async function ClonePage({
   const { data: job } = await supabase
     .from("clone_jobs")
     .select(
-      "id, status, effective_strategy, dest_invite_link, total_seen, copied_count, skipped_count, failed_count, message_limit, last_error, source_title, dest_title",
+      "id, status, effective_strategy, dest_invite_link, total_seen, copied_count, skipped_count, failed_count, message_limit, last_error, source_title, dest_title, mode, draft_campaign_id",
     )
     .eq("id", cloneId)
     .single();
@@ -32,13 +32,25 @@ export default async function ClonePage({
       >
         ← Voltar
       </a>
-      <header className="mt-3 mb-6 reveal">
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
-          Progresso do clone
-        </h1>
-        <p className="text-(--text-secondary) text-sm mt-1">
-          Acompanhe a cópia das mensagens em tempo real.
-        </p>
+      <header className="mt-3 mb-6 reveal flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+            Progresso do clone
+          </h1>
+          <p className="text-(--text-secondary) text-sm mt-1">
+            Acompanhe a cópia das mensagens em tempo real.
+          </p>
+        </div>
+        {/* Clone no modo rascunho não publica: ele enche uma campanha, que é
+            editada e agendada na tela dela. */}
+        {job.mode === "draft" && job.draft_campaign_id && (
+          <a
+            href={`/dashboard/automations/scheduled/${job.draft_campaign_id}`}
+            className="btn-primary text-xs px-4 py-2"
+          >
+            Abrir rascunho
+          </a>
+        )}
       </header>
       <CardShell
         title={job.dest_title}

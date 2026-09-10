@@ -47,6 +47,38 @@ async function comGuarda(acao: string, corpo: () => Promise<ActionResult>): Prom
   }
 }
 
+/**
+ * Campanha vazia, pra quem quer montar a sequência à mão em vez de partir de
+ * um clone. Não devolve `ActionResult` porque quem chama precisa do id pra
+ * navegar — mas continua sem lançar, pelo mesmo motivo de comGuarda.
+ */
+export async function createEmptyCampaign(
+  actingTenantId?: string,
+): Promise<{ ok: true; campaignId: string } | { ok: false; error: string }> {
+  try {
+    await requireAutomationsAccess();
+  } catch {
+    return { ok: false, error: "Seu plano não inclui as automações do Telegram." };
+  }
+
+  try {
+    const tenantId = await resolveActingTenantId(actingTenantId);
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("mtproto_scheduled_campaigns")
+      .insert({ tenant_id: tenantId, name: "Nova campanha", status: "draft" })
+      .select("id")
+      .single();
+    if (error) return { ok: false, error: `Não deu pra criar a campanha: ${error.message}` };
+
+    revalidatePath("/dashboard/automations");
+    return { ok: true, campaignId: data.id as string };
+  } catch (err) {
+    console.error("[createEmptyCampaign] erro inesperado:", err);
+    return { ok: false, error: "Não foi possível criar a campanha. Tente de novo." };
+  }
+}
+
 export async function getScheduledCampaign(campaignId: string): Promise<{
   campaign: ScheduledCampaign | null;
   messages: ScheduledMessage[];

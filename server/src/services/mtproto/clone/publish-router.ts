@@ -37,7 +37,17 @@ export function chooseStrategy(input: {
    * copyButtons acima.
    */
   linkReplaceConfigured?: boolean;
+  /**
+   * Modo rascunho: em vez de publicar, o job grava o conteúdo como mensagens
+   * agendadas. O ForwardMessages copia server-side — o app nunca vê
+   * raw.message/raw.entities/mídia nessa rota, então montar um rascunho a
+   * partir dela é impossível. Mesma razão de copyButtons/linkReplace acima,
+   * só que absoluta: aqui não existe destino pra encaminhar.
+   */
+  draftMode?: boolean;
 }): CloneStrategy {
+  // Rascunho não tem destino nem publica nada: precisa do conteúdo em mãos.
+  if (input.draftMode) return "download";
   // Contas diferentes na origem e no destino: forward entre sessões não existe.
   if (input.crossAccount) return "download";
   // Encaminhamento não permite anexar reply_markup: quem quer botão, baixa.

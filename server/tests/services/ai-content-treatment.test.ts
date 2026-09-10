@@ -166,4 +166,34 @@ describe("applyTreatment", () => {
       applyTreatment(linha(), t({ action: "clean", text: "   " }), opts()),
     ).toBeNull();
   });
+
+  it("clean com a alavanca de limpeza desligada não escreve texto, mesmo quando o delay é gravado", () => {
+    // A alavanca desligada vale pra 'clean' tanto quanto vale pra 'rewrite':
+    // sem ela, o modelo não tem permissão pra tocar no texto — mesmo que
+    // devolva um texto novo e mesmo que o delay (outra decisão) seja gravado.
+    const patch = applyTreatment(
+      linha(),
+      t({ action: "clean", text: "novo texto perigoso", delaySeconds: 300 }),
+      opts({ clean: false, smartDelay: true }),
+    );
+    expect(patch).not.toHaveProperty("content_text");
+    expect(patch).not.toHaveProperty("ai_action");
+    expect(patch).not.toHaveProperty("content_text_original");
+    expect(patch).toMatchObject({ delay_seconds: 300 });
+  });
+
+  it("rewrite com as duas alavancas desligadas não escreve texto, mesmo quando o delay é gravado", () => {
+    // Sem 'rewrite' autorizado, a degradação normal seria virar 'clean' —
+    // mas se 'clean' também está desligado não sobra nenhuma permissão pra
+    // mudar o texto, então vira keep de verdade (nenhuma escrita de texto).
+    const patch = applyTreatment(
+      linha(),
+      t({ action: "rewrite", text: "reescrita não autorizada", delaySeconds: 300 }),
+      opts({ clean: false, rewrite: false, smartDelay: true }),
+    );
+    expect(patch).not.toHaveProperty("content_text");
+    expect(patch).not.toHaveProperty("ai_action");
+    expect(patch).not.toHaveProperty("content_text_original");
+    expect(patch).toMatchObject({ delay_seconds: 300 });
+  });
 });

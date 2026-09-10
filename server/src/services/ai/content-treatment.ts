@@ -141,16 +141,20 @@ export function applyTreatment(
     // text vazio (ou só espaços) com action de mudança é o modelo dizendo
     // "não achei o que mexer". Gravar isso apagaria o post inteiro.
     if (novo !== "") {
-      // A alavanca desligada é decisão do dono, não sugestão: um rewrite não
-      // autorizado é registrado como cleaned — mas o texto que o modelo
-      // mandou ainda é usado, só o rótulo (e a interpretação do que foi
-      // feito) muda.
+      // Invariante total: content_text só muda se a alavanca daquela ação
+      // específica estiver ligada. Um rewrite não autorizado degrada pra
+      // clean, mas só se 'clean' estiver autorizado — se as duas alavancas
+      // estiverem desligadas não sobra permissão nenhuma pra mudar o texto,
+      // e isso vira um keep de verdade (nenhuma escrita).
       const autorizadoRewrite = t.action === "rewrite" && opts.rewrite;
-      patch.content_text = novo;
-      patch.ai_action = autorizadoRewrite ? "rewritten" : "cleaned";
-      // Uma vez só: reprocessar não pode apagar o texto raspado.
-      if (row.content_text_original === null) {
-        patch.content_text_original = row.content_text;
+      const autorizadoComoClean = !autorizadoRewrite && opts.clean;
+      if (autorizadoRewrite || autorizadoComoClean) {
+        patch.content_text = novo;
+        patch.ai_action = autorizadoRewrite ? "rewritten" : "cleaned";
+        // Uma vez só: reprocessar não pode apagar o texto raspado.
+        if (row.content_text_original === null) {
+          patch.content_text_original = row.content_text;
+        }
       }
     }
   }

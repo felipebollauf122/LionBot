@@ -11,6 +11,8 @@ import { botCache, flowCache, flowByIdCache } from "./cache.js";
 import { MtprotoClient } from "./services/mtproto/client.js";
 import { ensureBotAccess } from "./services/mtproto/ensure-bot-access.js";
 import { isAuthorizedInternalRequest } from "./services/mtproto/internal-auth.js";
+import { GeminiClient } from "./services/ai/gemini.js";
+import { buildAssistPrompt, type AiAssistAction } from "./services/ai/assist.js";
 
 interface Bot {
   id: string;
@@ -570,6 +572,52 @@ app.post("/api/mtproto/enqueue", async (req, res) => {
   } catch (error) {
     console.error("Failed to enqueue mtproto job:", error);
     res.status(500).json({ error: "enqueue failed" });
+  }
+});
+
+// Assistente de IA sob demanda, chamado pela Server Action do painel.
+//
+// Este endpoint tem segredo compartilhado, diferente do /api/mtproto/enqueue
+// logo acima, que não tem nenhuma autenticação. Quota de LLM aberta custa
+// dinheiro de um jeito que fila aberta não custa. (Fechar o enqueue é um
+// débito conhecido, registrado no spec §5.5.)
+//
+// A checagem usa `isAuthorizedInternalRequest` — a MESMA função de
+// /api/mtproto/ensure-bot-access logo abaixo, não uma segunda comparação de
+// string escrita na mão. Status diferenciado só pra quem opera o serviço
+// saber qual é qual; a recusa em si é genérica nos dois casos.
+app.post("/api/ai/assist", async (req, res) => {
+  try {
+    if (!isAuthorizedInternalRequest(config.internalApiSecret, req.headers["x-internal-secret"])) {
+      const status = config.internalApiSecret ? 401 : 503;
+      res.status(status).json({
+        error: config.internalApiSecret ? "não autorizado" : "assistente de IA não configurado",
+      });
+      return;
+    }
+
+    const { action, text, mediaKinds } = req.body as {
+      action?: AiAssistAction;
+      text?: string | null;
+      mediaKinds?: string[];
+    };
+    if (action !== "rewrite" && action !== "caption" && action !== "summarize") {
+      res.status(400).json({ error: "ação inválida" });
+      return;
+    }
+
+    const gemini = new GeminiClient(config.geminiApiKey, config.geminiModel);
+    if (!gemini.isConfigured()) {
+      res.status(503).json({ error: "GEMINI_API_KEY não configurada" });
+      return;
+    }
+    const out = await gemini.generateJson<{ text: string }>(
+      buildAssistPrompt(action, text ?? null, mediaKinds ?? []),
+    );
+    res.json({ text: out.text });
+  } catch (error) {
+    console.error("[ai.assist] falhou:", error);
+    res.status(500).json({ error: "assistente falhou" });
   }
 });
 

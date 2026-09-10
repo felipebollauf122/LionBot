@@ -804,6 +804,11 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               ai_status: querIa ? "queued" : "idle",
             })
             .eq("id", campaignId);
+          // Enfileiramento que o Plano 1 adiou explicitamente porque o kind
+          // ainda não existia (Plano 3 o criou em campaign-ai-handler.ts).
+          if (querIa) {
+            await enqueueMtproto({ kind: "campaign.ai-process", campaignId });
+          }
         }
       }
 

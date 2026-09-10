@@ -15,7 +15,10 @@ export type MtprotoJobData =
   | { kind: "botclone.build-flow"; cloneJobId: string }
   // Uma mensagem agendada por job: o poller enfileira no máximo uma por
   // campanha por tick, e o job publica exatamente essa e termina.
-  | { kind: "postcampaign.send-one"; messageId: string };
+  | { kind: "postcampaign.send-one"; messageId: string }
+  // Tratamento por IA do rascunho de clone (Plano 3): enfileirado pelo
+  // clone-handler quando o rascunho termina com alguma alavanca de IA ligada.
+  | { kind: "campaign.ai-process"; campaignId: string };
 
 export const mtprotoQueue = new Queue<MtprotoJobData>("mtproto", { connection });
 

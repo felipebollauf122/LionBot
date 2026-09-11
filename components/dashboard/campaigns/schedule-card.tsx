@@ -38,18 +38,30 @@ export function ScheduleCard({
   startAt: string | null;
   defaultDelaySeconds: number;
   hasDestination: boolean;
-  messages: Array<Pick<ScheduledMessage, "id" | "delay_seconds" | "ai_discarded">>;
+  messages: Array<Pick<ScheduledMessage, "id" | "delay_seconds" | "ai_discarded" | "status">>;
 }) {
   const [inicio, setInicio] = useState(() => paraDatetimeLocal(startAt));
   const [delayMin, setDelayMin] = useState(Math.round(defaultDelaySeconds / 60));
   const [erro, setErro] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // A fila desta tela tem que ser a MESMA que launchScheduledCampaign vai
+  // agendar, e lá o filtro é `status='pending'`. `accumulateSchedule` só
+  // descarta `ai_discarded` — ela não conhece status —, então sem este filtro
+  // as já enviadas continuavam contadas: numa campanha retomada o card dizia
+  // "12 mensagens na fila" com 3 pendentes de verdade, projetava uma "última
+  // postagem" lá na frente, e — o pior — numa campanha já concluída
+  // (tudo 'sent') deixava o botão ATIVO, porque agenda.length > 0. O clique
+  // ia até o servidor só pra voltar com "Não há nenhuma mensagem pendente pra
+  // publicar": um botão que aceita o clique pra devolver erro, exatamente o
+  // que o comentário de `motivoDesabilitado` diz que não pode existir.
+  const pendentes = messages.filter((m) => m.status === "pending");
+
   const dataInicio = new Date(inicio);
   const agenda = Number.isNaN(dataInicio.getTime())
     ? []
     : accumulateSchedule(
-        messages.map((m) => ({
+        pendentes.map((m) => ({
           id: m.id,
           delay_seconds: m.delay_seconds,
           ai_discarded: m.ai_discarded,

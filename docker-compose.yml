@@ -11,6 +11,17 @@ services:
   eaglebot:
     build: ./server
     restart: unless-stopped
+    # ATENÇÃO: este `.env` é o da RAIZ, e é o ambiente do WORKER — não o do
+    # painel Next.js. `server/.env` NÃO é lido aqui (só por `npm run dev`
+    # dentro de server/, que passa --env-file=.env relativo àquela pasta).
+    #
+    # Ou seja: as variáveis documentadas em `server/env.example` precisam
+    # estar no `.env` da RAIZ pra chegarem neste container. Quem seguiu só o
+    # `env.example` da raiz — que até agora só descrevia o painel — subiu o
+    # worker sem GEMINI_API_KEY, e como chave vazia desativa a IA EM SILÊNCIO
+    # (config.ts usa envOptional), o defeito só apareceu lá na frente, com a
+    # campanha marcando "tratamento por IA falhou". Por isso o `env.example`
+    # da raiz agora traz o bloco do worker junto.
     env_file: .env
     depends_on:
       - redis

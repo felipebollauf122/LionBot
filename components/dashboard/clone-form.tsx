@@ -178,6 +178,24 @@ export function CloneForm({
         </span>
       </label>
 
+      {/* No rascunho não existe "conta que cria o destino": nada é criado no
+          Telegram agora. Mas simplesmente SUMIR com este campo fazia parecer
+          que clonar pra outra conta tinha deixado de existir — ele era
+          incondicional antes do modo rascunho chegar. A escolha não acabou,
+          só mudou de tela: a campanha pergunta o canal de destino lá, e a
+          lista de lá (listDestinationDialogs) varre TODAS as contas do
+          tenant, então continua dando pra clonar de uma conta pra outra. */}
+      {mode === "draft" && (
+        <div className="block">
+          <span className="input-label">Destino do rascunho</span>
+          <p className="text-(--text-muted) text-xs mt-2">
+            Você escolhe o canal — de qualquer uma das suas contas — na tela da
+            campanha, depois de revisar o conteúdo. Nada é criado no Telegram
+            até você publicar.
+          </p>
+        </div>
+      )}
+
       {mode === "live" && (
         <label className="block">
           <span className="input-label">Criar o destino na conta</span>

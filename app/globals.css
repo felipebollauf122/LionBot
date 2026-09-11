@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
 :root {
+  /* Os SETE temas deste arquivo são escuros — não existe variante clara.
+     Sem esta linha o navegador presume "light" e pinta todo controle NATIVO
+     com o fundo branco do UA: o popup do <select>, o calendário do
+     <input type="datetime-local">, a barra de rolagem, checkbox e radio.
+     O texto dentro do popup, esse, herda --text-primary (quase branco), e o
+     resultado é a lista de canais ilegível — branco no branco — que o
+     "Destino" da campanha mostrava. Declarar aqui conserta os sete de uma
+     vez, porque toda variante troca só as custom properties. */
+  color-scheme: dark;
+
   /* ═══ Deep Surface System — Synthwave Night ═════════ */
   --bg-root: #05030a;
   --bg-surface: #08040e;
@@ -399,6 +409,27 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* O popup do <select> é desenhado pelo SISTEMA, não pela página: ele não
+   herda o fundo do elemento, só a cor do texto. `color-scheme: dark` lá em
+   cima já resolve no Chrome do Windows e do macOS, mas no Linux (e em versões
+   mais velhas) a opção continua pegando --text-primary sobre o branco do UA.
+   Cravar as duas cores aqui deixa o caso determinístico em todo lugar.
+   --bg-elevated, e não --bg-input: este último é quase transparente
+   (rgba(...,0.04)) e por baixo dele estaria justamente o branco do sistema. */
+option,
+optgroup {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* Opção desabilitada — o "Selecione um canal…" que abre a lista do Destino.
+   Sem isto ela fica no cinza do UA, que some no fundo escuro. --text-muted,
+   e não --text-ghost: ghost é alpha 0.16, ilegível, o mesmo defeito que esta
+   regra existe pra consertar. */
+option:disabled {
+  color: var(--text-muted);
 }
 
 /* ═══ Safe area (iPhone notch / Dynamic Island) ══════

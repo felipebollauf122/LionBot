@@ -270,8 +270,29 @@ export async function createCloneJob(input: {
       .select("id")
       .single();
     if (error) {
+      // Compensação do rascunho: a campanha foi criada ANTES do job, então um
+      // job que não nasce deixa uma campanha vazia pra trás.
+      //
+      // O erro desta limpeza era descartado. Quando ela também falhava (RLS,
+      // rede), sobrava no painel uma campanha órfã de zero mensagem que nada
+      // explicava — e a próxima tentativa criava mais uma. Conferir aqui não
+      // desfaz o órfão, mas para de escondê-lo: o usuário lê que existe, em
+      // vez de achar que "a campanha não funciona".
       if (draftCampaignId) {
-        await supabase.from("mtproto_scheduled_campaigns").delete().eq("id", draftCampaignId);
+        const { error: erroLimpeza } = await supabase
+          .from("mtproto_scheduled_campaigns")
+          .delete()
+          .eq("id", draftCampaignId);
+        if (erroLimpeza) {
+          console.error(
+            `[createCloneJob] campanha órfã ${draftCampaignId} — limpeza falhou:`,
+            erroLimpeza.message,
+          );
+          return {
+            ok: false,
+            error: `Não deu pra criar o clone (${error.message}). Sobrou uma campanha vazia na lista — pode apagar ela à mão.`,
+          };
+        }
       }
       return { ok: false, error: error.message };
     }

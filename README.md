@@ -24,9 +24,21 @@ wrong reads as a broken product rather than as missing configuration:
   Suba nos DOIS lados ao mesmo tempo: esse segredo protege o endpoint que
   transporta login MTProto, sync de diálogos, Mass DM, clone de canal e
   clone de bot — não só as campanhas. Subir de um lado só derruba todos.
-- `GEMINI_API_KEY` / `GEMINI_MODEL` — worker only, in `server/.env`. See
-  [`server/README.md`](./server/README.md) and
-  [`server/env.example`](./server/env.example).
+- `GEMINI_API_KEY` / `GEMINI_MODEL` — worker only, **never** in the panel's
+  env. Where the worker reads them from depends on how you run it, and this
+  is the part that bites:
+  - `npm run dev` inside `server/` reads `server/.env`.
+  - `docker compose up` reads the **root** `.env` — `env_file: .env` in
+    `docker-compose.yml` — and never opens `server/.env` at all.
+
+  So on a Docker deploy every variable from
+  [`server/env.example`](./server/env.example) has to be in the root `.env`
+  too; the root [`env.example`](./env.example) now carries that block for
+  exactly this reason. An empty `GEMINI_API_KEY` disables the AI *silently*
+  (`envOptional` in `server/src/config.ts` — no env may break the boot), so
+  the omission surfaces much later as a campaign reading
+  "tratamento por IA falhou / GEMINI_API_KEY não configurada no worker".
+  See also [`server/README.md`](./server/README.md).
 
 Then, run the development server:
 

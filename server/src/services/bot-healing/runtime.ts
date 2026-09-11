@@ -9,6 +9,7 @@ import { GeminiClient } from "../ai/gemini.js";
 import { MtprotoClient } from "../mtproto/client.js";
 import { extractWaitSeconds } from "../mtproto/flood.js";
 import { sendPushToTenant } from "../push.js";
+import { tenantHasHealing } from "./access.js";
 import { BotFatherConversation } from "./botfather.js";
 import { backupIdentity, readIdentityPhoto, type TelegramSelf } from "./identity.js";
 import { withHealingLease } from "./lease.js";
@@ -69,6 +70,10 @@ async function inspectBot(botId: string): Promise<void> {
     if (!bot?.is_active) return;
     const settings = await loadHealingSettings(botId);
     if (!settings.enabled) return;
+    // Depois do opt-in, para só pagar a leitura de plano por bot que pediu a
+    // feature. Sem premium não abre run nem faz backup de identidade: quem saiu
+    // do plano perde a recuperação inteira, não só as telas.
+    if (!await tenantHasHealing(bot.tenant_id)) return;
     const api = new TelegramApi(bot.telegram_token);
     let me: TelegramSelf;
     try { me = await api.call<TelegramSelf>("getMe"); }
@@ -128,6 +133,7 @@ async function processRun(runId: string): Promise<void> {
       await recoverBot(run, {
         loadBot: () => loadHealingBot(run.bot_id),
         enabled: async () => (await loadHealingSettings(run.bot_id)).enabled,
+        allowed: () => tenantHasHealing(run.tenant_id),
         identity: async () => settings.identity_token_hash === run.token_hash ? settings.identity : null,
         save,
         credentialWorks,

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { config } from "../../config.js";
 import { supabase } from "../../db.js";
 import { isAuthorizedInternalRequest } from "../mtproto/internal-auth.js";
+import { tenantHasHealing } from "./access.js";
 import { loadHealingBot, loadHealingSettings, scheduleHealingCheck } from "./runtime.js";
 import { tokenHash } from "./recovery.js";
 
@@ -19,6 +20,10 @@ botHealingRouter.use("/:botId/auto-healing", async (req, res, next) => {
   try {
     const bot = await loadHealingBot(String(req.params.botId));
     if (!bot || bot.tenant_id !== tenantId) { res.status(404).json({ error: "bot_not_found" }); return; }
+    // Depois da posse, nunca antes: quem chuta um bot alheio recebe 404 sem
+    // descobrir se aquele tenant assina. Uma leitura de plano que falha cai no
+    // catch como indisponibilidade — recusar seria mentir para o assinante.
+    if (!await tenantHasHealing(tenantId)) { res.status(403).json({ error: "healing_not_available" }); return; }
     res.locals.healingBot = bot;
     next();
   } catch { res.status(503).json({ error: "healing_storage_unavailable" }); }

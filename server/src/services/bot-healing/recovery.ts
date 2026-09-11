@@ -15,6 +15,8 @@ export interface HealingAccount { id: string; session_string: string }
 export interface RecoveryDeps {
   loadBot(): Promise<HealingBot | null>;
   enabled(): Promise<boolean>;
+  /** Plano do tenant. Separado de `enabled()` porque recusa aqui FREIA, não cancela. */
+  allowed(): Promise<boolean>;
   identity(): Promise<Identity | null>;
   save(patch: Partial<RecoveryRun>): Promise<void>;
   credentialWorks(token: string): Promise<boolean>;
@@ -35,6 +37,11 @@ export function botStillMatches(bot: HealingBot | null, run: RecoveryRun): bot i
 /** Orchestration independent of DB/Redis/Telegram so crash and concurrency cases can be tested. */
 export async function recoverBot(run: RecoveryRun, deps: RecoveryDeps): Promise<void> {
   if (["completed", "cancelled", "needs_attention"].includes(run.status)) return;
+  // Antes de qualquer leitura ou chamada externa: quem saiu do premium perde a
+  // feature inteira. `RecoveryAttention` para em needs_attention em vez de
+  // cancelar — `cancelled` é terminal e jogaria fora um token já emitido pelo
+  // BotFather, deixando um bot órfão caso a assinatura volte.
+  if (!await deps.allowed()) throw new RecoveryAttention("healing_not_available");
   const save = async (patch: Partial<RecoveryRun>) => { await deps.save(patch); Object.assign(run, patch); };
   const assertCurrent = async () => {
     const bot = await deps.loadBot();

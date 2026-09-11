@@ -2,10 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import type { Server } from "node:http";
 
-const mocks = vi.hoisted(() => ({ loadBot: vi.fn(), settings: vi.fn(), schedule: vi.fn(), from: vi.fn(), query: {} as Record<string, ReturnType<typeof vi.fn>> }));
+const mocks = vi.hoisted(() => ({ loadBot: vi.fn(), settings: vi.fn(), schedule: vi.fn(), hasHealing: vi.fn(), from: vi.fn(), query: {} as Record<string, ReturnType<typeof vi.fn>> }));
 vi.mock("../../src/config.js", () => ({ config: { internalApiSecret: "internal-test-secret", botAutoHealEnabled: true } }));
 vi.mock("../../src/db.js", () => ({ supabase: { from: mocks.from } }));
 vi.mock("../../src/services/bot-healing/runtime.js", () => ({ loadHealingBot: mocks.loadBot, loadHealingSettings: mocks.settings, scheduleHealingCheck: mocks.schedule }));
+vi.mock("../../src/services/bot-healing/access.js", () => ({ tenantHasHealing: mocks.hasHealing }));
 import { botHealingRouter } from "../../src/services/bot-healing/routes.js";
 
 const botId = "20000000-0000-0000-0000-000000000001";
@@ -27,6 +28,7 @@ beforeEach(() => {
   mocks.loadBot.mockResolvedValue({ id: botId, tenant_id: tenantId, telegram_token: "old-secret", is_active: true });
   mocks.settings.mockResolvedValue({ enabled: true, account_ids: [], backed_up_at: null, identity: null, identity_token_hash: null });
   mocks.schedule.mockResolvedValue(undefined);
+  mocks.hasHealing.mockResolvedValue(true);
   mocks.query = Object.fromEntries(["select", "eq", "in", "update", "order", "upsert"].map(name => [name, vi.fn(() => mocks.query)]));
   mocks.query.limit = vi.fn(async () => ({ data: [], error: null }));
   mocks.query.maybeSingle = vi.fn(async () => ({ data: { id: "run-id" }, error: null }));
@@ -69,5 +71,40 @@ describe("internal healing endpoints", () => {
     expect(mocks.query.eq).toHaveBeenCalledWith("status", "needs_attention");
     expect(mocks.query.eq).toHaveBeenCalledWith("tenant_id", tenantId);
     expect(mocks.schedule).toHaveBeenCalledWith(botId);
+  });
+
+  // Sem premium o usuário não vê a tela (o layout de Automações dá notFound),
+  // mas a rota é a fronteira real: o painel pode estar em cache, a assinatura
+  // pode cair entre o render e o clique, e o segredo interno não sabe de plano.
+  it("recusa o tenant sem premium antes de ler as configurações", async () => {
+    mocks.hasHealing.mockResolvedValue(false);
+    const response = await fetch(`${url}?tenantId=${tenantId}`, { headers: { "x-internal-secret": "internal-test-secret" } });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "healing_not_available" });
+    expect(mocks.settings).not.toHaveBeenCalled();
+  });
+
+  it("recusa ligar a recuperação sem premium, sem gravar nada", async () => {
+    mocks.hasHealing.mockResolvedValue(false);
+    const response = await fetch(url, { method: "POST", headers: { "x-internal-secret": "internal-test-secret", "content-type": "application/json" }, body: JSON.stringify({ tenantId, enabled: true, accountIds: [] }) });
+    expect(response.status).toBe(403);
+    expect(mocks.query.upsert).not.toHaveBeenCalled();
+    expect(mocks.schedule).not.toHaveBeenCalled();
+  });
+
+  // Plano é lido depois da posse: quem chuta bot de outro tenant continua
+  // recebendo 404, sem descobrir de tabela nenhuma se aquele tenant assina.
+  it("não revela o plano de outro tenant", async () => {
+    const response = await fetch(`${url}?tenantId=10000000-0000-0000-0000-000000000002`, { headers: { "x-internal-secret": "internal-test-secret" } });
+    expect(response.status).toBe(404);
+    expect(mocks.hasHealing).not.toHaveBeenCalled();
+  });
+
+  // Leitura de plano que falha é transitória: 503 e o painel manda tentar de
+  // novo, em vez de dizer ao assinante que ele não tem a feature.
+  it("trata falha ao ler o plano como indisponibilidade, não como recusa", async () => {
+    mocks.hasHealing.mockRejectedValue(new Error("healing_access_read_failed"));
+    const response = await fetch(`${url}?tenantId=${tenantId}`, { headers: { "x-internal-secret": "internal-test-secret" } });
+    expect(response.status).toBe(503);
   });
 });

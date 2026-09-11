@@ -10,7 +10,7 @@ function fixture() {
   const events: string[] = [];
   const father = { exchange: vi.fn(), photo: vi.fn(), repliesSince: vi.fn() };
   const deps: RecoveryDeps = {
-    loadBot: vi.fn(async () => ({ ...bot })), enabled: async () => true,
+    loadBot: vi.fn(async () => ({ ...bot })), enabled: async () => true, allowed: async () => true,
     identity: async () => ({ name: "Loja", username: "oldbot", telegramId: 100, description: "", about: "", photoPath: null }),
     save: vi.fn(async patch => { Object.assign(run, patch); }), credentialWorks: vi.fn(async () => false),
     accounts: async () => [{ id: "account", session_string: "session" }], withAccount: async (_account, fn) => fn(father),
@@ -118,5 +118,28 @@ describe("bot recovery orchestration", () => {
     await expect(recoverBot(run, deps)).rejects.toThrow("mtproto_account_unavailable");
     expect(deps.commit).not.toHaveBeenCalled();
     expect(run.new_token).toBe(newToken);
+  });
+
+  // Queda de plano é um freio, não um cancelamento: `cancelled` é terminal e
+  // descartaria um token que o BotFather já emitiu, deixando um bot órfão sem
+  // dono se a assinatura voltasse. Para em `needs_attention` (quem grava é o
+  // runtime, a partir deste RecoveryAttention) com o token preservado.
+  it("para sem cancelar quando o tenant perde o premium", async () => {
+    const { run, deps, father } = fixture();
+    deps.allowed = async () => false;
+    await expect(recoverBot(run, deps)).rejects.toThrow("healing_not_available");
+    expect(run.status).not.toBe("cancelled");
+    expect(run.new_token).toBe(newToken);
+    expect(father.exchange).not.toHaveBeenCalled();
+    expect(deps.commit).not.toHaveBeenCalled();
+  });
+
+  it("nem chega a sondar a credencial de quem saiu do plano", async () => {
+    const { run, deps } = fixture();
+    Object.assign(run, { status: "queued", new_token: null, pending_username: null });
+    deps.allowed = async () => false;
+    await expect(recoverBot(run, deps)).rejects.toThrow("healing_not_available");
+    expect(deps.credentialWorks).not.toHaveBeenCalled();
+    expect(deps.loadBot).not.toHaveBeenCalled();
   });
 });

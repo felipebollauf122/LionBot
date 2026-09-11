@@ -27,12 +27,12 @@ import { downloadAndRehostMedia } from "../services/mtproto/bot-clone/media-reho
 import { rewriteMessageLinks } from "../services/mtproto/clone/link-replace.js";
 import { iterHistoryAscending } from "../services/mtproto/clone/history-iterator.js";
 import { CloneRunner } from "../services/mtproto/clone/clone-runner.js";
+import { createCloneProgressStore } from "../services/mtproto/clone/progress-store.js";
 import { syncTopics, finalizeTopics } from "../services/mtproto/clone/topic-sync.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
 import { extractWaitSeconds } from "../services/mtproto/flood.js";
 import { isUserRestricted } from "../services/mtproto/clone/user-restricted.js";
 import type {
-  CloneMapRow,
   CloneOutcome,
   CloneStatus,
   ClonePeer,
@@ -471,7 +471,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
                   dest_access_hash: d.accessHash,
                   dest_invite_link: d.inviteLink,
                 })
-                .eq("id", id);
+                .eq("id", id).select("id").single().throwOnError();
             },
           },
           {
@@ -623,9 +623,15 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
       // histórico) em vez do início — composto com o cursor já persistido
       // via Math.max logo abaixo, então uma retomada que já avançou o
       // cursor além do piso ignora o piso (o cursor já domina o max).
-      const lastNFloor = job.message_limit
+      const progress = createCloneProgressStore(supabase, cloneJobId);
+      const resume = await progress.load();
+      const lastNFloor = job.message_limit && resume.cursor === 0 && resume.counters.seen === 0
         ? await reader.floorForLastN(job.message_limit)
         : 0;
+      if (lastNFloor > 0) {
+        resume.cursor = lastNFloor - 1;
+        await progress.saveCursor(resume.cursor);
+      }
 
       // 4) Runner
       const runner = new CloneRunner(
@@ -639,70 +645,20 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               throttleMs: READ_THROTTLE_MS,
             }),
           publish,
-          persist: async (id, rows, cursor) => {
-            if (rows.length > 0) {
-              await supabase.from("clone_message_map").upsert(
-                rows.map((r: CloneMapRow) => ({
-                  job_id: id,
-                  source_msg_id: r.sourceMsgId,
-                  dest_msg_id: r.destMsgId,
-                  grouped_id: r.groupedId,
-                  status: r.status,
-                  reason: r.reason,
-                })),
-                { onConflict: "job_id,source_msg_id" },
-              );
-            }
-            await supabase
-              .from("clone_jobs")
-              .update({ cursor_source_msg_id: cursor })
-              .eq("id", id);
-          },
-          loadIdMap: async (id) => {
-            const { data } = await supabase
-              .from("clone_message_map")
-              .select("source_msg_id, dest_msg_id")
-              .eq("job_id", id)
-              .eq("status", "copied");
-            return (data ?? [])
-              .filter((r) => r.dest_msg_id !== null)
-              .map((r) => [Number(r.source_msg_id), Number(r.dest_msg_id)] as [number, number]);
-          },
+          persist: (_id, rows, cursor) => progress.persist(rows, cursor),
+          loadIdMap: async () => resume.idMap,
+          loadCursor: async () => resume.cursor,
           // O runner é reconstruído do zero a cada retomada (ex.: pós
           // FLOOD_WAIT) — sem repopular os contadores aqui, o progresso
           // reportado voltaria a zero e o messageLimit recomeçaria a contar
           // (job com limite 500 que já copiou 400 copiaria mais 500).
-          loadCounters: async (id) => {
-            // count-only (head: true, sem baixar linhas) — quatro contagens
-            // pequenas em paralelo é mais barato que puxar todas as linhas do
-            // job pra tally em JS num canal com dezenas de milhares de mensagens.
-            const countOf = (status?: "copied" | "skipped" | "failed") => {
-              let q = supabase
-                .from("clone_message_map")
-                .select("*", { count: "exact", head: true })
-                .eq("job_id", id);
-              if (status) q = q.eq("status", status);
-              return q;
-            };
-            const [seen, copied, skipped, failed] = await Promise.all([
-              countOf(),
-              countOf("copied"),
-              countOf("skipped"),
-              countOf("failed"),
-            ]);
-            return {
-              copied: copied.count ?? 0,
-              skipped: skipped.count ?? 0,
-              failed: failed.count ?? 0,
-              seen: seen.count ?? 0,
-            };
-          },
+          loadCounters: async () => resume.counters,
           getStatus: async (id) => {
             const { data } = await supabase
               .from("clone_jobs")
               .select("status")
               .eq("id", id)
-              .maybeSingle();
+              .maybeSingle().throwOnError();
             return data?.status ?? null;
           },
           setStatus: async (id, status: CloneStatus, patch) => {
@@ -724,9 +680,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               })
               .eq("id", id);
             if (writeError) {
-              console.error(
-                `[clone] falha ao gravar status=${status} do job ${id}: ${writeError.message}`
-              );
+              throw new Error(`falha ao gravar status=${status} do job ${id}: ${writeError.message}`);
             }
           },
           // Defeito I3: heartbeat de progresso. Chamado ao fim de cada
@@ -746,7 +700,7 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               })
               .eq("id", id);
             if (writeError) {
-              console.warn(`[clone] heartbeat falhou pro job ${id}: ${writeError.message}`);
+              throw new Error(`heartbeat falhou pro job ${id}: ${writeError.message}`);
             }
           },
           scheduleResume: (id, seconds) => scheduleCloneResume(id, seconds),
@@ -764,7 +718,17 @@ export async function handleCloneRun(cloneJobId: string): Promise<void> {
               return;
             }
             for (const id of ids) {
-              await bot!.pin(id).catch((err) => console.warn("[clone] pin falhou:", err));
+              try {
+                await bot!.pin(id);
+              } catch (err) {
+                // FLOOD_WAIT tem que subir: o runner reagenda a retomada e as
+                // fixações continuam de onde pararam. Qualquer outra recusa
+                // (bot sem permissão de fixar, mensagem apagada no destino) é
+                // acessória — derrubar aqui marcaria como "failed" uma
+                // clonagem cujo conteúdo já foi copiado inteiro.
+                if (extractWaitSeconds(err) !== null) throw err;
+                console.warn(`[clone] pin da mensagem ${id} falhou:`, err);
+              }
             }
           },
           delay: (ms) => new Promise((r) => setTimeout(r, ms)),

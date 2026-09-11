@@ -4,6 +4,7 @@ import { handleTelegramWebhook } from "./webhook/telegram.js";
 import { handlePaymentWebhookGlobal, handlePaymentWebhook, handleEvPayWebhook, handleZuckPayWebhook, handleNowPaymentsWebhook } from "./webhook/payment.js";
 import { startWorkers } from "./queue.js";
 import { startMtprotoWorker } from "./workers/mtproto-worker.js";
+import { startLibraryWorker, stopLibraryWorker } from "./workers/library-worker.js";
 import { enqueueMtproto, type MtprotoJobData } from "./queue-mtproto.js";
 import { supabase } from "./db.js";
 import { TelegramApi } from "./telegram/api.js";
@@ -977,6 +978,7 @@ const server = app.listen(config.port, () => {
   logIntegracoesDesligadas();
   startWorkers();
   startMtprotoWorker();
+  startLibraryWorker();
   void startBotHealing().catch(() => console.error("[bot-healing] Startup failed; check Redis and migration 076"));
 });
 
@@ -989,6 +991,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   shuttingDown = true;
   console.log(`[shutdown] recebido ${signal} — encerrando graciosamente`);
   void stopBotHealing().catch(() => console.error("[bot-healing] Shutdown failed"));
+  await stopLibraryWorker().catch(() => console.error("[library-worker] Shutdown failed"));
   try {
     const { shutdownMtprotoClients } = await import("./workers/mtproto-worker.js");
     await shutdownMtprotoClients();

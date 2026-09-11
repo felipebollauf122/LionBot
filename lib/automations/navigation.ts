@@ -1,6 +1,6 @@
 export const automationSections = [
   { id: "overview", path: "/dashboard/automations", label: "Visão geral", description: "Escolha o que você quer automatizar." },
-  { id: "scheduled", path: "/dashboard/automations/scheduled", label: "Postagens", description: "Prepare o conteúdo, revise com IA e agende a publicação em um canal." },
+  { id: "scheduled", path: "/dashboard/automations/scheduled", label: "Postagem automática", description: "Colete um acervo, escute novas postagens e personalize o envio com Gemini." },
   { id: "clones", path: "/dashboard/automations/clones", label: "Clonar canais", description: "Copie canais e grupos ou transforme o conteúdo em um rascunho para revisar." },
   { id: "botclones", path: "/dashboard/automations/botclones", label: "Clonar bots", description: "Reconstrua o fluxo de conversa de um bot dentro de um dos seus bots." },
   { id: "campaigns", path: "/dashboard/automations/campaigns", label: "Disparos", description: "Organize campanhas de mensagens e acompanhe os envios pelas contas conectadas." },

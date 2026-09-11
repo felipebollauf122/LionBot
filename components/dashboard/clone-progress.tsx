@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { automationHref } from "@/lib/automations/navigation";
 import {
   pauseClone,
   launchClone,
@@ -41,6 +43,8 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
 const LIVE = new Set(["running", "waiting_flood"]);
 
 export function CloneProgress({ initial }: { initial: Job }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [job, setJob] = useState(initial);
   const [report, setReport] = useState<Array<{ reason: string; count: number }>>([]);
   const [pending, start] = useTransition();
@@ -52,15 +56,31 @@ export function CloneProgress({ initial }: { initial: Job }) {
   useEffect(() => {
     if (!LIVE.has(job.status)) return;
     const t = setInterval(async () => {
-      const res = await fetch(`/api/clones/${job.id}`, { cache: "no-store" });
-      if (res.ok) setJob(await res.json());
+      try {
+        const res = await fetch(`/api/clones/${job.id}`, { cache: "no-store" });
+        if (res.ok) setJob(await res.json());
+      } catch { setActionError("Não foi possível atualizar o progresso. Tentando novamente."); }
     }, 3000);
     return () => clearInterval(t);
   }, [job.id, job.status]);
 
   useEffect(() => {
-    listCloneSkipReport(job.id).then(setReport);
-  }, [job.id, job.copied_count]);
+    listCloneSkipReport(job.id).then(setReport).catch(()=>setActionError("Não foi possível carregar o relatório."));
+  }, [job.id, job.copied_count, job.failed_count, job.skipped_count]);
+
+  function control(action: "pause" | "resume" | "delete") {
+    if (action === "delete" && !window.confirm("Apagar o registro desta clonagem? O canal do Telegram não será apagado.")) return;
+    start(async () => {
+      setActionError(null);
+      try {
+        const result = await (action === "pause" ? pauseClone(job.id) : action === "resume" ? launchClone(job.id) : deleteClone(job.id));
+        if (!result.ok) { setActionError(result.error); return; }
+        if (action === "delete") { router.push(automationHref("/dashboard/automations/clones",searchParams.get("view"))); return; }
+        // A paused job has no polling timer. Restart it immediately after resume.
+        setJob(current=>({...current,status:action==="pause"?"paused":"running",last_error:null}));
+      } catch { setActionError("Não foi possível concluir. Confira a conexão e tente novamente."); }
+    });
+  }
 
   const total = job.message_limit ?? Math.max(job.total_seen, 1);
   const pct = Math.min(100, Math.round((job.total_seen / total) * 100));
@@ -124,15 +144,7 @@ export function CloneProgress({ initial }: { initial: Job }) {
       <div className="flex gap-2">
         {LIVE.has(job.status) ? (
           <button
-            onClick={() =>
-              start(async () => {
-                setActionError(null);
-                // A action devolve recusa como DADO desde que este arquivo
-                // entrou na convenção do repo — nada mais lança daqui.
-                const r = await pauseClone(job.id);
-                if (!r.ok) setActionError(r.error);
-              })
-            }
+            onClick={() => control("pause")}
             disabled={pending}
             className="btn-ghost text-xs px-3 py-1.5"
           >
@@ -141,15 +153,7 @@ export function CloneProgress({ initial }: { initial: Job }) {
         ) : (
           job.status !== "completed" && (
             <button
-              onClick={() =>
-                start(async () => {
-                  setActionError(null);
-                  // A action devolve recusa como DADO desde que este arquivo
-                  // entrou na convenção do repo — nada mais lança daqui.
-                  const r = await launchClone(job.id);
-                  if (!r.ok) setActionError(r.error);
-                })
-              }
+              onClick={() => control("resume")}
               disabled={pending}
               className="btn-primary text-xs px-3 py-1.5"
             >
@@ -158,15 +162,7 @@ export function CloneProgress({ initial }: { initial: Job }) {
           )
         )}
         <button
-          onClick={() =>
-            start(async () => {
-              setActionError(null);
-              // A action devolve recusa como DADO desde que este arquivo
-              // entrou na convenção do repo — nada mais lança daqui.
-              const r = await deleteClone(job.id);
-              if (!r.ok) setActionError(r.error);
-            })
-          }
+          onClick={() => control("delete")}
           disabled={pending}
           className="btn-danger text-xs px-3 py-1.5"
         >

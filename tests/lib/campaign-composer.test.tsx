@@ -104,7 +104,7 @@ describe("CampaignComposer ancora a prévia na última postagem da sequência", 
     render(<CampaignComposer campaign={campanha()} messages={[]} />);
     const settings = screen.getByRole("button", { name: "Destino e agendamento" });
     expect(settings).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: "Mensagens", exact: true })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Mensagens" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(settings);
     expect(settings).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Agendamento", { exact: true })).toBeInTheDocument();

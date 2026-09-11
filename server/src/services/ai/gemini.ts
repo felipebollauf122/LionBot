@@ -67,6 +67,7 @@ export class GeminiClient {
       `${BASE}/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(45_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: input.system }] },

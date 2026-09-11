@@ -114,7 +114,7 @@ describe("ensureDestination", () => {
 
   it("é idempotente na retomada: canal e identidade não são refeitos", async () => {
     const d = deps();
-    const existing = { channelId: "77", accessHash: "88", inviteLink: null };
+    const existing = { channelId: "77", accessHash: "88", inviteLink: "https://t.me/+existing" };
     const out = await ensureDestination(d, { ...input, existing });
 
     // Canal e identidade não podem ser recriados no caminho de retomada —
@@ -143,7 +143,10 @@ describe("ensureDestination", () => {
 
     expect(d.promoteBot).toHaveBeenCalledWith("77", "88", "meu_bot");
     expect(d.promoteBot).toHaveBeenCalledTimes(1);
-    expect(out).toEqual(existing);
+    expect(d.createChannel).not.toHaveBeenCalled();
+    expect(d.exportInvite).toHaveBeenCalledWith("77", "88");
+    expect(out).toEqual({ ...existing, inviteLink: "https://t.me/+abc" });
+    expect(d.persist).toHaveBeenCalledWith("j1", out);
   });
 
   it("falha de foto e de convite não derruba a criação", async () => {

@@ -41,6 +41,7 @@ function deps(
     }),
     persist: vi.fn(async () => {}),
     loadIdMap: vi.fn(async () => []),
+    loadCursor: vi.fn(async () => 0),
     loadCounters: vi.fn(async () => ({ copied: 0, skipped: 0, failed: 0, seen: 0 })),
     getStatus: vi.fn(async () => "running"),
     setStatus: vi.fn(async () => {}),
@@ -55,6 +56,59 @@ function deps(
 }
 
 describe("CloneRunner", () => {
+  it("retoma depois de mensagens puladas/falhas, preservando o mapa de respostas", async () => {
+    const d = deps([m(11), m(12), m(13, { replyToMsgId: 10 })], {
+      loadCursor: async () => 12,
+      loadIdMap: async () => [[10, 900]],
+      loadCounters: async () => ({ copied: 1, skipped: 1, failed: 1, seen: 3 }),
+    });
+    await new CloneRunner(d, cfg({ copyReplies: true })).run();
+    expect(d.groups.flat().map((msg) => msg.id)).toEqual([13]);
+    expect(d.replies).toEqual([900]);
+    expect(d.setStatus).toHaveBeenLastCalledWith("j1", "completed", expect.objectContaining({ totalSeen: 4 }));
+  });
+
+  it("nao reporta sucesso quando todas as publicacoes falham", async () => {
+    const d = deps([m(1), m(2)], {
+      publish: async () => { throw new Error("CHAT_WRITE_FORBIDDEN"); },
+    });
+    await new CloneRunner(d, cfg()).run();
+    expect(d.setStatus).toHaveBeenLastCalledWith("j1", "failed", expect.objectContaining({
+      failedCount: 2, copiedCount: 0, lastError: expect.stringContaining("2"),
+    }));
+  });
+
+  it("interrompe ao falhar a persistencia, sem publicar o lote seguinte", async () => {
+    const d = deps([m(1), m(2)], {
+      persist: async () => { throw new Error("database unavailable"); },
+    });
+    await new CloneRunner(d, cfg()).run();
+    expect(d.groups).toEqual([[m(1)]]);
+    expect(d.heartbeat).not.toHaveBeenCalled();
+    expect(d.setStatus).toHaveBeenLastCalledWith("j1", "failed", expect.objectContaining({ lastError: "database unavailable" }));
+  });
+
+  it("agenda retomada se a fixacao final recebe FLOOD_WAIT", async () => {
+    const d = deps([m(1)], {
+      sourcePinnedIds: async () => [1],
+      pinInDest: async () => { throw new FloodWaitError({ request: undefined as never, capture: 60 } as never); },
+    });
+    await new CloneRunner(d, cfg({ copyPins: true })).run();
+    expect(d.scheduleResume).toHaveBeenCalledWith("j1", 60);
+    expect(d.setStatus).toHaveBeenLastCalledWith("j1", "waiting_flood", expect.anything());
+  });
+
+  it("respeita pausa que chega enquanto o ultimo album esta sendo lido", async () => {
+    let status = "running";
+    const d = deps([], {
+      iterate: async function* () { yield m(1, { groupedId: "album" }); status = "paused"; },
+      getStatus: async () => status,
+    });
+    await new CloneRunner(d, cfg()).run();
+    expect(d.groups).toEqual([]);
+    expect(d.setStatus).not.toHaveBeenCalledWith("j1", "completed", expect.anything());
+  });
+
   it("publica cada mensagem solta e conclui o job", async () => {
     const d = deps([m(1), m(2), m(3)]);
     await new CloneRunner(d, cfg()).run();

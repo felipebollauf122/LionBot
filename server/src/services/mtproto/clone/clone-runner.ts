@@ -25,6 +25,7 @@ export interface CloneRunnerDeps {
   publish(group: SourceMessage[], replyToDestId: number | null): Promise<CloneOutcome[]>;
   persist(jobId: string, rows: CloneMapRow[], cursor: number): Promise<void>;
   loadIdMap(jobId: string): Promise<Array<[number, number]>>;
+  loadCursor(jobId: string): Promise<number>;
   /**
    * Contadores ja persistidos deste job. O runner e reconstruido do zero a
    * cada retomada, entao sem isso o progresso volta pra tras e o messageLimit
@@ -80,7 +81,7 @@ export class CloneRunner {
     this.failed = counters.failed;
     this.seen = counters.seen;
 
-    const cursor = this.highestCopiedSource();
+    const cursor = Math.max(await this.deps.loadCursor(this.cfg.jobId), this.highestCopiedSource());
     await this.deps.setStatus(this.cfg.jobId, "running", {});
 
     let pendingGroup: SourceMessage[] = [];
@@ -119,8 +120,11 @@ export class CloneRunner {
       }
 
       if (pendingGroup.length > 0 && !this.limitReached()) {
+        if (await this.shouldStop()) return;
         await this.flush(pendingGroup);
       }
+      if (await this.shouldStop()) return;
+      if (this.cfg.copyPins) await this.applyPins();
     } catch (err) {
       const wait = extractWaitSeconds(err);
       if (wait !== null) {
@@ -141,9 +145,10 @@ export class CloneRunner {
 
     // Pins só depois de todo o envio: os ids de destino dos pins não
     // existem até a mensagem correspondente já ter sido clonada.
-    if (this.cfg.copyPins) await this.applyPins();
-
-    await this.deps.setStatus(this.cfg.jobId, "completed", this.counters());
+    await this.deps.setStatus(this.cfg.jobId, this.failed > 0 && this.copied === 0 ? "failed" : "completed", {
+      ...this.counters(),
+      lastError: this.failed > 0 ? `${this.failed} mensagem(ns) falharam; consulte os motivos no mapa da clonagem.` : null,
+    });
   }
 
   /** Publica um grupo, grava o resultado e avança o cursor. */

@@ -30,6 +30,6 @@ export default async function ScheduledCampaignPage({
   const importing = !!sourceClone && ["draft", "running", "waiting_flood"].includes(sourceClone.status);
   return <>
     <AutomationRefresh active={importing || campaign.status === "running" || campaign.status === "ai_processing"} />
-    <CampaignComposer campaign={campaign} messages={messages} sourceClone={sourceClone} returnHref={automationHref("/dashboard/automations/scheduled", view)} />
+    <CampaignComposer campaign={campaign} messages={messages} sourceClone={sourceClone} returnHref={automationHref("/dashboard/automations/scheduled/campaigns", view)} />
   </>;
 }

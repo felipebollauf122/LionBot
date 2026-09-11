@@ -40,7 +40,7 @@ const STATUS_CAMPANHA: Record<ScheduledCampaign["status"], string> = {
 export function CampaignComposer({
   campaign,
   messages,
-  returnHref = "/dashboard/automations/scheduled",
+  returnHref = "/dashboard/automations/scheduled/campaigns",
   sourceClone,
 }: {
   campaign: ScheduledCampaign;

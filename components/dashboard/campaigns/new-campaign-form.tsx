@@ -42,7 +42,7 @@ export function NewScheduledCampaignForm({ actingTenantId, view }: { actingTenan
       {error && <p role="alert" className="text-sm text-(--red)">{error}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" className="btn-primary" disabled={pending || !name.trim()}>{pending ? "Criando rascunho…" : "Criar rascunho"}</button>
-        <Link href={automationHref("/dashboard/automations/scheduled", view)} className="btn-ghost">Cancelar</Link>
+        <Link href={automationHref("/dashboard/automations/scheduled/campaigns", view)} className="btn-ghost">Cancelar</Link>
       </div>
     </form>
   );

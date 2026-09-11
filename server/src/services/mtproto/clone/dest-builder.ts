@@ -86,6 +86,18 @@ export async function ensureDestination(
     // durante a publicação, não durante a promoção) — ver o wrapper em
     // clone-handler.ts.
     await deps.promoteBot(input.existing.channelId, input.existing.accessHash, input.botUsername);
+    if (!input.existing.inviteLink) {
+      let inviteLink: string;
+      try {
+        inviteLink = await deps.exportInvite(input.existing.channelId, input.existing.accessHash);
+      } catch (err) {
+        console.warn("[clone.dest] exportInvite falhou na retomada:", err);
+        return input.existing;
+      }
+      const dest = { ...input.existing, inviteLink };
+      await deps.persist(input.jobId, dest);
+      return dest;
+    }
     return input.existing;
   }
 

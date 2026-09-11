@@ -939,8 +939,42 @@ app.post("/api/bots/:botId/send-message", async (req, res) => {
 });
 
 // Start server
+/**
+ * Integrações que `envOptional` desliga EM SILÊNCIO quando a env falta.
+ *
+ * Esse silêncio é deliberado (nenhuma env nova pode derrubar o boot), mas ele
+ * já custou caro: em deploy com Docker o worker lê o `.env` da RAIZ, não
+ * `server/.env`, e o modelo da raiz não listava GEMINI_API_KEY — então a IA
+ * subiu desligada e só se explicou muito depois, com a campanha marcando
+ * "tratamento por IA falhou". Dizer no boot o que está OFF não muda nenhum
+ * comportamento; só troca uma descoberta tardia por uma linha de log que
+ * `docker compose logs eaglebot` mostra na hora.
+ *
+ * Só nomes e ligado/desligado — nenhum valor de segredo é impresso.
+ */
+function logIntegracoesDesligadas(): void {
+  const off: string[] = [];
+  if (!config.geminiApiKey) off.push("GEMINI_API_KEY (tratamento por IA e assistente do editor)");
+  if (!config.internalApiSecret) off.push("INTERNAL_API_SECRET (TODA chamada interna do Next é recusada)");
+  if (!config.telegramApiId || !config.telegramApiHash) {
+    off.push("TELEGRAM_API_ID/HASH (nenhuma operação MTProto: clone, campanha, Mass DM)");
+  }
+  if (!config.vapidPublicKey || !config.vapidPrivateKey) off.push("VAPID (push de venda)");
+
+  if (off.length === 0) {
+    console.log("[config] todas as integrações opcionais estão configuradas");
+    return;
+  }
+  console.warn(
+    `[config] DESLIGADAS por env faltando (${off.length}):\n` +
+      off.map((o) => `  - ${o}`).join("\n") +
+      "\n  Em deploy com Docker essas variáveis vão no .env da RAIZ (env_file do compose), não em server/.env.",
+  );
+}
+
 const server = app.listen(config.port, () => {
   console.log(`EagleBot Engine running on port ${config.port}`);
+  logIntegracoesDesligadas();
   startWorkers();
   startMtprotoWorker();
   void startBotHealing().catch(() => console.error("[bot-healing] Startup failed; check Redis and migration 076"));

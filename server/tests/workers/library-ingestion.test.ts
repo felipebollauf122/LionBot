@@ -21,7 +21,12 @@ beforeEach(async()=>{
   insertUnit:vi.fn(async()=>{}),count:vi.fn(async()=>2),release:vi.fn(async()=>{}),
  };
  h.raw.getMessages.mockResolvedValue([msg(100)]);
- h.raw.iterMessages.mockImplementation(async function*(){yield msg(1);yield msg(2);});
+ // A leitura do limite usa iterMessages sem maxId; a do historico usa maxId.
+ h.tail=[msg(100)];
+ h.raw.iterMessages.mockImplementation(async function*(_peer:unknown,params:Record<string,unknown>){
+  if(params?.maxId===undefined&&params?.reverse===undefined){yield*h.tail;return;}
+  yield msg(1);yield msg(2);
+ });
  h.archive.mockImplementation(async(_client:unknown,_repo:unknown,_source:Source,raws:Api.Message[])=>({messages:[],cursor:Math.max(...raws.map(m=>m.id))}));
  ingest=(await import("../../src/workers/library-worker.js")).ingestLibrarySource;
 });
@@ -33,11 +38,35 @@ describe("history and live collection lanes",()=>{
   expect(h.raw.iterMessages).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({offsetId:0,maxId:101}));
   expect(h.source.cursor_message_id).toBe(100);
  });
+ it("uma origem que nao devolve mensagem falha visivelmente, sem fingir historico importado",async()=>{
+  // O defeito real: a leitura do topo voltava vazia, o limite congelava em 0,
+  // `maxId:1` barrava tudo e a origem terminava "completed" com zero itens e
+  // sem erro nenhum — indistinguivel de um canal vazio de verdade.
+  h.tail=[];
+  await ingest(library,{...h.source});
+  expect(h.source.status).toBe("failed");
+  expect(String(h.source.last_error)).toMatch(/Nenhuma mensagem legível/);
+  expect(h.source.history_until_message_id).toBeNull();
+  expect(h.repo.insertUnit).not.toHaveBeenCalled();
+ });
+ it("retoma a leitura do limite quando um defeito antigo gravou zero",async()=>{
+  Object.assign(h.source,{history_until_message_id:0,cursor_message_id:0,status:"pending"});
+  await ingest(library,{...h.source});
+  expect(h.source.history_until_message_id).toBe(100);
+  expect(h.repo.insertUnit).toHaveBeenCalled();
+ });
+ it("ignora mensagem de servico no topo e ancora no conteudo mais novo",async()=>{
+  h.tail=[new Api.MessageService({id:101,date:1,peerId:new Api.PeerChannel({channelId:11 as never}),action:new Api.MessageActionChatDeletePhoto()}) as never,msg(100)];
+  await ingest(library,{...h.source});
+  expect(h.source.history_until_message_id).toBe(100);
+ });
  it("watch-only activation starts at the current tail, not at the beginning",async()=>{
   h.source.import_history=false;
   await ingest(library,{...h.source});
   expect(h.source.watch_cursor_message_id).toBe(100);
-  expect(h.raw.iterMessages).not.toHaveBeenCalled();
+  // A leitura do topo usa iterMessages; o que watch-only NAO pode fazer e
+  // iterar o historico — a chamada com maxId.
+  expect(h.raw.iterMessages).not.toHaveBeenCalledWith(expect.anything(),expect.objectContaining({maxId:expect.anything()}));
  });
  it("live lane reads its own cursor even while historical import is behind",async()=>{
   Object.assign(h.source,{history_until_message_id:100,watch_cursor_message_id:120,cursor_message_id:4,status:"importing"});

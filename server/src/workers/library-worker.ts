@@ -53,7 +53,9 @@ export async function ingestLibrarySource(library:Library,initial:Source,watchLa
   const busyKey=initial.id+(watchLane?":watch":":history");
   if(sourceBusy.has(busyKey)||stopped||["paused","failed","completed"].includes(initial.status))return;
   if(watchLane&&(!initial.watch||initial.watch_cursor_message_id===null))return;
-  if(!watchLane&&initial.history_until_message_id!==null&&(!initial.import_history||Number(initial.cursor_message_id)>=Number(initial.history_until_message_id)))return;
+  // `Number(...)` no limite: 0 significa "nunca estabelecido" (um defeito
+  // antigo gravava 0 e a origem se aposentava sozinha com zero itens).
+  if(!watchLane&&Number(initial.history_until_message_id)>0&&(!initial.import_history||Number(initial.cursor_message_id)>=Number(initial.history_until_message_id)))return;
   sourceBusy.add(busyKey);
   let source:Source|null=null;
   try{
@@ -64,11 +66,23 @@ export async function ingestLibrarySource(library:Library,initial:Source,watchLa
     if(dialog.peer_id===destination.peer_id&&dialog.peer_type===destination.peer_type)throw new Error("Origem e destino são iguais.");
     const client=await clientFor(dialog.account_id,source.tenant_id);
     const peer=buildHistoryPeer({peerId:dialog.peer_id,peerType:dialog.peer_type as "channel"|"chat",accessHash:dialog.peer_access_hash});
-    if(!watchLane&&source.history_until_message_id===null){
-      const latest=await client.raw.getMessages(peer,{limit:1});
-      if(latest[0]?.groupedId&&latest[0].date*1000>Date.now()-2500)return;
-      const boundary=latest[0]?.id??0;
-      source=await repo.sourcePatch(source,{history_until_message_id:boundary,watch_cursor_message_id:boundary,status:source.import_history?"importing":"watching"});
+    // `iterMessages` e nao `getMessages`: e a MESMA chamada que o clonador usa
+    // pra ler historico nesta conta, e a unica com leitura comprovada. Um
+    // `getMessages(peer,{limit:1})` voltando vazio congelava o limite em 0,
+    // e dai `maxId:1` nao deixava nenhuma mensagem passar — a origem terminava
+    // "histórico importado" com zero itens e sem erro.
+    // O limite maior pula mensagens de servico (entrou no canal, trocou foto)
+    // que possam estar no topo: o que interessa e a mensagem de CONTEUDO mais
+    // nova. Boundary 0 nao existe: id de mensagem comeca em 1.
+    if(!watchLane&&!Number(source.history_until_message_id)){
+      let latest:Api.Message|null=null;
+      for await(const raw of client.raw.iterMessages(peer,{limit:50})){
+        if(raw instanceof Api.Message){latest=raw;break;}
+      }
+      if(!latest)throw new Error("Nenhuma mensagem legível nesta origem. Abra o canal ou grupo no Telegram com a conta conectada e confirme que o conteúdo aparece; depois use Retomar origem.");
+      if(latest.groupedId&&latest.date*1000>Date.now()-2500)return;
+      const boundary=latest.id;
+      source=await repo.sourcePatch(source,{history_until_message_id:boundary,watch_cursor_message_id:boundary,status:source.import_history?"importing":"watching",last_error:null});
       if(!source.import_history)return;
     }
     if(!watchLane)source=await repo.sourcePatch(source,{status:source.import_history?"importing":"watching"});

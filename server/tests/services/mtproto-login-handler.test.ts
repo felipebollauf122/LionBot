@@ -56,41 +56,55 @@ const mensagem = (text: string) => ({
   message: { chat: { id: 55 }, from: { id: 99 }, text },
 });
 
-describe("código de login digitado na mensagem", () => {
-  it("aceita o código digitado sozinho", async () => {
+describe("código escrito na conversa", () => {
+  // Evidencia da tela: o texto foi aceito, foi ao Telegram e voltou
+  // PHONE_CODE_EXPIRED no mesmo minuto, com o teclado ainda vazio. O Telegram
+  // invalida o codigo no instante em que ele aparece escrito numa conversa.
+  // Mandar assim mesmo so queima o codigo e culpa a pessoa com "expirou".
+  it("não manda ao Telegram um código que já morreu ao ser escrito", async () => {
+    await handleMtprotoLoginUpdate(bot, mensagem("22347"));
+    expect(mocks.enqueue).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "auth.sign-in" }),
+    );
+  });
+
+  it("explica por que não dá para escrever o código na conversa", async () => {
+    await handleMtprotoLoginUpdate(bot, mensagem("22347"));
+    const texto = String(mocks.sendMessage.mock.calls.at(-1)?.[0]?.text ?? "");
+    expect(texto).toMatch(/telegram/i);
+    expect(texto).toMatch(/teclado|bot(ões|oes)/i);
+  });
+
+  it("pede um código novo, já que o escrito não vale mais", async () => {
     await handleMtprotoLoginUpdate(bot, mensagem("22347"));
     expect(mocks.enqueue).toHaveBeenCalledWith({
-      kind: "auth.sign-in",
+      kind: "auth.request-code",
       accountId: "acc-1",
       phoneNumber: "+5511999999999",
-      code: "22347",
     });
   });
 
-  // O bug relatado: a mensagem oficial do Telegram traz outro número junto, a
-  // soma dos dígitos dava 6 e o código morria aqui, sem chegar ao Telegram.
-  it("aceita a mensagem do Telegram com outro número no texto", async () => {
+  it("reconhece o código dentro da mensagem oficial do Telegram colada", async () => {
     await handleMtprotoLoginUpdate(
       bot,
       mensagem("Código de login: 22347. O código expira em 2 minutos."),
     );
     expect(mocks.enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "auth.sign-in", code: "22347" }),
+      expect.objectContaining({ kind: "auth.request-code" }),
     );
   });
 
-  it("não manda nada ao Telegram quando não dá para achar o código", async () => {
+  // Texto que nao e codigo nao pode custar um ciclo de codigo novo: o
+  // request-code tem limite de flood no Telegram.
+  it("não gasta um código novo com uma mensagem que não era código", async () => {
     await handleMtprotoLoginUpdate(bot, mensagem("oi, não chegou nada aqui"));
     expect(mocks.enqueue).not.toHaveBeenCalled();
     expect(mocks.sendMessage).toHaveBeenCalled();
   });
 
-  // A resposta antiga mandava usar o teclado, contradizendo o próprio fluxo,
-  // que aceita texto. Quem digitou certo e foi recusado não tinha o que fazer.
-  it("diz que dá para digitar, em vez de mandar usar só o teclado", async () => {
+  it("manda usar o teclado quando não achou código nenhum", async () => {
     await handleMtprotoLoginUpdate(bot, mensagem("oi"));
     const texto = String(mocks.sendMessage.mock.calls.at(-1)?.[0]?.text ?? "");
-    expect(texto).toMatch(/digit/i);
-    expect(texto).not.toMatch(/^Use o teclado abaixo/);
+    expect(texto).toMatch(/teclado|bot(ões|oes)/i);
   });
 });

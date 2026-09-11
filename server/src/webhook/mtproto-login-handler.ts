@@ -42,7 +42,24 @@ const CODE_HTML = `
 
 O Telegram acabou de te enviar um código de login (na conversa oficial "Telegram", ID 777000).
 
-Digite os ${LOGIN_CODE_LENGTH} dígitos no teclado abaixo, ou mande o código aqui como mensagem — pode colar a mensagem do Telegram inteira.
+Digite os ${LOGIN_CODE_LENGTH} dígitos no teclado abaixo.
+
+⚠️ <b>Não escreva o código aqui como mensagem.</b> O Telegram cancela o código no instante em que ele aparece escrito numa conversa — é uma proteção contra golpe. No teclado de botões isso não acontece.
+`.trim();
+
+/**
+ * Resposta a um código escrito na conversa. Precisa dizer três coisas, nessa
+ * ordem: que o código morreu, que a culpa não é de quem digitou, e qual é o
+ * caminho que funciona. Sem a segunda, a pessoa tenta de novo do mesmo jeito.
+ */
+const CODE_TYPED_HTML = `
+🔒 <b>Esse código já não vale mais.</b>
+
+O Telegram cancela o código de login assim que ele é escrito numa conversa — não é erro seu nem do bot, é uma proteção contra golpe do próprio Telegram.
+
+⌨️ Use o <b>teclado de botões</b>: ali os dígitos não passam por mensagem, e o código continua valendo.
+
+⏳ Te mando um código novo agora...
 `.trim();
 
 const PASSWORD_HTML = `
@@ -372,16 +389,21 @@ export async function handleMtprotoLoginUpdate(
     return;
   }
 
-  // Estado: awaiting_code — o código digitado vale tanto quanto o do teclado.
+  // Estado: awaiting_code — o Telegram invalida o código no instante em que
+  // ele aparece escrito numa conversa (proteção antigolpe do próprio Telegram).
+  // É por isso que o teclado existe: os dígitos viajam como `callback_data` e
+  // nunca como texto de mensagem.
+  //
+  // Logo, um código escrito aqui JÁ ESTÁ MORTO quando chega. Mandá-lo ao
+  // Telegram mesmo assim só gasta a tentativa e volta PHONE_CODE_EXPIRED, que
+  // a pessoa lê como "o bot está quebrado" ou "eu digitei errado" — nenhum dos
+  // dois. Reconhecer o código serve só para explicar o que aconteceu e repor.
   if (session.state === "awaiting_code") {
-    // Quem valida o código é o Telegram; aqui só achamos o código no texto.
-    // Juntar todos os dígitos da mensagem (o que se fazia antes) recusava a
-    // mensagem oficial do Telegram, que traz outro número junto.
     const digits = extractLoginCode(text);
     if (!digits) {
       await telegram.sendMessage({
         chatId,
-        text: `⚠️ Não achei o código nessa mensagem. Digite os ${LOGIN_CODE_LENGTH} dígitos aqui, cole a mensagem que o Telegram te mandou, ou use o teclado acima.`,
+        text: `⚠️ Não achei um código nessa mensagem. Use o teclado de botões acima para digitar os ${LOGIN_CODE_LENGTH} dígitos.`,
       });
       return;
     }
@@ -392,14 +414,20 @@ export async function handleMtprotoLoginUpdate(
       });
       return;
     }
-    await upsertSession(bot, chatId, telegramUserId, { code_buffer: digits });
+    // Buffer e teclado antigos saem de cena: vem código novo, teclado novo.
+    await upsertSession(bot, chatId, telegramUserId, {
+      code_buffer: "",
+      numpad_message_id: null,
+    });
+    await telegram.sendMessage({
+      chatId,
+      text: CODE_TYPED_HTML,
+    });
     await enqueueMtproto({
-      kind: "auth.sign-in",
+      kind: "auth.request-code",
       accountId: session.account_id,
       phoneNumber: session.phone_number,
-      code: digits,
     });
-    await telegram.sendMessage({ chatId, text: "⏳ Validando código..." });
     return;
   }
 

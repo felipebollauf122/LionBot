@@ -4,6 +4,7 @@ import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 import { CloneForm } from "@/components/dashboard/clone-form";
 import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/actions";
+import { listDestinationDialogs } from "@/app/dashboard/automations/scheduled/actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
 
@@ -33,6 +34,12 @@ export default async function NewClonePage({
   // Reusa a mesma action que valida a fonte da verdade, sem duplicar a query.
   const eligible = await listEligibleDestAccounts(actingTenantId);
 
+  // Canais onde o rascunho pode publicar depois. É a MESMA lista da tela da
+  // campanha (mesma action, mesmo filtro: canal/supergrupo com uma conta do
+  // tenant como admin), e ela varre TODAS as contas — é o que mantém "clonar
+  // de uma conta pra outra" possível também no modo rascunho.
+  const destDialogs = await listDestinationDialogs(actingTenantId);
+
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
       <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
@@ -58,6 +65,7 @@ export default async function NewClonePage({
             id: a.id,
             label: a.display_name || a.phone_number,
           }))}
+          destDialogs={destDialogs}
           actingTenantId={actingTenantId}
         />
       </CardShell>

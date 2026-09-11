@@ -159,6 +159,12 @@ export async function createCloneJob(input: {
   linkReplaceChannel: string;
   /** 'draft' manda o conteúdo pro rascunho de uma campanha em vez de publicar. */
   mode: "live" | "draft";
+  /**
+   * Só no modo rascunho: canal onde a campanha vai publicar depois. Vazio =
+   * decidir na tela da campanha. Pode ser de OUTRA conta que não a da origem —
+   * é o que mantém "clonar de uma conta pra outra" no caminho do rascunho.
+   */
+  draftDestDialogId?: string;
   aiClean: boolean;
   aiRewrite: boolean;
   aiSmartDelay: boolean;
@@ -219,6 +225,41 @@ export async function createCloneJob(input: {
       }
     }
 
+    // Destino escolhido já no formulário (opcional). Mesmas regras de
+    // setCampaignDestination, e pelos mesmos motivos: a leitura passa pela
+    // RLS escopada no tenant (nada de aceitar um id cru de outro dono), e
+    // grupo legacy é recusado porque o bot não vira admin sem InputChannel.
+    // O snapshot do peer é copiado junto — o dialog pode sumir num sync
+    // futuro e o envio precisa do par (channel_id, access_hash).
+    let destinoDoRascunho: {
+      dest_dialog_id: string;
+      dest_channel_id: string;
+      dest_access_hash: string | null;
+      dest_title: string | null;
+    } | null = null;
+    const escolhido = ehRascunho ? (input.draftDestDialogId?.trim() ?? "") : "";
+    if (escolhido) {
+      const { data: destDialog } = await supabase
+        .from("mtproto_dialogs")
+        .select("id, peer_id, peer_access_hash, peer_type, title, mtproto_accounts!inner(tenant_id)")
+        .eq("id", escolhido)
+        .eq("mtproto_accounts.tenant_id", tenantId)
+        .maybeSingle();
+      if (!destDialog) return { ok: false, error: "Canal de destino não encontrado." };
+      if (destDialog.peer_type !== "channel") {
+        return {
+          ok: false,
+          error: "Só canal ou supergrupo pode ser destino — grupo comum não aceita bot como admin.",
+        };
+      }
+      destinoDoRascunho = {
+        dest_dialog_id: destDialog.id as string,
+        dest_channel_id: destDialog.peer_id as string,
+        dest_access_hash: destDialog.peer_access_hash as string | null,
+        dest_title: destDialog.title as string | null,
+      };
+    }
+
     let draftCampaignId: string | null = null;
     if (ehRascunho) {
       const { data: campaign, error: campErr } = await supabase
@@ -230,6 +271,7 @@ export async function createCloneJob(input: {
           ai_clean: input.aiClean,
           ai_rewrite: input.aiRewrite,
           ai_smart_delay: input.aiSmartDelay,
+          ...(destinoDoRascunho ?? {}),
         })
         .select("id")
         .single();

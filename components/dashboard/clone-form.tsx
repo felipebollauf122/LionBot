@@ -37,6 +37,7 @@ export function CloneForm({
   sourceTitle,
   sourceAccountId,
   destAccounts,
+  destDialogs,
   actingTenantId,
 }: {
   dialogId: string;
@@ -45,6 +46,8 @@ export function CloneForm({
   sourceAccountId: string;
   /** Contas ativas e não-restritas que podem criar o destino. */
   destAccounts: Array<{ id: string; label: string }>;
+  /** Canais elegíveis pra campanha do rascunho publicar — de todas as contas. */
+  destDialogs: Array<{ id: string; label: string; accountId: string }>;
   actingTenantId?: string;
 }) {
   const router = useRouter();
@@ -71,6 +74,8 @@ export function CloneForm({
     linkReplaceChannel: "",
   });
   const [mode, setMode] = useState<"live" | "draft">("live");
+  // Vazio = "escolher depois". Só o modo rascunho usa.
+  const [draftDestDialogId, setDraftDestDialogId] = useState("");
   const [ia, setIa] = useState({ clean: true, rewrite: false, smartDelay: true });
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -178,22 +183,42 @@ export function CloneForm({
         </span>
       </label>
 
-      {/* No rascunho não existe "conta que cria o destino": nada é criado no
-          Telegram agora. Mas simplesmente SUMIR com este campo fazia parecer
-          que clonar pra outra conta tinha deixado de existir — ele era
-          incondicional antes do modo rascunho chegar. A escolha não acabou,
-          só mudou de tela: a campanha pergunta o canal de destino lá, e a
-          lista de lá (listDestinationDialogs) varre TODAS as contas do
-          tenant, então continua dando pra clonar de uma conta pra outra. */}
+      {/* No rascunho não existe "conta que CRIA o destino" — nada é criado no
+          Telegram agora —, mas existe sim um canal pra onde aquilo vai. Antes
+          do modo rascunho chegar (6600d68) este campo era incondicional, e
+          escondê-lo fez parecer que clonar pra outra conta tinha acabado.
+          Aqui ele volta na forma certa pro rascunho: escolher o CANAL de
+          destino, de qualquer conta do tenant. Continua opcional — dá pra
+          decidir depois, na tela da campanha, que usa esta mesma lista. */}
       {mode === "draft" && (
-        <div className="block">
-          <span className="input-label">Destino do rascunho</span>
-          <p className="text-(--text-muted) text-xs mt-2">
-            Você escolhe o canal — de qualquer uma das suas contas — na tela da
-            campanha, depois de revisar o conteúdo. Nada é criado no Telegram
-            até você publicar.
-          </p>
-        </div>
+        <label className="block">
+          <span className="input-label">Publicar depois no canal</span>
+          {destDialogs.length > 0 ? (
+            <select
+              value={draftDestDialogId}
+              onChange={(e) => setDraftDestDialogId(e.target.value)}
+              className="input"
+            >
+              <option value="">Escolher depois, na tela da campanha</option>
+              {destDialogs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                  {d.accountId === sourceAccountId ? " (mesma conta da origem)" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-(--text-muted) text-xs">
+              Nenhum canal elegível ainda. O destino precisa ser canal ou supergrupo com
+              uma das suas contas como administradora — dá pra escolher depois, na tela da
+              campanha.
+            </p>
+          )}
+          <span className="block text-(--text-muted) text-xs mt-2">
+            A lista cobre TODAS as suas contas, então o clone pode sair de uma conta e
+            cair no canal de outra. Nada vai pro Telegram até você publicar a campanha.
+          </span>
+        </label>
       )}
 
       {mode === "live" && (
@@ -294,6 +319,9 @@ export function CloneForm({
               messageLimit: limit ? Number(limit) : null,
               throttleMs: Math.max(500, Number(throttle) || 3000),
               destAccountId,
+              // Só faz sentido no rascunho; no live o destino é o canal que o
+              // próprio job cria, e mandar isso junto seria ruído.
+              draftDestDialogId: mode === "draft" ? draftDestDialogId : "",
               ...flags,
               ...replacements,
               mode,

@@ -42,6 +42,10 @@ export function MtprotoAccounts({
   /** Recusa de "marcar como liberada", por conta. O `error` acima pertence ao
    *  painel de adicionar conta e não é renderizado na lista. */
   const [erroRestricao, setErroRestricao] = useState<Record<string, string>>({});
+  /** Resultado de sincronizar/remover, por conta: recusa do worker ou confirmação. */
+  const [avisoConta, setAvisoConta] = useState<
+    Record<string, { tipo: "ok" | "erro"; texto: string }>
+  >({});
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -76,12 +80,12 @@ export function MtprotoAccounts({
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      try {
-        const { accountId } = await startAddAccount(phone, name, actingTenantId);
-        setPendingAccountId(accountId);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "erro");
-      }
+      // Recusa vem como DADO (env faltando, worker fora do ar, plano sem
+      // automações). Em produção o Next apaga a mensagem de um erro lançado
+      // de dentro da Server Action, e a tela mostrava um texto em inglês.
+      const r = await startAddAccount(phone, name, actingTenantId);
+      if (r.ok) setPendingAccountId(r.accountId);
+      else setError(r.error);
     });
   }
 
@@ -89,11 +93,8 @@ export function MtprotoAccounts({
     e.preventDefault();
     if (!pendingAccountId) return;
     startTransition(async () => {
-      try {
-        await submitAuthCode(pendingAccountId, code);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "erro");
-      }
+      const r = await submitAuthCode(pendingAccountId, code);
+      if (!r.ok) setError(r.error);
     });
   }
 
@@ -101,11 +102,8 @@ export function MtprotoAccounts({
     e.preventDefault();
     if (!pendingAccountId) return;
     startTransition(async () => {
-      try {
-        await submitAuthPassword(pendingAccountId, password);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "erro");
-      }
+      const r = await submitAuthPassword(pendingAccountId, password);
+      if (!r.ok) setError(r.error);
     });
   }
 
@@ -159,6 +157,14 @@ export function MtprotoAccounts({
             {erroRestricao[a.id] && (
               <div className="text-(--red) text-xs mt-1">{erroRestricao[a.id]}</div>
             )}
+            {avisoConta[a.id] && (
+              <div
+                role={avisoConta[a.id].tipo === "erro" ? "alert" : "status"}
+                className={`text-xs mt-1 break-words ${avisoConta[a.id].tipo === "erro" ? "text-(--red)" : "text-(--text-secondary)"}`}
+              >
+                {avisoConta[a.id].texto}
+              </div>
+            )}
             {a.last_error && (
               <div className="text-(--red) text-xs">{a.last_error}</div>
             )}
@@ -175,12 +181,13 @@ export function MtprotoAccounts({
                 <button
                   onClick={() =>
                     startTransition(async () => {
-                      try {
-                        await syncAccountDialogs(a.id);
-                        alert("Sincronização iniciada. Em alguns segundos seus contatos/grupos vão aparecer no formulário de campanha.");
-                      } catch (err) {
-                        alert(err instanceof Error ? err.message : "erro");
-                      }
+                      const r = await syncAccountDialogs(a.id);
+                      setAvisoConta((m) => ({
+                        ...m,
+                        [a.id]: r.ok
+                          ? { tipo: "ok", texto: "Sincronização iniciada. Em alguns segundos seus contatos, grupos e canais aparecem aqui." }
+                          : { tipo: "erro", texto: r.error },
+                      }));
                     })
                   }
                   className="btn-ghost text-xs px-3 py-1.5"
@@ -198,9 +205,11 @@ export function MtprotoAccounts({
             </AutomationLink>
             <button
               onClick={() =>
-                startTransition(() =>
-                  removeAccount(a.id).then(() => window.location.reload()),
-                )
+                startTransition(async () => {
+                  const r = await removeAccount(a.id);
+                  if (r.ok) window.location.reload();
+                  else setAvisoConta((m) => ({ ...m, [a.id]: { tipo: "erro", texto: r.error } }));
+                })
               }
               className="btn-ghost text-xs px-3 py-1.5"
             >

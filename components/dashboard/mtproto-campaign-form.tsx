@@ -170,7 +170,15 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           setError(res.error);
           return;
         }
-        if (launch) await launchCampaign(res.campaignId);
+        if (launch) {
+          // Se a fila interna recusar, a campanha fica em rascunho: avisar
+          // aqui é a única chance — a navegação abaixo esconderia a falha.
+          const disparo = await launchCampaign(res.campaignId);
+          if (!disparo.ok) {
+            setError(disparo.error);
+            return;
+          }
+        }
         router.push(automationHref(`/dashboard/automations/campaigns/${res.campaignId}`, actingTenantId));
       } catch (err) {
         setError(err instanceof Error ? err.message : "erro");

@@ -67,6 +67,8 @@ export function MtprotoCampaignDetail({
   const [campaign, setCampaign] = useState(initialCampaign);
   const [targets, setTargets] = useState<Target[]>([]);
   const [deleting, setDeleting] = useState(false);
+  /** Recusa de disparar/retomar (fila interna fora do ar, env faltando). */
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -103,15 +105,26 @@ export function MtprotoCampaignDetail({
 
   const badge = campaignBadge(campaign.status);
 
+
   return (
     <div className="space-y-6">
+      {erroAcao && (
+        <p role="alert" className="text-(--red) text-xs break-words">{erroAcao}</p>
+      )}
       {/* Status + ações */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <span className={`badge ${badge.cls}`}>{badge.label}</span>
         <div className="flex items-center gap-2">
           {(campaign.status === "draft" || campaign.status === "paused") && (
             <button
-              onClick={() => startTransition(() => launchCampaign(campaignId))}
+              onClick={() =>
+                startTransition(async () => {
+                  // Recusa da fila interna vem como dado: sem isto, o clique
+                  // não fazia nada visível e a campanha seguia em rascunho.
+                  const r = await launchCampaign(campaignId);
+                  setErroAcao(r.ok ? null : r.error);
+                })
+              }
               className="btn-primary text-xs px-4 py-2"
             >
               {campaign.status === "paused" ? "Retomar" : "Disparar"}

@@ -129,7 +129,19 @@ export async function ingestLibrarySource(library:Library,initial:Source,watchLa
   }
 }
 
-async function processItems(library:Library):Promise<void>{
+/**
+ * Sobrecarga do Gemini e cota estourada sao temporarias por definicao. Depois
+ * de uma delas, insistir a cada 5s so gasta cota e enche o item de erro: esta
+ * janela deixa o acervo esperar a fila do modelo baixar. Em memoria de
+ * proposito — e um amortecedor de processo, nao estado do acervo.
+ */
+const aiCooldown=new Map<string,number>();
+const AI_COOLDOWN_MS=60_000;
+/** Erro que o chamador nao deve tratar como definitivo (ver GeminiError). */
+const isTransient=(error:unknown):boolean=>(error as {transient?:boolean})?.transient===true;
+
+export async function processItems(library:Library):Promise<void>{
+  if((aiCooldown.get(library.id)??0)>Date.now())return;
   const rules=parseRules(library.rules);
   const ai=new GeminiClient(config.geminiApiKey,config.geminiModel);
   const pending=await repo.pending(library);
@@ -147,7 +159,16 @@ async function processItems(library:Library):Promise<void>{
     try{
       const transformed=await treat(members.map(m=>m.original),members.map(m=>m.id),rules,ai);
       if(await repo.finish(claimed,transformed,library.rules))for(const member of members.slice(1))await repo.skipMember(member,leader.id);
-    }catch(error){await repo.processingFailed(claimed,errorText(error));}
+    }catch(error){
+      if(isTransient(error)){
+        // Volta pra fila com o motivo a vista. O original fica intacto e o
+        // tratamento e refeito quando o modelo voltar — nada se perde.
+        aiCooldown.set(library.id,Date.now()+AI_COOLDOWN_MS);
+        await repo.processingDeferred(claimed,errorText(error));
+      }else{
+        await repo.processingFailed(claimed,errorText(error));
+      }
+    }
   }
 }
 function floodSeconds(error:unknown):number|null{

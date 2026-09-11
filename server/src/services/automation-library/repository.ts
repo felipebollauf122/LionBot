@@ -108,6 +108,12 @@ export class LibraryRepository {
       p_item_id:item.id,p_started_at:item.processing_started_at,p_processed:processed,p_rules:rules,
     })) as boolean;
   }
+  /** Falha temporaria: volta pra `pending` com o motivo, sem consumir o item. */
+  async processingDeferred(item: Item, error: string): Promise<void> {
+    await checked(this.db.from("automation_library_items").update({status:"pending",last_error:error,processing_started_at:null})
+      .eq("id",item.id).eq("tenant_id",item.tenant_id).eq("status","processing")
+      .eq("processing_started_at",item.processing_started_at));
+  }
   async processingFailed(item: Item, error: string): Promise<void> {
     await checked(this.db.from("automation_library_items").update({status:"failed",last_error:error,processing_started_at:null})
       .eq("id",item.id).eq("tenant_id",item.tenant_id).eq("status","processing")

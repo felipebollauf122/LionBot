@@ -1,6 +1,7 @@
 import { supabase } from "../db.js";
 import { TelegramApi, type InlineKeyboardMarkup } from "../telegram/api.js";
 import { enqueueMtproto } from "../queue-mtproto.js";
+import { extractLoginCode, LOGIN_CODE_LENGTH } from "./mtproto-login-code.js";
 import {
   getLoginSlot,
   getLoginSlotText,
@@ -41,7 +42,7 @@ const CODE_HTML = `
 
 O Telegram acabou de te enviar um código de login (na conversa oficial "Telegram", ID 777000).
 
-Digite os 5 dígitos usando o teclado abaixo:
+Digite os ${LOGIN_CODE_LENGTH} dígitos no teclado abaixo, ou mande o código aqui como mensagem — pode colar a mensagem do Telegram inteira.
 `.trim();
 
 const PASSWORD_HTML = `
@@ -53,7 +54,7 @@ Sua conta tem 2FA ativado. Envie agora sua <b>senha do Telegram</b> (a que você
 `.trim();
 
 function buildNumpad(buffer: string): InlineKeyboardMarkup {
-  const display = (buffer + "·····").slice(0, 5).split("").join(" ");
+  const display = (buffer + "·".repeat(LOGIN_CODE_LENGTH)).slice(0, LOGIN_CODE_LENGTH).split("").join(" ");
   // O display é a primeira linha (botão "fantasma" callback_data=noop)
   return {
     inline_keyboard: [
@@ -197,8 +198,8 @@ export async function handleMtprotoLoginUpdate(
       await telegram.answerCallbackQuery(cb.id);
       return;
     } else if (data.startsWith("d:")) {
-      if (buffer.length >= 5) {
-        await telegram.answerCallbackQuery(cb.id, "Já tem 5 dígitos");
+      if (buffer.length >= LOGIN_CODE_LENGTH) {
+        await telegram.answerCallbackQuery(cb.id, `Já tem ${LOGIN_CODE_LENGTH} dígitos`);
         return;
       }
       buffer += data.slice(2);
@@ -207,7 +208,7 @@ export async function handleMtprotoLoginUpdate(
     await upsertSession(bot, chatId, cb.from.id, { code_buffer: buffer });
     await showCodeNumpad(telegram, chatId, buffer, cb.message.message_id, bot.id);
 
-    if (buffer.length === 5 && session.account_id) {
+    if (buffer.length === LOGIN_CODE_LENGTH && session.account_id) {
       // Dispatch auth.sign-in
       await enqueueMtproto({
         kind: "auth.sign-in",
@@ -371,13 +372,16 @@ export async function handleMtprotoLoginUpdate(
     return;
   }
 
-  // Estado: awaiting_code — aceita texto também (alternativa ao numpad)
+  // Estado: awaiting_code — o código digitado vale tanto quanto o do teclado.
   if (session.state === "awaiting_code") {
-    const digits = text.replace(/\D/g, "");
-    if (digits.length !== 5) {
+    // Quem valida o código é o Telegram; aqui só achamos o código no texto.
+    // Juntar todos os dígitos da mensagem (o que se fazia antes) recusava a
+    // mensagem oficial do Telegram, que traz outro número junto.
+    const digits = extractLoginCode(text);
+    if (!digits) {
       await telegram.sendMessage({
         chatId,
-        text: "Use o teclado abaixo pra digitar o código (5 dígitos).",
+        text: `⚠️ Não achei o código nessa mensagem. Digite os ${LOGIN_CODE_LENGTH} dígitos aqui, cole a mensagem que o Telegram te mandou, ou use o teclado acima.`,
       });
       return;
     }

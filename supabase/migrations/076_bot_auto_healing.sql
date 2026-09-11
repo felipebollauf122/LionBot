@@ -1,5 +1,9 @@
+-- Reexecutavel: `create ... if not exists` / `create or replace` em tudo.
+-- A versao original abortava no primeiro `create table` quando ja aplicada,
+-- sem deixar aplicar o resto — e nao havia como saber onde a execucao
+-- anterior tinha parado. Rodar de novo agora converge para o estado correto.
 -- Recovery state is service-only: includes staged tokens and BotFather checkpoints.
-create table public.bot_recovery_settings (
+create table if not exists public.bot_recovery_settings (
   bot_id uuid primary key references public.bots(id) on delete cascade,
   enabled boolean not null default true,
   account_ids uuid[] not null default '{}',
@@ -7,7 +11,7 @@ create table public.bot_recovery_settings (
   identity_token_hash text,
   backed_up_at timestamptz
 );
-create table public.bot_recovery_runs (
+create table if not exists public.bot_recovery_runs (
   id uuid primary key default gen_random_uuid(),
   bot_id uuid not null references public.bots(id) on delete cascade,
   tenant_id uuid not null references public.tenants(id) on delete cascade,
@@ -25,7 +29,7 @@ create table public.bot_recovery_runs (
   updated_at timestamptz not null default now(),
   unique (bot_id, token_hash)
 );
-create index bot_recovery_pending on public.bot_recovery_runs(status, retry_at);
+create index if not exists bot_recovery_pending on public.bot_recovery_runs(status, retry_at);
 alter table public.bot_recovery_settings enable row level security;
 alter table public.bot_recovery_runs enable row level security;
 revoke all on public.bot_recovery_settings, public.bot_recovery_runs from anon, authenticated;
@@ -37,7 +41,7 @@ on conflict (id) do nothing;
 
 -- Compare-and-swap in one transaction. History/flows/products keep the same bot_id.
 -- A manual token update, deactivation or ownership transfer cancels the commit.
-create function public.commit_bot_recovery(p_run_id uuid, p_webhook_url text)
+create or replace function public.commit_bot_recovery(p_run_id uuid, p_webhook_url text)
 returns boolean language plpgsql security definer set search_path = public, extensions as $$
 declare r public.bot_recovery_runs; n integer;
 begin

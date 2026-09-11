@@ -5,6 +5,15 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isAdmin } from "@/lib/actions/admin-actions";
 import { nanoid } from "nanoid";
 
+// Esta action roda DEPOIS do insert do bot, com o spinner do formulario na
+// tela. Sem prazo, uma chamada pendurada ao Telegram travava "criar bot" sem
+// fim — e a pessoa reenviava, achando que tinha morrido, criando outro bot.
+// Nada aqui e essencial (nome e foto sao cosmeticos): melhor desistir a tempo.
+// Função, não constante: `AbortSignal.timeout` começa a contar quando é
+// criado, então uma constante de módulo seria um único sinal, compartilhado por
+// todas as chamadas e já vencido muito antes da primeira.
+const prazo = (ms = 15_000) => ({ signal: AbortSignal.timeout(ms) });
+
 function storage() {
   return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
@@ -45,7 +54,7 @@ export async function syncBotFromTelegram(botId: string): Promise<{ ok: boolean;
   let name: string | undefined;
   let botUserId: number | undefined;
   try {
-    const me = await (await fetch(`${tg}/getMe`)).json();
+    const me = await (await fetch(`${tg}/getMe`, prazo())).json();
     if (me?.ok && me.result?.first_name) name = String(me.result.first_name).trim();
     botUserId = me?.result?.id as number | undefined;
   } catch {
@@ -56,14 +65,14 @@ export async function syncBotFromTelegram(botId: string): Promise<{ ok: boolean;
   let avatarUrl: string | undefined;
   try {
     if (botUserId) {
-      const photos = await (await fetch(`${tg}/getUserProfilePhotos?user_id=${botUserId}&limit=1`)).json();
+      const photos = await (await fetch(`${tg}/getUserProfilePhotos?user_id=${botUserId}&limit=1`, prazo())).json();
       const sizes = photos?.result?.photos?.[0];
       const fileId = sizes?.[sizes.length - 1]?.file_id; // maior resolução
       if (fileId) {
-        const file = await (await fetch(`${tg}/getFile?file_id=${fileId}`)).json();
+        const file = await (await fetch(`${tg}/getFile?file_id=${fileId}`, prazo())).json();
         const filePath = file?.result?.file_path;
         if (filePath) {
-          const img = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+          const img = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`, prazo(30_000));
           if (img.ok) {
             const buf = Buffer.from(await img.arrayBuffer());
             await ensureBucket();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { seedLoginBotFlow } from "@/lib/actions/flow-actions";
@@ -18,12 +18,21 @@ export function CreateBotForm({ canCreateLoginBot = false }: { canCreateLoginBot
   const [isLoginBot, setIsLoginBot] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [etapa, setEtapa] = useState<"validando" | "criando" | "ajustando">("validando");
   const router = useRouter();
   const supabase = createClient();
 
+  // Trava SÍNCRONA. `loading` é estado do React e só desabilita o botão no
+  // próximo render — clique duplo e Enter no input passam antes disso, e cada
+  // passagem inseria uma linha nova. Era a origem dos bots repetidos.
+  const enviando = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (enviando.current) return;
+    enviando.current = true;
     setError(null);
+    setEtapa("validando");
     setLoading(true);
 
     try {
@@ -33,9 +42,11 @@ export function CreateBotForm({ canCreateLoginBot = false }: { canCreateLoginBot
         );
       }
 
-      const response = await fetch(
-        `https://api.telegram.org/bot${token}/getMe`
-      );
+      // Sem timeout, uma chamada pendurada deixava o formulário travado em
+      // "Validando token..." sem fim, e a pessoa reenviava achando que morreu.
+      const response = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
+        signal: AbortSignal.timeout(15_000),
+      });
       const data = await response.json();
 
       if (!data.ok) {
@@ -54,47 +65,78 @@ export function CreateBotForm({ canCreateLoginBot = false }: { canCreateLoginBot
         throw new Error("Nao autenticado.");
       }
 
-      const { data: insertedBot, error: insertError } = await supabase
-        .from("bots")
-        .insert({
-          tenant_id: user.id,
-          telegram_token: token,
-          bot_username: botUsername,
-          is_active: isLoginBot ? true : false,
-          is_mtproto_login_bot: isLoginBot,
-        })
-        .select("id")
-        .single();
+      setEtapa("criando");
 
-      if (insertError) throw insertError;
+      // Reaproveita em vez de duplicar — mesmo padrão de `startAddAccount`
+      // com as contas MTProto. Quem reenvia o mesmo token quer o mesmo bot, e
+      // um bot só pode ter um webhook: a segunda linha nasceria inerte.
+      //
+      // `order` + `limit(1)` em vez de `maybeSingle()` puro porque numa base
+      // que JÁ tem duplicatas o maybeSingle falha com "mais de uma linha" — e
+      // o caminho de erro criaria mais uma.
+      const { data: existente } = await supabase
+        .from("bots")
+        .select("id")
+        .eq("tenant_id", user.id)
+        .eq("telegram_token", token)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      let botId: string | undefined = existente?.id;
+
+      if (!botId) {
+        const { data: insertedBot, error: insertError } = await supabase
+          .from("bots")
+          .insert({
+            tenant_id: user.id,
+            telegram_token: token,
+            bot_username: botUsername,
+            is_active: isLoginBot ? true : false,
+            is_mtproto_login_bot: isLoginBot,
+          })
+          .select("id")
+          .single();
+
+        if (insertError) throw insertError;
+        botId = insertedBot?.id;
+      }
+
+      // Daqui pra baixo o bot JÁ EXISTE. Nada aqui pode voltar atrás, então
+      // nada aqui pode derrubar o envio nem reabrir o botão.
+      setEtapa("ajustando");
 
       // Puxa nome + foto de perfil do Telegram → redirect_display_name + avatar_url
       // (pra a página /t mostrar a cara e o nome reais do bot). Best-effort.
-      if (insertedBot?.id) {
-        await syncBotFromTelegram(insertedBot.id).catch(() => {});
+      if (botId) {
+        await syncBotFromTelegram(botId).catch(() => {});
       }
 
       // Bot de login: ativa direto, semeia o flow editável dos templates e
       // registra webhook automaticamente.
-      if (isLoginBot && insertedBot?.id) {
-        await seedLoginBotFlow(insertedBot.id).catch((err) =>
+      if (isLoginBot && botId) {
+        await seedLoginBotFlow(botId).catch((err) =>
           console.error("seedLoginBotFlow failed:", err),
         );
         const serverUrl = (
           process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001"
         ).replace(/\/+$/, "");
-        await fetch(`${serverUrl}/api/bots/${insertedBot.id}/register-webhook`, {
+        await fetch(`${serverUrl}/api/bots/${botId}/register-webhook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(15_000),
         }).catch(() => {});
       }
 
       router.push("/dashboard");
       router.refresh();
+      // Sem liberar a trava: a navegação está em curso e a tela ainda é esta.
+      // Liberar aqui reabilitava o botão sobre o formulário antigo, e o clique
+      // seguinte criava o bot de novo.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar bot.");
-    } finally {
       setLoading(false);
+      enviando.current = false;
     }
   };
 
@@ -180,7 +222,11 @@ export function CreateBotForm({ canCreateLoginBot = false }: { canCreateLoginBot
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Validando token...
+              {etapa === "validando"
+                ? "Validando token..."
+                : etapa === "criando"
+                  ? "Criando o bot..."
+                  : "Ajustando nome e foto..."}
             </span>
           ) : "Criar Bot"}
         </button>

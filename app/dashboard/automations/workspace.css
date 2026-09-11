@@ -1,7 +1,7 @@
 .automation-workspace {
-  --text-secondary: color-mix(in srgb, var(--text-primary) 74%, var(--bg-surface));
-  --text-muted: color-mix(in srgb, var(--text-primary) 65%, var(--bg-surface));
-  --text-ghost: color-mix(in srgb, var(--text-primary) 60%, var(--bg-surface));
+  --text-secondary: color-mix(in srgb, var(--text-primary) 85%, var(--bg-surface));
+  --text-muted: color-mix(in srgb, var(--text-primary) 75%, var(--bg-surface));
+  --text-ghost: color-mix(in srgb, var(--text-primary) 70%, var(--bg-surface));
   --bg-body: var(--bg-surface);
   min-width: 0;
 }

@@ -180,7 +180,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
               />
               {isActive ? "Ativo" : "Inativo"}
             </FilterChip>
-            <span className="text-(--text-ghost) text-[10px] uppercase tracking-wider px-1 hidden sm:inline">
+            <span className="text-(--text-ghost) text-xs uppercase tracking-wider px-1 hidden sm:inline">
               intervalo
             </span>
             {INTERVAL_OPTIONS.map((opt) => (
@@ -212,7 +212,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
 
       <div className="flex-1 p-4 sm:p-6 pb-20 md:pb-6">
         {saving && (
-          <p className="text-(--text-ghost) text-[10px] uppercase tracking-wider mb-3">Salvando intervalo…</p>
+          <p className="text-(--text-ghost) text-xs uppercase tracking-wider mb-3">Salvando intervalo…</p>
         )}
 
         {flows.length === 0 ? (
@@ -231,7 +231,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
             {/* Timeline start cap */}
             <div className="flex items-center gap-3 pl-4 sm:pl-[18px]">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "var(--cyan)", boxShadow: "0 0 10px var(--cyan)" }} />
-              <span className="text-(--text-ghost) text-[10px] uppercase tracking-[0.14em]">Início da sequência</span>
+              <span className="text-(--text-ghost) text-xs uppercase tracking-[0.14em]">Início da sequência</span>
             </div>
 
             <ol className="relative">
@@ -292,18 +292,18 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <h3 className="text-foreground font-medium text-sm tracking-tight truncate">{flow.name}</h3>
-                            <span className={`toggle-btn ${flow.is_active ? "on" : "off"} text-[10px]! py-0.5! px-2! pointer-events-none`}>
+                            <span className={`toggle-btn ${flow.is_active ? "on" : "off"} text-xs! py-0.5! px-2! pointer-events-none`}>
                               {flow.is_active ? "Ativo" : "Inativo"}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span className="badge badge-purple">{AUDIENCE_LABELS[flow.audience]}</span>
-                            <span className="text-(--text-ghost) text-[11px]">·</span>
-                            <span className="text-(--text-muted) text-[11px]"><span className="stat-value">{flow.flow_data.nodes.length}</span> nós</span>
+                            <span className="text-(--text-ghost) text-sm">·</span>
+                            <span className="text-(--text-muted) text-sm"><span className="stat-value">{flow.flow_data.nodes.length}</span> nós</span>
                             {flow.delete_after_minutes != null && (
                               <>
-                                <span className="text-(--text-ghost) text-[11px]">·</span>
-                                <span className="text-(--text-muted) text-[11px]">deleta em <span className="stat-value">{flow.delete_after_minutes}</span>min</span>
+                                <span className="text-(--text-ghost) text-sm">·</span>
+                                <span className="text-(--text-muted) text-sm">deleta em <span className="stat-value">{flow.delete_after_minutes}</span>min</span>
                               </>
                             )}
                           </div>
@@ -320,7 +320,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
                   {index < flows.length - 1 && (
                     <div className="relative flex items-center gap-2 pl-[54px] -my-1 z-10">
                       <span className="w-1.5 h-1.5 rounded-full -ml-[36px]" style={{ background: "color-mix(in srgb, var(--amber) 40%, transparent)" }} />
-                      <span className="text-(--text-ghost) text-[10px] flex items-center gap-1">
+                      <span className="text-(--text-ghost) text-xs flex items-center gap-1">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                         espera <span className="stat-value">{interval}</span> min
                       </span>
@@ -333,7 +333,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
             {/* Timeline end cap */}
             <div className="flex items-center gap-3 pl-4 sm:pl-[18px] pt-1">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "var(--accent)", boxShadow: "0 0 10px var(--accent-glow)" }} />
-              <span className="text-(--text-ghost) text-[10px] uppercase tracking-[0.14em]">Fim da sequência</span>
+              <span className="text-(--text-ghost) text-xs uppercase tracking-[0.14em]">Fim da sequência</span>
             </div>
           </div>
         )}
@@ -432,14 +432,14 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
             <div className="divider my-2" />
 
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Conteúdo</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">Conteúdo</span>
               <span className="text-sm text-foreground"><span className="stat-value">{selected.flow_data.nodes.length}</span> nós</span>
             </div>
 
             <div className="divider my-2" />
 
             <div>
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Melhores combinações</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">Melhores combinações</span>
 
               <div className="mt-2 space-y-1.5">
                 {variantStatsLoading ? (
@@ -456,7 +456,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
                       >
                         <div className="flex items-center gap-2">
                           <span
-                            className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold stat-value"
+                            className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-xs font-bold stat-value"
                             style={{ background: "color-mix(in srgb, var(--amber) 16%, transparent)", color: "var(--amber)" }}
                           >
                             {i + 1}
@@ -466,7 +466,7 @@ export function RemarketingDashboard({ botId, config, flows: initialFlows, baseP
                             {(stat.revenueCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mt-1 pl-7 text-[10px] text-(--text-muted)">
+                        <div className="flex items-center gap-2 mt-1 pl-7 text-xs text-(--text-muted)">
                           <span><span className="stat-value">{stat.sends}</span> envios</span>
                           <span className="text-(--text-ghost)">·</span>
                           <span><span className="stat-value">{stat.conversions}</span> conversões</span>

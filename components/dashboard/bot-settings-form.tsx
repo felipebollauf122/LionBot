@@ -418,7 +418,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       >
                         {s.label}
                       </span>
-                      <span className="block text-[10px] text-(--text-ghost) truncate">{s.desc}</span>
+                      <span className="block text-xs text-(--text-ghost) truncate">{s.desc}</span>
                     </span>
                     <span
                       className={`shrink-0 transition-all duration-200 ${isActiveItem ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-1"}`}
@@ -526,7 +526,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                       </button>
                     )}
                   </div>
-                  {syncMsg && <span className="text-[11px] text-(--text-secondary) mt-1">{syncMsg}</span>}
+                  {syncMsg && <span className="text-sm text-(--text-secondary) mt-1">{syncMsg}</span>}
                 </div>
               </div>
 
@@ -581,7 +581,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                     <div>
                       <div className="text-foreground text-sm font-medium flex items-center gap-2">
                         🔥 Pixel reserva
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${backupEnabled ? "bg-(--cyan)/15 text-(--cyan)" : "bg-white/5 text-(--text-ghost)"}`}>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${backupEnabled ? "bg-(--cyan)/15 text-(--cyan)" : "bg-white/5 text-(--text-ghost)"}`}>
                           {backupEnabled ? "ativo" : "desligado"}
                         </span>
                       </div>
@@ -698,7 +698,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                     {sendingTiktokTest ? "Enviando..." : "Enviar evento de teste"}
                   </button>
                   {!bot.tiktok_test_event_code && (
-                    <p className="text-(--text-ghost) text-[10px] mt-2">
+                    <p className="text-(--text-ghost) text-xs mt-2">
                       Cole o Test Event Code acima e clique em <b>Salvar Configurações</b> antes de testar.
                     </p>
                   )}
@@ -755,12 +755,12 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-white text-sm font-medium">{g.label}</span>
                             {isDefault && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider text-(--accent) bg-(--accent)/12">
+                              <span className="px-1.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wider text-(--accent) bg-(--accent)/12">
                                 padrão
                               </span>
                             )}
                           </div>
-                          <div className="text-white/40 text-[11px] mt-0.5">
+                          <div className="text-white/40 text-sm mt-0.5">
                             {g.method === "crypto" ? "Criptomoeda" : "PIX"}
                           </div>
                         </div>
@@ -1164,7 +1164,7 @@ export function BotSettingsForm({ bot, isAdmin = false, trafficRules = [], child
                     </p>
                   )}
 
-                  <p className="text-(--text-ghost) text-[10px] mb-3 leading-relaxed">
+                  <p className="text-(--text-ghost) text-xs mb-3 leading-relaxed">
                     ⚠️ <b>Importante</b>: o Telegram só permite envio (incl. remarketing) pra users que JÁ deram /start no novo bot.
                     Leads antigos vão precisar dar /start no bot novo pelo menos uma vez pra voltar a receber mensagens automáticas.
                   </p>

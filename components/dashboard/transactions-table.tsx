@@ -170,7 +170,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-foreground font-medium truncate">{productName}</span>
             {tx.__orphan && (
-              <span className="badge badge-error text-[9px]! py-0.5! px-1.5! shrink-0">órfã</span>
+              <span className="badge badge-error text-xs! py-0.5! px-1.5! shrink-0">órfã</span>
             )}
           </div>
         );
@@ -292,7 +292,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
             <DetailRow label="Produto" value={selected.products?.ghost_name || selected.products?.name || "—"} />
             <DetailRow label="Valor" value={fmtMoney(selected.amount, selected.currency)} />
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Status</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">Status</span>
               <span className={`badge ${statusBadge[selected.status] ?? "badge-inactive"}`}>
                 {statusLabels[selected.status] ?? selected.status}
               </span>
@@ -312,7 +312,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
             />
 
             <div className="divider my-2" />
-            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Comprovação</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Comprovação</p>
             <a
               href={`/dashboard/sales/${selected.id}/proof`}
               target="_blank"
@@ -325,7 +325,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
             {selected.__orphan && (
               <>
                 <div className="divider my-2" />
-                <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Pagou e não recebeu</p>
+                <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Pagou e não recebeu</p>
                 <p className="text-(--text-secondary) text-xs leading-relaxed">
                   Este comprador pagou mas a entrega nunca foi confirmada. Reenvie o acesso para reexecutar o fluxo de
                   produto/mensagens. Tracking não é duplicado.
@@ -354,7 +354,7 @@ export function TransactionsTable({ botId, initialTransactions, total, currentPa
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className="text-sm uppercase tracking-wider text-(--text-muted)">{label}</span>
       <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );

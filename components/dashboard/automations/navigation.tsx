@@ -11,17 +11,17 @@ export function AutomationNavigation() {
   const active = automationSectionForPath(pathname);
   const view = active.id === "channel-monitors" ? null : params.get("view");
   return (
-    <div className="automation-navigation border-b border-(--border-default) bg-(--bg-surface) px-4 py-4 md:px-8">
+    <div className="automation-navigation border-b border-(--border-subtle) bg-(--bg-surface) px-4 py-4 md:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-3 flex items-center justify-between gap-4">
           <Link href={automationHref("/dashboard/automations", view)} className="text-base font-semibold text-foreground">Automações</Link>
-          <span className="text-xs text-(--text-secondary)">Telegram</span>
+          <span className="text-sm text-(--text-muted)">Telegram</span>
         </div>
         <nav aria-label="Telas de automação" className="hidden flex-wrap gap-1 md:flex">
           {automationSections.map((section) => (
             <Link key={section.id} href={automationHref(section.path, view)}
               aria-current={section.id === active.id ? "page" : undefined}
-              className={`rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${section.id === active.id ? "bg-(--accent-muted) text-(--accent)" : "text-(--text-secondary) hover:bg-(--bg-hover) hover:text-foreground"}`}>
+              className={`rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${section.id === active.id ? "bg-white/[0.06] text-foreground" : "text-(--text-muted) hover:bg-(--bg-hover) hover:text-foreground"}`}>
               {section.label}
             </Link>
           ))}

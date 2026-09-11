@@ -156,7 +156,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
           style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent) 0%, color-mix(in srgb, var(--accent) 3%, transparent) 100%)", boxShadow: "0 0 12px -6px color-mix(in srgb, var(--accent) 20%, transparent)" }}
         >
           {(p.price / 100).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-          <span className="text-(--accent)/60 text-[9px] font-semibold uppercase">{p.currency || "BRL"}</span>
+          <span className="text-(--accent)/60 text-xs font-semibold uppercase">{p.currency || "BRL"}</span>
         </span>
       ),
     },
@@ -166,7 +166,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
       cell: (p) => (
         <div className="min-w-0">
           <p className="text-foreground font-medium truncate">{p.ghost_name || p.name}</p>
-          <p className="text-[10px] text-(--text-ghost) font-mono stat-value truncate">{p.id}</p>
+          <p className="text-xs text-(--text-ghost) font-mono stat-value truncate">{p.id}</p>
         </div>
       ),
     },
@@ -197,7 +197,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
           secondary: true,
           cell: (p: Product) =>
             p.ghost_name ? (
-              <span className="badge badge-error text-[10px]">{p.ghost_name}</span>
+              <span className="badge badge-error text-xs">{p.ghost_name}</span>
             ) : (
               <span className="text-(--text-ghost)">—</span>
             ),
@@ -294,7 +294,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
               <div>
                 <label className="input-label">Nome real (oculto na lista)</label>
                 <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="input" />
-                <p className="text-(--text-muted) text-[10px] mt-1">Visto pelo cliente no chat do bot.</p>
+                <p className="text-(--text-muted) text-xs mt-1">Visto pelo cliente no chat do bot.</p>
               </div>
               <div>
                 <label className="input-label">Preco (R$)</label>
@@ -317,7 +317,7 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                 <option value="success">🟢 Verde</option>
                 <option value="primary">🔵 Azul</option>
               </select>
-              <p className="text-(--text-muted) text-[10px] mt-1">
+              <p className="text-(--text-muted) text-xs mt-1">
                 Funciona em clientes Telegram atualizados (Bot API 8+). Versões antigas mostram a cor padrão.
               </p>
             </div>
@@ -331,8 +331,8 @@ export function ProductList({ botId, initialProducts, blackEnabled, isAdmin }: P
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
                     </svg>
                   </div>
-                  <span className="badge badge-error text-[10px]">FANTASMA</span>
-                  <span className="text-(--text-muted) text-[10px]">Enviado pra gateway (fatura PIX) em qualquer fluxo. Cliente continua vendo o nome real. Fallback pro real se vazio.</span>
+                  <span className="badge badge-error text-xs">FANTASMA</span>
+                  <span className="text-(--text-muted) text-xs">Enviado pra gateway (fatura PIX) em qualquer fluxo. Cliente continua vendo o nome real. Fallback pro real se vazio.</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>

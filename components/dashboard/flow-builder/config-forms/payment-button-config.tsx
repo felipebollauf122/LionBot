@@ -141,7 +141,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
 
           {/* Layout */}
           <div>
-            <span className="text-[10px] text-(--text-secondary) uppercase tracking-wider">Layout</span>
+            <span className="text-xs text-(--text-secondary) uppercase tracking-wider">Layout</span>
             <div className="mt-1 inline-flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
               {[
                 { v: "vertical", l: "Vertical" },
@@ -391,7 +391,7 @@ export function PaymentButtonConfig({ data, onChange, bundles, canRandomize = fa
         </p>
       </div>
       <div
-        className="rounded-xl p-3 text-[11px]"
+        className="rounded-xl p-3 text-sm"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--amber) 6%, transparent), color-mix(in srgb, var(--amber) 2%, transparent))",
           border: "1px solid color-mix(in srgb, var(--amber) 10%, transparent)",

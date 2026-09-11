@@ -36,7 +36,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
       right={
         <span className="flex items-center gap-1.5">
           <span className="status-dot active glow-pulse" style={{ width: 7, height: 7 }} />
-          <span className="text-[10px] uppercase tracking-wider text-(--cyan) stat-value">live</span>
+          <span className="text-xs uppercase tracking-wider text-(--cyan) stat-value">live</span>
         </span>
       }
     >
@@ -56,13 +56,13 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs text-foreground font-medium truncate">{it.title}</p>
-                  <p className="text-[10px] text-(--text-muted) truncate">{it.detail}</p>
+                  <p className="text-xs text-(--text-muted) truncate">{it.detail}</p>
                 </div>
                 <div className="text-right shrink-0">
                   {typeof it.amount === "number" && it.kind !== "lead" && (
-                    <p className="text-[11px] font-bold stat-value" style={{ color: k.color }}>{brl(it.amount)}</p>
+                    <p className="text-sm font-bold stat-value" style={{ color: k.color }}>{brl(it.amount)}</p>
                   )}
-                  <p className="text-[10px] text-(--text-ghost) stat-value">{relativeTime(it.at)}</p>
+                  <p className="text-xs text-(--text-ghost) stat-value">{relativeTime(it.at)}</p>
                 </div>
               </div>
             );

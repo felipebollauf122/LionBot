@@ -126,9 +126,9 @@ export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias", to
               style={{ left: `${xPct(active!)}%`, top: `calc(${yPct(act.revenue)}% - 10px)` }}
             >
               <div className="rounded-lg border border-(--border-subtle) bg-[#0b0b12]/95 px-3 py-2 shadow-xl backdrop-blur-sm whitespace-nowrap">
-                <p className="text-[10px] uppercase tracking-wide text-(--text-ghost)">{act.fullLabel ?? fullDate(act.date)}</p>
+                <p className="text-xs uppercase tracking-wide text-(--text-ghost)">{act.fullLabel ?? fullDate(act.date)}</p>
                 <p className="stat-value text-sm text-(--cyan) leading-tight">{brl(act.revenue)}</p>
-                <p className="text-[10px] text-(--text-muted)">{act.sales} venda{act.sales !== 1 ? "s" : ""}</p>
+                <p className="text-xs text-(--text-muted)">{act.sales} venda{act.sales !== 1 ? "s" : ""}</p>
               </div>
             </div>
           )}
@@ -140,7 +140,7 @@ export function RevenueChart({ data, subtitle = "Receita · últimos 7 dias", to
             const step = Math.max(1, Math.ceil(n / 7));
             const show = active === i || i === n - 1 || i % step === 0;
             return (
-              <span key={i} className={`text-[9px] transition-colors ${active === i ? "text-(--cyan)" : "text-(--text-ghost)"}`}>
+              <span key={i} className={`text-xs transition-colors ${active === i ? "text-(--cyan)" : "text-(--text-ghost)"}`}>
                 {show ? (d.label ?? WD[new Date(d.date + "T12:00:00").getDay()]) : ""}
               </span>
             );

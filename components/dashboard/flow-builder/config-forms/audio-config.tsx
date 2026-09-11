@@ -134,7 +134,7 @@ export function AudioConfig({ data, onChange }: AudioConfigProps) {
       </div>
 
       <div
-        className="rounded-xl p-3 text-[11px] leading-snug"
+        className="rounded-xl p-3 text-sm leading-snug"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--cyan) 6%, transparent), color-mix(in srgb, var(--cyan) 2%, transparent))",
           border: "1px solid color-mix(in srgb, var(--cyan) 10%, transparent)",

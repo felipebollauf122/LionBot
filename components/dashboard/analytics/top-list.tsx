@@ -33,14 +33,14 @@ export function TopList({ title, subtitle, icon, accent = "magenta", rows, empty
               style={{ animationDelay: `${i * 0.05}s` }}
             >
               <span
-                className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-[10px] font-bold stat-value"
+                className="w-5 h-5 shrink-0 rounded-md flex items-center justify-center text-xs font-bold stat-value"
                 style={{ background: "color-mix(in srgb, var(--amber) 16%, transparent)", color: "var(--amber)" }}
               >
                 {i + 1}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-(--text-secondary) truncate font-medium">{r.label}</p>
-                {r.sub && <p className="text-[10px] text-(--text-ghost) stat-value">{r.sub}</p>}
+                {r.sub && <p className="text-xs text-(--text-ghost) stat-value">{r.sub}</p>}
               </div>
               <span className="text-xs font-bold stat-value text-(--cyan) shrink-0">{r.value}</span>
             </div>

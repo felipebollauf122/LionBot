@@ -56,13 +56,13 @@ export function BotShell({ botId, botUsername, avatarUrl, basePath, children }: 
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? item.color : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d={item.icon} />
               </svg>
-              <span className="text-[9px]" style={{ color: active ? item.color : "var(--text-ghost)" }}>{item.label}</span>
+              <span className="text-xs" style={{ color: active ? item.color : "var(--text-ghost)" }}>{item.label}</span>
             </a>
           );
         })}
         <button onClick={() => setOpen(true)} className="flex-1 flex flex-col items-center justify-center gap-1 text-(--text-muted)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
-          <span className="text-[9px] text-(--text-ghost)">Mais</span>
+          <span className="text-xs text-(--text-ghost)">Mais</span>
         </button>
       </nav>
     </div>

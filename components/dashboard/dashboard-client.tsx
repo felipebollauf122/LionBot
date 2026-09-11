@@ -167,7 +167,7 @@ export function DashboardClient({
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight page-title">
             {greeting}, <span className="gradient-text">{name || "vendedor"}</span>
           </h1>
-          <p className="text-[11px] text-(--text-muted) tracking-[0.2em] uppercase mt-1 stat-value">{todayLabel}</p>
+          <p className="text-sm text-(--text-muted) tracking-[0.2em] uppercase mt-1 stat-value">{todayLabel}</p>
         </div>
         <Link href="/dashboard/bots" className="btn-ghost self-start sm:self-auto">
           Ver meus bots

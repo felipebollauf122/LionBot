@@ -95,7 +95,7 @@ export function PushToggle() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-foreground font-medium text-sm">Notificações de venda</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">Receba um alerta neste dispositivo a cada venda aprovada.</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">Receba um alerta neste dispositivo a cada venda aprovada.</p>
         </div>
         {(state === "on" || state === "off" || state === "working") && (
           <button
@@ -123,7 +123,7 @@ export function PushToggle() {
           Este navegador não suporta notificações push.
         </div>
       )}
-      {error && <p className="text-[11px] text-(--red)">{error}</p>}
+      {error && <p className="text-sm text-(--red)">{error}</p>}
     </div>
   );
 }

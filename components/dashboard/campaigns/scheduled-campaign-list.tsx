@@ -60,7 +60,7 @@ export function ScheduledCampaignList({
               <span className="text-sm text-foreground font-medium truncate">{c.name}</span>
               <span className={`badge ${meta.badge} shrink-0`}>{meta.label}</span>
             </div>
-            <div className="text-[11px] text-(--text-ghost) truncate mt-0.5">
+            <div className="text-sm text-(--text-ghost) truncate mt-0.5">
               em {c.dest_title ?? "destino não escolhido"} · {formatarInicio(c.start_at)}
             </div>
             <div className="flex items-center gap-3 mt-2">
@@ -74,12 +74,12 @@ export function ScheduledCampaignList({
                   }}
                 />
               </div>
-              <span className="text-[11px] font-bold stat-value text-(--text-secondary) shrink-0">
+              <span className="text-sm font-bold stat-value text-(--text-secondary) shrink-0">
                 {c.sent_count}/{c.total_messages} enviadas
               </span>
             </div>
             {c.failed_count > 0 && (
-              <div className="text-[11px] text-(--red) mt-1">
+              <div className="text-sm text-(--red) mt-1">
                 {c.failed_count} falhou(ram)
               </div>
             )}

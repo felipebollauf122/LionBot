@@ -38,7 +38,7 @@ export function CardShell({ title, subtitle, icon, accent = "magenta", right, ch
           )}
           <div className="min-w-0">
             <h3 className="text-foreground font-semibold text-sm tracking-tight truncate">{title}</h3>
-            {subtitle && <p className="text-[10px] uppercase tracking-[0.12em] text-(--text-ghost)">{subtitle}</p>}
+            {subtitle && <p className="text-xs uppercase tracking-[0.12em] text-(--text-ghost)">{subtitle}</p>}
           </div>
         </div>
         {right && <div className="shrink-0">{right}</div>}

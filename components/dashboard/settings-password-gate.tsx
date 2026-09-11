@@ -98,7 +98,7 @@ export function SettingsPasswordGate({
           </button>
         </form>
 
-        <p className="text-(--text-ghost) text-[10px] mt-4 leading-relaxed">
+        <p className="text-(--text-ghost) text-xs mt-4 leading-relaxed">
           A senha fica liberada nesta aba até você fechá-la. Em outras abas
           ou após fechar o navegador, será pedida de novo.
         </p>

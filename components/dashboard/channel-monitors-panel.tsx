@@ -480,7 +480,7 @@ function StatusBadge({ status }: { status: string }) {
     dead: { text: "morto", cls: "bg-red-500/20 text-red-300" },
   };
   const s = map[status] ?? { text: status, cls: "bg-white/10 text-(--text-secondary)" };
-  return <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${s.cls}`}>{s.text}</span>;
+  return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${s.cls}`}>{s.text}</span>;
 }
 
 function AddMonitorForm({

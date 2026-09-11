@@ -94,7 +94,7 @@ function Field({ label, value }: { label: string; value: string | number | null 
   if (!v) return null;
   return (
     <div className="mb-3 break-inside-avoid">
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">{label}</div>
       <div className="text-sm text-zinc-900 mt-0.5">{v}</div>
     </div>
   );
@@ -211,7 +211,7 @@ export function ProofView({
         {/* Cabeçalho com logo */}
         <header className="flex items-end justify-between pb-6 border-b border-zinc-300 mb-8">
           <div>
-            <div className="text-zinc-400 text-[10px] uppercase tracking-[0.2em] font-semibold mb-1">
+            <div className="text-zinc-400 text-xs uppercase tracking-[0.2em] font-semibold mb-1">
               LionBot
             </div>
             <h1 className="text-2xl font-bold text-zinc-900 leading-tight">
@@ -222,7 +222,7 @@ export function ProofView({
             </p>
           </div>
           <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
+            <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">
               Emitido em
             </div>
             <div className="text-sm text-zinc-900 mt-0.5">{generatedAt}</div>
@@ -232,7 +232,7 @@ export function ProofView({
         {/* Status + Valor em destaque */}
         <div className="grid grid-cols-2 gap-4 mb-8 break-inside-avoid">
           <div className="border border-zinc-300 rounded-lg p-4">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2">
+            <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">
               Status do pagamento
             </div>
             <div
@@ -243,7 +243,7 @@ export function ProofView({
             </div>
           </div>
           <div className="border border-zinc-300 rounded-lg p-4">
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-2">
+            <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">
               Valor da transação
             </div>
             <div className="text-2xl font-bold text-zinc-900 leading-none">
@@ -324,7 +324,7 @@ export function ProofView({
             </div>
             {uaFromTracking && (
               <div className="mt-2">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
+                <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">
                   Navegador / User Agent
                 </div>
                 <div className="text-xs text-zinc-700 mt-0.5 font-mono break-all">
@@ -340,7 +340,7 @@ export function ProofView({
           <Section title={`Outras transações deste comprador (${otherTransactions.length})`}>
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-zinc-500 text-[10px] uppercase tracking-wider border-b border-zinc-200">
+                <tr className="text-zinc-500 text-xs uppercase tracking-wider border-b border-zinc-200">
                   <th className="text-left py-2 font-semibold">Data</th>
                   <th className="text-left py-2 font-semibold">Produto</th>
                   <th className="text-right py-2 font-semibold">Valor</th>
@@ -363,7 +363,7 @@ export function ProofView({
                       </td>
                       <td className="py-2 text-right">
                         <span
-                          className="inline-block px-2 py-0.5 rounded text-[10px] font-bold"
+                          className="inline-block px-2 py-0.5 rounded text-xs font-bold"
                           style={{ background: ost.bg, color: ost.fg }}
                         >
                           {ost.text}
@@ -378,7 +378,7 @@ export function ProofView({
         )}
 
         {/* Footer */}
-        <footer className="mt-12 pt-6 border-t border-zinc-200 text-center text-[10px] text-zinc-400">
+        <footer className="mt-12 pt-6 border-t border-zinc-200 text-center text-xs text-zinc-400">
           Documento emitido eletronicamente por LionBot · {generatedAt}
           <br />
           Verificação interna: {transaction.id}
@@ -398,7 +398,7 @@ export function ProofView({
             </button>
           </div>
           {showRaw && (
-            <pre className="mt-3 p-3 rounded bg-zinc-50 border border-zinc-200 text-[10px] text-zinc-700 overflow-x-auto whitespace-pre-wrap">
+            <pre className="mt-3 p-3 rounded bg-zinc-50 border border-zinc-200 text-xs text-zinc-700 overflow-x-auto whitespace-pre-wrap">
               {JSON.stringify(
                 {
                   transaction: {

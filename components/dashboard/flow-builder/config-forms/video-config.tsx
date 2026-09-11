@@ -125,7 +125,7 @@ export function VideoConfig({ data, onChange, mediaAssets = [], canRandomize = f
         />
       </div>
       <div
-        className="rounded-xl p-3 text-[11px]"
+        className="rounded-xl p-3 text-sm"
         style={{
           background: "linear-gradient(135deg, color-mix(in srgb, var(--cyan) 6%, transparent), color-mix(in srgb, var(--cyan) 2%, transparent))",
           border: "1px solid color-mix(in srgb, var(--cyan) 10%, transparent)",

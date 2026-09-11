@@ -65,7 +65,7 @@ export function StatusBadge({
     <span
       title={title}
       data-raw-error={!floodHint && errorMessage ? errorMessage : undefined}
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${classe}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${classe}`}
     >
       {floodHint ? "aguardando limite" : info.texto}
     </span>

@@ -65,7 +65,7 @@ export function Sidebar({ isAdmin, isOwner, isPremium, open = false, onClose }: 
 
       {/* Navigation */}
       <nav className="flex-1 min-h-0 overflow-y-auto px-3 pt-6 pb-4">
-        <p className="text-(--text-ghost) text-[10px] font-bold uppercase tracking-[0.14em] px-3 mb-3">
+        <p className="text-(--text-ghost) text-xs font-bold uppercase tracking-[0.14em] px-3 mb-3">
           Menu
         </p>
         <a
@@ -124,7 +124,7 @@ export function Sidebar({ isAdmin, isOwner, isPremium, open = false, onClose }: 
         {isAdmin && (
           <>
             <div className="my-4 mx-2 h-px bg-linear-to-r from-transparent via-(--border-default) to-transparent" />
-            <p className="text-(--text-ghost) text-[10px] font-bold uppercase tracking-[0.14em] px-3 mb-3">
+            <p className="text-(--text-ghost) text-xs font-bold uppercase tracking-[0.14em] px-3 mb-3">
               Administracao
             </p>
             <a

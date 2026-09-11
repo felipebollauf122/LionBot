@@ -144,7 +144,7 @@ export function ClientsView({ botId, initial }: ClientsViewProps) {
                     >
                       {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-(--accent)" style={{ boxShadow: "0 0 8px var(--accent)" }} />}
                       <span
-                        className="w-9 h-9 shrink-0 rounded-xl grid place-items-center text-[11px] font-bold"
+                        className="w-9 h-9 shrink-0 rounded-xl grid place-items-center text-sm font-bold"
                         style={{ background: meta.bg, color: meta.color }}
                       >
                         {initials(name)}
@@ -160,21 +160,21 @@ export function ClientsView({ botId, initial }: ClientsViewProps) {
                         </span>
                         <span className="flex items-center gap-1.5 mt-0.5">
                           {row.lead.username ? (
-                            <span className="truncate text-[11px] text-(--text-muted)">@{row.lead.username}</span>
+                            <span className="truncate text-sm text-(--text-muted)">@{row.lead.username}</span>
                           ) : (
-                            <span className="text-[11px] text-(--text-ghost)">ID {row.lead.telegram_user_id}</span>
+                            <span className="text-sm text-(--text-ghost)">ID {row.lead.telegram_user_id}</span>
                           )}
                         </span>
                       </span>
                       <span className="shrink-0 flex flex-col items-end gap-1">
                         <span
-                          className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md"
+                          className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md"
                           style={{ background: meta.bg, color: meta.color }}
                         >
                           {meta.label}
                         </span>
                         {row.paidAmount > 0 && (
-                          <span className="text-[10px] font-mono text-(--green, #22e0a1)">{brl(row.paidAmount)}</span>
+                          <span className="text-xs font-mono text-(--green, #22e0a1)">{brl(row.paidAmount)}</span>
                         )}
                       </span>
                     </button>

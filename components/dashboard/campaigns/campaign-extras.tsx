@@ -162,7 +162,7 @@ export function CampaignExtras({
               );
             })}
           </div>
-          <p className="text-[11px] text-(--text-muted)">
+          <p className="text-sm text-(--text-muted)">
             O texto original fica salvo — dá pra reverter a qualquer momento.
           </p>
         </div>
@@ -174,7 +174,7 @@ export function CampaignExtras({
           <p className="text-xs text-(--text-secondary) whitespace-pre-wrap break-words">
             {errorMessage}
           </p>
-          <p className="text-[11px] text-(--text-muted)">
+          <p className="text-sm text-(--text-muted)">
             Texto cru guardado pelo worker — útil pra suporte, não aparece no aviso normal.
           </p>
         </div>

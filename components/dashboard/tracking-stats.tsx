@@ -86,7 +86,7 @@ export function TrackingStats({
       header: "Nome",
       cell: (l) => (
         <div className="flex items-center gap-2.5">
-          <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
+          <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-sm font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
             {(l.first_name || "?").slice(0, 1).toUpperCase()}
           </span>
           <span className="text-foreground font-medium">{l.first_name || "—"}</span>
@@ -236,7 +236,7 @@ export function TrackingStats({
             <DetailRow label="TID" value={selectedLead.tid ?? "—"} mono />
             <DetailRow label="fbclid" value={selectedLead.fbclid ?? "—"} mono />
             <div className="divider my-2" />
-            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Atribuição (UTM)</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Atribuição (UTM)</p>
             <DetailRow label="Source" value={selectedLead.utm_source ?? "—"} />
             <DetailRow label="Medium" value={selectedLead.utm_medium ?? "—"} />
             <DetailRow label="Campaign" value={selectedLead.utm_campaign ?? "—"} />
@@ -258,7 +258,7 @@ export function TrackingStats({
         {selectedEvent && (
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Tipo</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">Tipo</span>
               <span className={`badge ${eventBadgeClass[selectedEvent.event_type] ?? "badge-inactive"}`}>
                 {eventTypeLabels[selectedEvent.event_type] ?? selectedEvent.event_type}
               </span>
@@ -266,27 +266,27 @@ export function TrackingStats({
             <DetailRow label="TID" value={selectedEvent.tid ?? "—"} mono />
             <DetailRow label="fbclid" value={selectedEvent.fbclid ?? "—"} mono />
             <div className="divider my-2" />
-            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Envio</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Envio</p>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Facebook</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">Facebook</span>
               {selectedEvent.sent_to_facebook
                 ? <span className="badge badge-active">Enviado</span>
                 : <span className="badge badge-inactive">Pendente</span>}
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">TikTok</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">TikTok</span>
               {selectedEvent.sent_to_tiktok
                 ? <span className="badge badge-active">Enviado</span>
                 : <span className="badge badge-inactive">Pendente</span>}
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">Utmify</span>
+              <span className="text-sm uppercase tracking-wider text-(--text-muted)">Utmify</span>
               {selectedEvent.sent_to_utmify
                 ? <span className="badge badge-active">Enviado</span>
                 : <span className="badge badge-inactive">Pendente</span>}
             </div>
             <div className="divider my-2" />
-            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Parâmetros UTM</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Parâmetros UTM</p>
             {selectedEventUtm && Object.keys(selectedEventUtm).length > 0 ? (
               Object.entries(selectedEventUtm).map(([k, v]) => (
                 <DetailRow key={k} label={k} value={String(v)} mono />
@@ -306,7 +306,7 @@ export function TrackingStats({
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className="text-sm uppercase tracking-wider text-(--text-muted)">{label}</span>
       <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );

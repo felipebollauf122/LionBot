@@ -103,13 +103,13 @@ export function ChatPanel({ botId, lead, status, onBack }: ChatPanelProps) {
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-foreground truncate">{name}</h2>
             {blocked ? (
-              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0" style={{ background: "color-mix(in srgb, var(--red) 14%, transparent)", color: "var(--red)" }}>
+              <span className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0" style={{ background: "color-mix(in srgb, var(--red) 14%, transparent)", color: "var(--red)" }}>
                 Bloqueou
               </span>
             ) : (
               STATUS_BADGE[status] && (
                 <span
-                  className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0"
+                  className="text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0"
                   style={{ background: `color-mix(in srgb, ${STATUS_BADGE[status]!.color} 14%, transparent)`, color: STATUS_BADGE[status]!.color }}
                 >
                   {STATUS_BADGE[status]!.label}
@@ -117,7 +117,7 @@ export function ChatPanel({ botId, lead, status, onBack }: ChatPanelProps) {
               )
             )}
           </div>
-          <p className="text-[11px] text-(--text-muted) truncate">
+          <p className="text-sm text-(--text-muted) truncate">
             {lead.username ? `@${lead.username}` : `ID ${lead.telegram_user_id}`}
             {lead.utm_source ? ` · ${lead.utm_source}` : ""}
           </p>
@@ -143,7 +143,7 @@ export function ChatPanel({ botId, lead, status, onBack }: ChatPanelProps) {
               <div key={m.id}>
                 {showDay && (
                   <div className="flex items-center justify-center my-3">
-                    <span className="text-[10px] uppercase tracking-wider text-(--text-ghost) bg-white/[0.03] px-2.5 py-1 rounded-full">{day}</span>
+                    <span className="text-xs uppercase tracking-wider text-(--text-ghost) bg-white/[0.03] px-2.5 py-1 rounded-full">{day}</span>
                   </div>
                 )}
                 <MessageRow msg={m} />
@@ -155,7 +155,7 @@ export function ChatPanel({ botId, lead, status, onBack }: ChatPanelProps) {
 
       {/* Composer */}
       <div className="shrink-0 border-t border-(--border-subtle) p-3 glass">
-        {error && <p className="text-[11px] text-(--red) mb-2 px-1">{error}</p>}
+        {error && <p className="text-sm text-(--red) mb-2 px-1">{error}</p>}
         {blocked ? (
           <div className="text-center text-[12px] text-(--text-muted) py-2">
             Esse lead bloqueou o bot — não dá pra enviar mensagens.
@@ -201,7 +201,7 @@ function MessageRow({ msg }: { msg: LeadMessage }) {
     return (
       <div className="flex items-center justify-center my-2">
         <span
-          className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border"
+          className="inline-flex items-center gap-1.5 text-sm font-medium px-2.5 py-1 rounded-full border"
           style={{
             color: meta?.color ?? "var(--text-muted)",
             borderColor: `color-mix(in srgb, ${meta?.color ?? "var(--text-muted)"} 30%, transparent)`,
@@ -232,7 +232,7 @@ function MessageRow({ msg }: { msg: LeadMessage }) {
         style={isOut ? { background: "linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--purple)))" } : undefined}
       >
         {msg.text}
-        <span className={`block text-right text-[9px] mt-0.5 tabular-nums ${isOut ? "text-white/70" : "text-(--text-ghost)"}`}>
+        <span className={`block text-right text-xs mt-0.5 tabular-nums ${isOut ? "text-white/70" : "text-(--text-ghost)"}`}>
           {timeOf(msg.created_at)}
         </span>
       </div>

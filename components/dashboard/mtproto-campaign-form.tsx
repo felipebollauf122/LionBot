@@ -416,7 +416,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
                       <span className="text-(--text-secondary) truncate flex-1">
                         {d.title || d.username || d.id}
                       </span>
-                      <span className="text-(--text-ghost) text-[10px]">
+                      <span className="text-(--text-ghost) text-xs">
                         {KIND_LABELS[d.kind] ?? d.kind}
                       </span>
                     </label>

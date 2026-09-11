@@ -64,7 +64,7 @@ export function Funnel({ starts, checkouts, paid, topLabel = "/START", showCheck
                 animationDelay: `${i * 0.12}s`,
               }}
             />
-            <span className="text-[9px] uppercase tracking-wider text-(--text-ghost) mt-2">{s.label}</span>
+            <span className="text-xs uppercase tracking-wider text-(--text-ghost) mt-2">{s.label}</span>
           </div>
         ))}
       </div>
@@ -72,7 +72,7 @@ export function Funnel({ starts, checkouts, paid, topLabel = "/START", showCheck
         {metrics.map((m) => (
           <div key={m.l} className="text-center">
             <p className="stat-value text-sm text-(--cyan)">{m.v === null ? "—" : `${m.v.toFixed(1)}%`}</p>
-            <p className="text-[9px] text-(--text-ghost) mt-0.5">{m.l}</p>
+            <p className="text-xs text-(--text-ghost) mt-0.5">{m.l}</p>
           </div>
         ))}
       </div>

@@ -146,7 +146,7 @@ export function MediaList({ botId, initialAssets }: MediaListProps) {
       cell: (a) => (
         <div className="min-w-0">
           <p className="text-foreground font-medium truncate">{assetDisplayLabel(a)}</p>
-          <p className="text-[10px] text-(--text-ghost) font-mono stat-value truncate">{a.id}</p>
+          <p className="text-xs text-(--text-ghost) font-mono stat-value truncate">{a.id}</p>
         </div>
       ),
     },
@@ -240,7 +240,7 @@ export function MediaList({ botId, initialAssets }: MediaListProps) {
             accept={createKind === "image" ? IMAGE_ACCEPT : VIDEO_ACCEPT}
             label={createKind === "image" ? "Imagem" : "Vídeo"}
           />
-          {creating && <p className="text-(--text-muted) text-[10px]">Salvando...</p>}
+          {creating && <p className="text-(--text-muted) text-xs">Salvando...</p>}
         </div>
       </ContextDrawer>
 

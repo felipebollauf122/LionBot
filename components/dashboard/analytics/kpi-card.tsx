@@ -47,7 +47,7 @@ export function KpiCard({
   return (
     <InteractiveCard className={`group p-5 ${revealClass}`}>
       <div className="flex items-start justify-between mb-4">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--text-muted)">{label}</span>
+        <span className="text-xs font-bold uppercase tracking-[0.12em] text-(--text-muted)">{label}</span>
         {icon && (
           <div
             className="section-icon w-8 h-8 shrink-0 icon-wobble"
@@ -63,11 +63,11 @@ export function KpiCard({
       {(hint || delta) && (
         <div className="flex items-center gap-2 mt-2">
           {delta && (
-            <span className={`text-[11px] font-bold stat-value ${deltaUp ? "text-(--cyan)" : "text-(--red)"}`}>
+            <span className={`text-sm font-bold stat-value ${deltaUp ? "text-(--cyan)" : "text-(--red)"}`}>
               {deltaUp ? "↑" : "↓"} {delta}
             </span>
           )}
-          {hint && <span className="text-[11px] text-(--text-muted)">{hint}</span>}
+          {hint && <span className="text-sm text-(--text-muted)">{hint}</span>}
         </div>
       )}
       {typeof progress === "number" && (

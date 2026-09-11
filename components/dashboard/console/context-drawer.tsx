@@ -63,7 +63,7 @@ export function ContextDrawer({ open, onClose, title, subtitle, actions, childre
             ) : (
               title
             )}
-            {subtitle && <p className="text-[11px] uppercase tracking-[0.12em] text-(--text-ghost) mt-0.5">{subtitle}</p>}
+            {subtitle && <p className="text-sm uppercase tracking-[0.12em] text-(--text-ghost) mt-0.5">{subtitle}</p>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {actions}

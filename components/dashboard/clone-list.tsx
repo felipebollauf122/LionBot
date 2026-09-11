@@ -50,7 +50,7 @@ export function CloneList({
               <span className="text-sm text-foreground font-medium truncate">{c.dest_title}</span>
               <span className={`badge ${meta.badge} shrink-0`}>{meta.label}</span>
             </div>
-            <div className="text-[11px] text-(--text-ghost) truncate mt-0.5">
+            <div className="text-sm text-(--text-ghost) truncate mt-0.5">
               de {c.source_title ?? "—"}
             </div>
             <div className="flex items-center gap-3 mt-2">
@@ -64,7 +64,7 @@ export function CloneList({
                   }}
                 />
               </div>
-              <span className="text-[11px] font-bold stat-value text-(--text-secondary) shrink-0">
+              <span className="text-sm font-bold stat-value text-(--text-secondary) shrink-0">
                 {c.copied_count} copiadas
               </span>
             </div>

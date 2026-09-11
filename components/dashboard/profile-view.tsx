@@ -77,7 +77,7 @@ export function ProfileView({ name, email }: ProfileViewProps) {
                 {/* Nome de exibição — editável (aparece na dashboard) */}
                 <div>
                   <label className="input-label">Nome de exibição</label>
-                  <p className="text-[11px] text-(--text-muted) mb-2" style={{ opacity: 0.8 }}>
+                  <p className="text-sm text-(--text-muted) mb-2" style={{ opacity: 0.8 }}>
                     É o nome que aparece na saudação da dashboard (“Bom dia, …”).
                   </p>
                   <div className="flex items-center gap-2">
@@ -97,10 +97,10 @@ export function ProfileView({ name, email }: ProfileViewProps) {
                       {nameStatus === "saving" ? "..." : nameStatus === "saved" ? "Salvo ✓" : "Salvar"}
                     </button>
                   </div>
-                  {nameStatus === "error" && <p className="text-[11px] text-(--red) mt-1.5">Erro ao salvar. Tente de novo.</p>}
+                  {nameStatus === "error" && <p className="text-sm text-(--red) mt-1.5">Erro ao salvar. Tente de novo.</p>}
                 </div>
 
-                <p className="text-[11px] text-(--text-ghost)">O e-mail não pode ser alterado por aqui.</p>
+                <p className="text-sm text-(--text-ghost)">O e-mail não pode ser alterado por aqui.</p>
               </div>
             )}
 

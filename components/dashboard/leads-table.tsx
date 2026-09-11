@@ -52,7 +52,7 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
       width: "22%",
       cell: (l) => (
         <div className="flex items-center gap-2.5">
-          <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-[11px] font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
+          <span className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-sm font-bold stat-value" style={{ background: "color-mix(in srgb, var(--cyan) 14%, transparent)", color: "var(--cyan)" }}>
             {(l.first_name || "?").slice(0, 1).toUpperCase()}
           </span>
           <span className="text-foreground font-medium truncate">{l.first_name || "—"}</span>
@@ -109,7 +109,7 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
             <DetailRow label="Telegram ID" value={String(selected.telegram_user_id)} mono />
             <DetailRow label="TID" value={selected.tid ?? "—"} mono />
             <div className="divider my-2" />
-            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Atribuição (UTM)</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Atribuição (UTM)</p>
             <DetailRow label="Source" value={selected.utm_source ?? "—"} />
             <DetailRow label="Medium" value={selected.utm_medium ?? "—"} />
             <DetailRow label="Campaign" value={selected.utm_campaign ?? "—"} />
@@ -127,7 +127,7 @@ export function LeadsTable({ botId, initialLeads, total, currentPage, pageSize }
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className="text-sm uppercase tracking-wider text-(--text-muted)">{label}</span>
       <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );

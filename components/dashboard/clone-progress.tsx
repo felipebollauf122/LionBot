@@ -94,15 +94,15 @@ export function CloneProgress({ initial }: { initial: Job }) {
       <div className="grid grid-cols-3 gap-2">
         <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <p className="stat-value text-xl text-foreground">{job.copied_count}</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">copiadas</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">copiadas</p>
         </div>
         <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <p className="stat-value text-xl text-(--text-secondary)">{job.skipped_count}</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">puladas</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">puladas</p>
         </div>
         <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <p className="stat-value text-xl text-(--red)">{job.failed_count}</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">falhas</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">falhas</p>
         </div>
       </div>
 

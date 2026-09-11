@@ -139,7 +139,7 @@ function FleetPanel({ bot, index }: { bot: BotFleetRow; index: number }) {
         </div>
         <div className="min-w-0">
           <h3 className="text-foreground font-semibold tracking-tight truncate group-hover:text-(--accent-hover) transition-colors">{name}</h3>
-          <p className="text-[11px] text-(--text-ghost) font-mono stat-value truncate">@{bot.bot_username ?? "—"}</p>
+          <p className="text-sm text-(--text-ghost) font-mono stat-value truncate">@{bot.bot_username ?? "—"}</p>
         </div>
       </div>
 
@@ -193,7 +193,7 @@ function CopyLinkButton({ botId, hasUtmify, slug }: { botId: string; hasUtmify: 
       type="button"
       onClick={copy}
       title={hasUtmify ? "Copiar link com UTMs (Utmify)" : "Copiar link do bot"}
-      className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+      className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-all ${
         copied
           ? "border-(--cyan)/40 text-(--cyan) bg-(--cyan)/10"
           : "border-(--border-subtle) text-(--text-secondary) hover:text-foreground hover:border-(--accent)/40 hover:bg-white/5"
@@ -232,7 +232,7 @@ function CopyParamsButton({ botId, hasUtmify, slug }: { botId: string; hasUtmify
       type="button"
       onClick={copy}
       title="Copiar só os parâmetros (bot, UTMs, slug) pro anúncio"
-      className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+      className={`shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-all ${
         copied
           ? "border-(--cyan)/40 text-(--cyan) bg-(--cyan)/10"
           : "border-(--border-subtle) text-(--text-secondary) hover:text-foreground hover:border-(--accent)/40 hover:bg-white/5"
@@ -258,7 +258,7 @@ function Metric({ label, accent, children }: { label: string; accent: "magenta" 
   return (
     <div className="min-w-0 rounded-lg bg-white/[0.02] border border-(--border-subtle) px-2 py-2 sm:px-3">
       <p className="stat-value text-[13px] sm:text-base num-pop leading-tight" style={{ color }}>{children}</p>
-      <p className="text-[9px] uppercase tracking-wider text-(--text-ghost) mt-0.5 truncate">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-(--text-ghost) mt-0.5 truncate">{label}</p>
     </div>
   );
 }
@@ -267,7 +267,7 @@ function Capability({ on, label }: { on: boolean; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className={`status-dot ${on ? "active" : "inactive"}`} style={{ width: 6, height: 6 }} />
-      <span className="text-[10px] text-(--text-muted)">{label}</span>
+      <span className="text-xs text-(--text-muted)">{label}</span>
     </div>
   );
 }

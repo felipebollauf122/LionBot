@@ -313,7 +313,7 @@ export function TrafficFilterManager({
       >
         <div className="flex items-center gap-3 min-w-0">
           <span
-            className="shrink-0 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+            className="shrink-0 px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider"
             style={{
               color: accent,
               background: `color-mix(in srgb, ${accent} 12%, transparent)`,
@@ -328,12 +328,12 @@ export function TrafficFilterManager({
                 {rule.value}
               </span>
               {crawler && !danger && (
-                <span className="shrink-0 text-(--amber) text-[10px] font-bold whitespace-nowrap">
+                <span className="shrink-0 text-(--amber) text-xs font-bold whitespace-nowrap">
                   Crawler do Facebook · recomendado em Permitidos
                 </span>
               )}
               {danger && (
-                <span className="shrink-0 text-(--red) text-[10px] font-bold whitespace-nowrap">
+                <span className="shrink-0 text-(--red) text-xs font-bold whitespace-nowrap">
                   ⚠ Cloaking — risco de banimento
                 </span>
               )}
@@ -504,7 +504,7 @@ export function TrafficFilterManager({
                   <div className="min-w-0">
                     <p className="text-foreground text-sm font-medium">{def.title}</p>
                     <p className="text-(--text-muted) text-xs mt-0.5">{blocked ? def.blockedDesc : def.safeDesc}</p>
-                    <p className="text-(--text-ghost) text-[10px] mt-1 font-mono">{def.bots}</p>
+                    <p className="text-(--text-ghost) text-xs mt-1 font-mono">{def.bots}</p>
                   </div>
                   <button
                     type="button"

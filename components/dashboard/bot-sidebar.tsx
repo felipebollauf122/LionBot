@@ -69,7 +69,7 @@ export function BotSidebar({ botId, botUsername, avatarUrl, basePath: baseProp, 
         </a>
         <div className="min-w-0 md:opacity-0 md:group-hover/rail:opacity-100 transition-opacity duration-200">
           <h2 className="text-sm font-bold text-foreground truncate tracking-tight">@{botUsername}</h2>
-          <span className="text-[9px] uppercase tracking-wider text-(--text-ghost)">voltar aos bots</span>
+          <span className="text-xs uppercase tracking-wider text-(--text-ghost)">voltar aos bots</span>
         </div>
       </div>
 

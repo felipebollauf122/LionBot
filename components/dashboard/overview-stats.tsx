@@ -32,7 +32,7 @@ export function OverviewStats({ totalBots, activeBots, totalLeads, totalRevenue,
           <div className="absolute top-0 left-4 right-4 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: `linear-gradient(90deg, transparent, ${card.color}, transparent)` }} />
 
           <div className="flex items-center justify-between mb-4">
-            <p className="text-(--text-muted) text-[10px] font-bold uppercase tracking-[0.08em]">{card.label}</p>
+            <p className="text-(--text-muted) text-xs font-bold uppercase tracking-[0.08em]">{card.label}</p>
             <div
               className="section-icon w-9 h-9"
               style={{ background: `color-mix(in srgb, ${card.color} 12%, transparent)` }}

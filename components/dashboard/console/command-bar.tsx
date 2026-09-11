@@ -33,7 +33,7 @@ export function CommandBar({ title, subtitle, search, filters, kpis, action }: C
           ) : (
             title
           )}
-          {subtitle && <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">{subtitle}</p>}
+          {subtitle && <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">{subtitle}</p>}
         </div>
 
         {/* Centre: search + filters */}
@@ -66,7 +66,7 @@ export function KpiPill({ label, value, accent = "magenta" }: { label: string; v
   return (
     <div className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-(--border-subtle) flex flex-col items-end leading-tight">
       <span className="stat-value text-sm num-pop" style={{ color }}>{value}</span>
-      <span className="text-[9px] uppercase tracking-wider text-(--text-ghost)">{label}</span>
+      <span className="text-xs uppercase tracking-wider text-(--text-ghost)">{label}</span>
     </div>
   );
 }
@@ -74,10 +74,10 @@ export function KpiPill({ label, value, accent = "magenta" }: { label: string; v
 /** Toggleable filter chip. */
 export function FilterChip({ active, onClick, children, count }: { active?: boolean; onClick?: () => void; children: ReactNode; count?: number }) {
   return (
-    <button onClick={onClick} className={`toggle-btn ${active ? "on" : "off"} text-[11px]! py-1.5! flex items-center gap-1.5`}>
+    <button onClick={onClick} className={`toggle-btn ${active ? "on" : "off"} text-sm! py-1.5! flex items-center gap-1.5`}>
       {children}
       {typeof count === "number" && (
-        <span className="px-1.5 rounded-full bg-white/10 text-[9px] stat-value">{count}</span>
+        <span className="px-1.5 rounded-full bg-white/10 text-xs stat-value">{count}</span>
       )}
     </button>
   );

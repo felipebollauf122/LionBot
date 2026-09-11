@@ -77,7 +77,7 @@ export function ThemeSwitcher() {
                 )}
               </div>
               <h3 className="text-foreground font-semibold text-sm tracking-tight">{t.name}</h3>
-              <p className="text-[11px] text-(--text-muted) mt-0.5">{t.description}</p>
+              <p className="text-sm text-(--text-muted) mt-0.5">{t.description}</p>
             </button>
           );
         })}
@@ -88,7 +88,7 @@ export function ThemeSwitcher() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-foreground font-semibold text-sm tracking-tight">Personalizado</h3>
-            <p className="text-[11px] text-(--text-muted) mt-0.5">Escolha suas próprias cores</p>
+            <p className="text-sm text-(--text-muted) mt-0.5">Escolha suas próprias cores</p>
           </div>
           {active === "custom" && (
             <span className="badge badge-active">
@@ -116,7 +116,7 @@ export function ThemeSwitcher() {
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[10px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className="text-xs uppercase tracking-wider text-(--text-muted)">{label}</span>
       <div className="flex items-center gap-2 rounded-lg border border-(--border-subtle) bg-white/[0.02] px-2 py-1.5">
         <input
           type="color"
@@ -125,7 +125,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
           className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0 shrink-0"
           style={{ appearance: "none" }}
         />
-        <span className="text-[11px] font-mono stat-value text-(--text-secondary) truncate uppercase">{value}</span>
+        <span className="text-sm font-mono stat-value text-(--text-secondary) truncate uppercase">{value}</span>
       </div>
     </label>
   );

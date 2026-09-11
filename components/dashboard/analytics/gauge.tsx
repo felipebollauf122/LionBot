@@ -74,7 +74,7 @@ export function Gauge({ value, label, size = 160 }: GaugeProps) {
         <p className="stat-value text-2xl text-foreground">
           {na ? "—" : <AnimatedNumber value={v * 100} format="pct2" />}
         </p>
-        {label && <p className="text-[11px] text-(--text-muted) mt-0.5">{label}</p>}
+        {label && <p className="text-sm text-(--text-muted) mt-0.5">{label}</p>}
       </div>
     </div>
   );

@@ -256,10 +256,10 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled, ba
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-foreground font-medium truncate">{r.label}</p>
-                {r.variant === "black" && <span className="badge badge-error text-[9px] py-0.5!">BLACK</span>}
+                {r.variant === "black" && <span className="badge badge-error text-xs py-0.5!">BLACK</span>}
               </div>
               {r.variant !== "plain" && (
-                <p className="text-[10px] text-(--text-ghost) font-mono stat-value">
+                <p className="text-xs text-(--text-ghost) font-mono stat-value">
                   {r.variant === "visual" ? "_visual_flow" : "_black_flow"}
                 </p>
               )}
@@ -500,7 +500,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled, ba
             <DetailRow label="Atualizado em" value={new Date(selected.flow.updated_at).toLocaleString("pt-BR")} />
 
             <div className="divider my-2" />
-            <p className="text-[10px] uppercase tracking-[0.14em] text-(--text-ghost)">Ações</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-(--text-ghost)">Ações</p>
             <div className="flex flex-wrap gap-2">
               <a
                 href={`${base}/flows/${selected.flow.id}/editor`}
@@ -532,7 +532,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled, ba
               )}
             </div>
             {selected.variant !== "plain" && (
-              <p className="text-[11px] text-(--text-ghost)">
+              <p className="text-sm text-(--text-ghost)">
                 Fluxos {selected.variant === "visual" ? "principal" : "black"} são fixos e não podem ser excluídos.
               </p>
             )}
@@ -592,7 +592,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled, ba
               onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
               className="input"
             />
-            <p className="text-(--text-muted) text-[11px] mt-1">
+            <p className="text-(--text-muted) text-sm mt-1">
               Produtos e conjuntos do fluxo serão recriados neste bot.
             </p>
           </div>
@@ -670,7 +670,7 @@ export function FlowList({ flows, visualFlow, blackFlow, botId, blackEnabled, ba
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-[11px] uppercase tracking-wider text-(--text-muted)">{label}</span>
+      <span className="text-sm uppercase tracking-wider text-(--text-muted)">{label}</span>
       <span className={`text-sm text-foreground text-right truncate ${mono ? "font-mono stat-value text-xs" : ""}`}>{value}</span>
     </div>
   );
@@ -680,7 +680,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent: 
   return (
     <div className="px-3 py-2.5 rounded-lg bg-white/3 border border-(--border-subtle)">
       <p className="stat-value text-lg num-pop" style={{ color: accent }}>{value}</p>
-      <p className="text-[10px] uppercase tracking-wider text-(--text-ghost)">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-(--text-ghost)">{label}</p>
     </div>
   );
 }

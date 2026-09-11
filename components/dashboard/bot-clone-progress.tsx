@@ -124,15 +124,15 @@ export function BotCloneProgress({ initial }: { initial: Job }) {
       <div className="grid grid-cols-3 gap-2">
         <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <p className="stat-value text-xl text-foreground">{job.nodes_discovered}</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">nós descobertos</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">nós descobertos</p>
         </div>
         <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <p className="stat-value text-xl text-(--text-secondary)">{job.nodes_skipped}</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">pulados</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">pulados</p>
         </div>
         <div className="px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle)">
           <p className="stat-value text-xl text-(--text-secondary)">{job.messages_captured}</p>
-          <p className="text-[11px] text-(--text-muted) mt-0.5">mensagens</p>
+          <p className="text-sm text-(--text-muted) mt-0.5">mensagens</p>
         </div>
       </div>
 

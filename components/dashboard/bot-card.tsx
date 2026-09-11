@@ -62,7 +62,7 @@ export function BotCard({ bot }: BotCardProps) {
             <h3 className="text-foreground font-semibold text-sm group-hover:text-(--accent-hover) transition-colors tracking-tight">
               @{bot.bot_username}
             </h3>
-            <span className="text-(--text-ghost) text-[10px] font-mono stat-value">
+            <span className="text-(--text-ghost) text-xs font-mono stat-value">
               {bot.id.slice(0, 8)}...
             </span>
           </div>
@@ -77,22 +77,22 @@ export function BotCard({ bot }: BotCardProps) {
       <div className="flex gap-4 mb-5">
         <div className="flex items-center gap-2">
           <div className={`status-dot ${hasTracking ? "active" : "inactive"}`} />
-          <span className="text-(--text-muted) text-[11px] font-medium">Tracking</span>
+          <span className="text-(--text-muted) text-sm font-medium">Tracking</span>
         </div>
         <div className="flex items-center gap-2">
           <div className={`status-dot ${hasPayment ? "active" : "inactive"}`} />
-          <span className="text-(--text-muted) text-[11px] font-medium">Pagamento</span>
+          <span className="text-(--text-muted) text-sm font-medium">Pagamento</span>
         </div>
       </div>
 
       {/* Tracking URL */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0 bg-white/3 border border-(--border-subtle) rounded-lg px-3 py-2 text-[11px] text-(--text-muted) font-mono truncate" style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.2)" }}>
+        <div className="flex-1 min-w-0 bg-white/3 border border-(--border-subtle) rounded-lg px-3 py-2 text-sm text-(--text-muted) font-mono truncate" style={{ boxShadow: "inset 0 1px 3px rgba(0,0,0,0.2)" }}>
           /t?bot={bot.id.slice(0, 12)}...
         </div>
         <button
           onClick={handleCopyTracking}
-          className={`shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all ${
+          className={`shrink-0 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
             copied
               ? "bg-(--accent-muted) text-(--accent) border border-(--accent)/20"
               : "bg-white/4 text-(--text-secondary) border border-(--border-subtle) hover:bg-white/8 hover:text-foreground hover:border-(--border-default)"
@@ -104,7 +104,7 @@ export function BotCard({ bot }: BotCardProps) {
         <button
           onClick={handleCopyParams}
           title="Copiar só os parâmetros (bot, UTMs, slug) pro anúncio"
-          className={`shrink-0 px-3 py-2 rounded-lg text-[11px] font-semibold transition-all ${
+          className={`shrink-0 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
             copiedParams
               ? "bg-(--cyan)/10 text-(--cyan) border border-(--cyan)/20"
               : "bg-white/4 text-(--text-secondary) border border-(--border-subtle) hover:bg-white/8 hover:text-foreground hover:border-(--border-default)"

@@ -183,7 +183,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
           </div>
           <div className="min-w-0">
             <p className="text-foreground font-medium truncate">{b.ghost_name || b.name}</p>
-            <p className="text-[10px] text-(--text-ghost) font-mono stat-value truncate">{b.id}</p>
+            <p className="text-xs text-(--text-ghost) font-mono stat-value truncate">{b.id}</p>
           </div>
         </div>
       ),
@@ -257,7 +257,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
           <div>
             <label className="input-label">Mensagem no Telegram</label>
             <textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escolha um produto para comprar:" rows={3} className="input text-sm w-full resize-y" />
-            <p className="text-(--text-ghost) text-[10px] mt-1.5">Texto que aparece antes dos produtos no Telegram</p>
+            <p className="text-(--text-ghost) text-xs mt-1.5">Texto que aparece antes dos produtos no Telegram</p>
           </div>
           <div className="flex gap-2 pt-1">
             <button onClick={handleCreate} disabled={isPending || !newName.trim()} className="btn-primary">Criar</button>
@@ -285,7 +285,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
           <div className="space-y-6">
             {/* Detalhes — mensagem do Telegram */}
             <section>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-(--text-ghost) mb-3">Detalhes</p>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-(--text-ghost) mb-3">Detalhes</p>
               <div className="card p-4 relative">
                 {editMsgBundle === selected.id ? (
                   <div className="space-y-2">
@@ -335,11 +335,11 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
             {/* Produtos do conjunto */}
             <section>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-(--text-ghost)">Produtos do conjunto</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-(--text-ghost)">Produtos do conjunto</p>
                 {!addingProduct && (
                   <button
                     onClick={() => setAddingProduct(true)}
-                    className="px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all"
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg transition-all"
                     style={{ background: "color-mix(in srgb, var(--purple) 10%, transparent)", color: "var(--purple)" }}
                   >
                     + Adicionar Produto
@@ -355,7 +355,7 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
                     .map((item) => (
                       <div key={item.id} className="flex items-center justify-between rounded-xl px-4 py-3 transition-colors" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border-subtle)" }}>
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold stat-value shrink-0" style={{ background: "color-mix(in srgb, var(--purple) 12%, transparent)", color: "var(--purple)" }}>
+                          <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold stat-value shrink-0" style={{ background: "color-mix(in srgb, var(--purple) 12%, transparent)", color: "var(--purple)" }}>
                             {item.sort_order + 1}
                           </span>
                           <span className="text-foreground text-sm font-medium truncate">{item.products.ghost_name || item.products.name}</span>
@@ -415,11 +415,11 @@ export function BundleList({ botId, initialBundles, products, isAdmin = false }:
             {/* Avançado — Fantasma (admin) */}
             {isAdmin && (
               <section>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-(--text-ghost) mb-3">Avançado</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-(--text-ghost) mb-3">Avançado</p>
                 <div className="p-3 rounded-lg border border-red-500/20 bg-red-500/5">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="badge badge-error text-[10px]">FANTASMA</span>
-                    <span className="text-(--text-muted) text-[10px]">Enviado pro Facebook (ViewContent) no lugar do nome real. Fallback pro nome se vazio.</span>
+                    <span className="badge badge-error text-xs">FANTASMA</span>
+                    <span className="text-(--text-muted) text-xs">Enviado pro Facebook (ViewContent) no lugar do nome real. Fallback pro nome se vazio.</span>
                   </div>
                   {editGhostBundle === selected.id ? (
                     <div className="flex items-center gap-2">

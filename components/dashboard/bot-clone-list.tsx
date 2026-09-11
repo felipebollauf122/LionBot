@@ -47,7 +47,7 @@ export function BotCloneList({
               </span>
               <span className={`badge ${meta.badge} shrink-0`}>{meta.label}</span>
             </div>
-            <div className="text-[11px] text-(--text-ghost) mt-1.5">
+            <div className="text-sm text-(--text-ghost) mt-1.5">
               {c.nodes_discovered} nó{c.nodes_discovered === 1 ? "" : "s"} descoberto
               {c.nodes_discovered === 1 ? "" : "s"}
             </div>

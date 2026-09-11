@@ -74,7 +74,7 @@ export function AdminViewSwitcher({ users, currentView }: { users: ViewableUser[
                   className={`w-full text-left px-3 py-2 rounded-lg transition-colors hover:bg-white/5 ${u.id === currentView ? "bg-(--accent)/10" : ""}`}
                 >
                   <div className="text-sm text-foreground truncate">{u.name}</div>
-                  <div className="text-[11px] text-(--text-muted) truncate font-mono">{u.email}</div>
+                  <div className="text-sm text-(--text-muted) truncate font-mono">{u.email}</div>
                 </button>
               ))
             )}

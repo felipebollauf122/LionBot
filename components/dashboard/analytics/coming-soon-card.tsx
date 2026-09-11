@@ -28,7 +28,7 @@ export function ComingSoonCard({ title, subtitle, icon, note, className }: Comin
           )}
           <div className="min-w-0">
             <h3 className="text-(--text-secondary) font-semibold text-sm tracking-tight truncate">{title}</h3>
-            {subtitle && <p className="text-[10px] uppercase tracking-[0.12em] text-(--text-ghost)">{subtitle}</p>}
+            {subtitle && <p className="text-xs uppercase tracking-[0.12em] text-(--text-ghost)">{subtitle}</p>}
           </div>
         </div>
         <span className="badge badge-purple shrink-0">Em breve</span>
@@ -37,7 +37,7 @@ export function ComingSoonCard({ title, subtitle, icon, note, className }: Comin
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-ghost)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2">
           <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
         </svg>
-        <p className="text-[11px] text-(--text-muted) max-w-[200px]">{note ?? "Disponível em breve com novos dados."}</p>
+        <p className="text-sm text-(--text-muted) max-w-[200px]">{note ?? "Disponível em breve com novos dados."}</p>
       </div>
     </div>
   );

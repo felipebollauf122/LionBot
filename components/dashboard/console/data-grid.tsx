@@ -87,8 +87,8 @@ export function RowGroupHeader({ label, count, accent = "magenta" }: { label: st
   return (
     <div className="flex items-center gap-2.5 px-3 pt-5 pb-2">
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
-      <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color }}>{label}</span>
-      {typeof count === "number" && <span className="text-[10px] text-(--text-ghost) stat-value">({count})</span>}
+      <span className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color }}>{label}</span>
+      {typeof count === "number" && <span className="text-xs text-(--text-ghost) stat-value">({count})</span>}
       <div className="flex-1 h-px bg-gradient-to-r from-(--border-default) to-transparent ml-2" />
     </div>
   );

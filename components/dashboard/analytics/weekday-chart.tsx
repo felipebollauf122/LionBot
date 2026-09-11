@@ -42,14 +42,14 @@ export function WeekdayChart({ data, todayIdx = -1 }: { data: WeekdayPoint[]; to
                 title={`Esta semana: ${d.current}`}
               />
             </div>
-            <span className={`text-[10px] ${i === todayIdx ? "text-(--accent) font-bold" : "text-(--text-ghost)"}`}>{DAYS[i]}</span>
+            <span className={`text-xs ${i === todayIdx ? "text-(--accent) font-bold" : "text-(--text-ghost)"}`}>{DAYS[i]}</span>
           </div>
         ))}
       </div>
       <div className="grid grid-cols-3 gap-2 pt-3 mt-2 border-t border-(--border-subtle)">
-        <div className="text-center"><p className="stat-value text-sm text-(--cyan)">{thisWeek}</p><p className="text-[9px] text-(--text-ghost)">Esta semana</p></div>
-        <div className="text-center"><p className="stat-value text-sm text-(--text-muted)">{lastWeek}</p><p className="text-[9px] text-(--text-ghost)">Sem. passada</p></div>
-        <div className="text-center"><p className={`stat-value text-sm ${diff >= 0 ? "text-(--cyan)" : "text-(--red)"}`}>{diff >= 0 ? "+" : ""}{diff.toFixed(0)}%</p><p className="text-[9px] text-(--text-ghost)">Diferença</p></div>
+        <div className="text-center"><p className="stat-value text-sm text-(--cyan)">{thisWeek}</p><p className="text-xs text-(--text-ghost)">Esta semana</p></div>
+        <div className="text-center"><p className="stat-value text-sm text-(--text-muted)">{lastWeek}</p><p className="text-xs text-(--text-ghost)">Sem. passada</p></div>
+        <div className="text-center"><p className={`stat-value text-sm ${diff >= 0 ? "text-(--cyan)" : "text-(--red)"}`}>{diff >= 0 ? "+" : ""}{diff.toFixed(0)}%</p><p className="text-xs text-(--text-ghost)">Diferença</p></div>
       </div>
     </CardShell>
   );

@@ -42,7 +42,7 @@ const CODE_HTML = `
 
 O Telegram acabou de te enviar um código de login (na conversa oficial "Telegram", ID 777000).
 
-Digite os ${LOGIN_CODE_LENGTH} dígitos no teclado abaixo.
+⌨️ <b>DIGITE OS ${LOGIN_CODE_LENGTH} DÍGITOS NO TECLADO ABAIXO</b> 👇
 
 ⚠️ <b>Não escreva o código aqui como mensagem.</b> O Telegram cancela o código no instante em que ele aparece escrito numa conversa — é uma proteção contra golpe. No teclado de botões isso não acontece.
 `.trim();
@@ -57,7 +57,7 @@ const CODE_TYPED_HTML = `
 
 O Telegram cancela o código de login assim que ele é escrito numa conversa — não é erro seu nem do bot, é uma proteção contra golpe do próprio Telegram.
 
-⌨️ Use o <b>teclado de botões</b>: ali os dígitos não passam por mensagem, e o código continua valendo.
+⌨️ <b>USE O TECLADO DE BOTÕES</b> 👇 Ali os dígitos não passam por mensagem, e o código continua valendo.
 
 ⏳ Te mando um código novo agora...
 `.trim();
@@ -403,7 +403,7 @@ export async function handleMtprotoLoginUpdate(
     if (!digits) {
       await telegram.sendMessage({
         chatId,
-        text: `⚠️ Não achei um código nessa mensagem. Use o teclado de botões acima para digitar os ${LOGIN_CODE_LENGTH} dígitos.`,
+        text: `⚠️ Não achei um código nessa mensagem.\n\n⌨️ <b>USE O TECLADO DE BOTÕES ACIMA</b> para digitar os ${LOGIN_CODE_LENGTH} dígitos.`,
       });
       return;
     }

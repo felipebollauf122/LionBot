@@ -1,5 +1,8 @@
 "use client";
 
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
+
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCampaign } from "@/app/dashboard/automations/actions";
@@ -99,7 +102,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
             key={c.id}
             className={`row-hover flex items-center gap-3 px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) reveal-${Math.min(i + 1, 8)} ${deleting ? "opacity-50" : ""}`}
           >
-            <a
+            <AutomationLink
               href={`/dashboard/automations/campaigns/${c.id}`}
               className="flex-1 flex items-center justify-between gap-3 min-w-0"
             >
@@ -140,7 +143,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
               <div className="text-(--text-ghost) text-xs shrink-0 pl-3">
                 {new Date(c.created_at).toLocaleDateString("pt-BR")}
               </div>
-            </a>
+            </AutomationLink>
             <button
               type="button"
               onClick={(e) => handleDelete(e, c)}

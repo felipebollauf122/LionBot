@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
@@ -26,12 +27,12 @@ export default async function ClonePage({
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
-      <a
-        href="/dashboard/automations"
+      <AutomationLink
+        href="/dashboard/automations/clones"
         className="text-(--text-muted) hover:text-foreground text-sm transition-colors"
       >
         ← Voltar
-      </a>
+      </AutomationLink>
       <header className="mt-3 mb-6 reveal flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
@@ -44,12 +45,12 @@ export default async function ClonePage({
         {/* Clone no modo rascunho não publica: ele enche uma campanha, que é
             editada e agendada na tela dela. */}
         {job.mode === "draft" && job.draft_campaign_id && (
-          <a
+          <AutomationLink
             href={`/dashboard/automations/scheduled/${job.draft_campaign_id}`}
             className="btn-primary text-xs px-4 py-2"
           >
             Abrir rascunho
-          </a>
+          </AutomationLink>
         )}
       </header>
       <CardShell

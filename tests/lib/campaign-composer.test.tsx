@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { CampaignComposer } from "@/components/dashboard/campaigns/campaign-composer";
 import type { ScheduledCampaign, ScheduledMessage } from "@/lib/types/database";
 
@@ -100,6 +100,15 @@ function horariosNaTela(container: HTMLElement): string[] {
 }
 
 describe("CampaignComposer ancora a prévia na última postagem da sequência", () => {
+  it("separa mensagens da configuração sem perder o acesso ao agendamento", () => {
+    render(<CampaignComposer campaign={campanha()} messages={[]} />);
+    const settings = screen.getByRole("button", { name: "Destino e agendamento" });
+    expect(settings).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Mensagens", exact: true })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(settings);
+    expect(settings).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Agendamento", { exact: true })).toBeInTheDocument();
+  });
   it("desenha os horários REAIS agendados, não o relógio da máquina no momento do render", () => {
     // As três mensagens têm `scheduled_at` real, longe de "hoje" (o teste roda
     // em 2026; isto é 2027) de propósito: se campaign-composer.tsx trocar

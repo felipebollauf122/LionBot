@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createCloneJob, launchClone } from "@/app/dashboard/automations/clones/actions";
+import { automationHref } from "@/lib/automations/navigation";
 
 const TOGGLES = [
   { key: "copyReplies", label: "Respostas encadeadas", hint: "Mensagem que responde outra continua apontando para a cópia certa." },
@@ -340,14 +341,14 @@ export function CloneForm({
             // (inclusive last_error) e pode tentar "Retomar", em vez de travar
             // o formulario. Isso vale tambem pro rascunho: launchClone e o que
             // dispara o scraping que preenche a campanha.
-            await launchClone(res.cloneJobId);
+            const launched = await launchClone(res.cloneJobId);
             // No modo rascunho o destino do usuario e a tela da campanha: e la
             // que ele edita, agenda e publica. Sem campanha (modo live), a tela
             // de progresso do clone continua sendo o lugar certo.
             router.push(
-              res.draftCampaignId
+              automationHref(launched.ok && res.draftCampaignId
                 ? `/dashboard/automations/scheduled/${res.draftCampaignId}`
-                : `/dashboard/automations/clones/${res.cloneJobId}`,
+                : `/dashboard/automations/clones/${res.cloneJobId}`, actingTenantId),
             );
           })
         }

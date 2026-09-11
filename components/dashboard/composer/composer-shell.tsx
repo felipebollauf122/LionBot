@@ -79,6 +79,7 @@ export function ComposerShell({
   now,
   emptyEditorHint = "Selecione ou crie uma mensagem para editar seus detalhes.",
   busy = false,
+  focused = false,
 }: {
   actions: ComposerActions;
   messages: ComposerMessageRow[];
@@ -121,6 +122,8 @@ export function ComposerShell({
    * dele por aqui.
    */
   busy?: boolean;
+  /** Automations separate campaign settings from the message workspace. */
+  focused?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [erroMensagem, setErroMensagem] = useState<string | null>(null);
@@ -155,7 +158,7 @@ export function ComposerShell({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-56px)] md:h-[calc(100vh-theme(spacing.14))]">
+    <div className={`flex flex-col ${focused ? "automation-composer" : "h-[calc(100dvh-56px)] md:h-[calc(100vh-theme(spacing.14))]"}`}>
       <header className="shrink-0 p-4 md:px-6 md:py-4 border-b border-(--border-subtle) flex flex-wrap items-center justify-between gap-3 bg-(--bg-body) z-10">
         <div>
           <h1 className="text-xl font-semibold text-(--text-primary)">{title}</h1>
@@ -168,34 +171,36 @@ export function ComposerShell({
       </header>
 
       {/* Navegação Mobile */}
-      <div className="md:hidden flex p-2 bg-(--bg-overlay) border-b border-(--border-subtle) shrink-0">
+      <div className={`${focused ? "flex" : "md:hidden flex"} gap-2 p-2 bg-(--bg-overlay) border-b border-(--border-subtle) shrink-0`} role="group" aria-label="Área do editor">
         <button
           onClick={() => setMobileTab("canal")}
+          aria-pressed={mobileTab === "canal"}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${mobileTab === "canal" ? "bg-(--accent) text-(--on-accent)" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
         >
-          {leftColumnLabel}
+          {focused ? "Destino e agendamento" : leftColumnLabel}
         </button>
         <button
           onClick={() => setMobileTab("chat")}
+          aria-pressed={mobileTab === "chat"}
           className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${mobileTab === "chat" ? "bg-(--accent) text-(--on-accent)" : "text-(--text-secondary) hover:text-(--text-primary)"}`}
         >
-          Chat
+          {focused ? "Mensagens" : "Chat"}
         </button>
       </div>
 
+      {notice && <div className="shrink-0 px-4 pt-3 md:px-6">{notice}</div>}
       <div className="flex-1 min-h-0 relative">
         <div className="absolute inset-0 p-4 md:p-6 overflow-hidden">
-          {notice}
 
-          <div className="h-full grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)_340px] xl:grid-cols-[320px_minmax(0,1fr)_400px] gap-4 md:gap-6 relative">
+          <div className={`h-full grid grid-cols-1 ${focused ? (mobileTab === "chat" ? "xl:grid-cols-[minmax(0,1fr)_360px]" : "") : "md:grid-cols-[280px_minmax(0,1fr)_340px] xl:grid-cols-[320px_minmax(0,1fr)_400px]"} gap-4 md:gap-6 relative`}>
 
             {/* Coluna 1: Canal */}
-            <div className={`h-full overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-10 ${mobileTab === "canal" ? "block" : "hidden md:block"}`}>
+            <div className={`h-full overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-10 ${focused ? (mobileTab === "canal" ? "block w-full max-w-3xl mx-auto" : "hidden") : (mobileTab === "canal" ? "block" : "hidden md:block")}`}>
               {leftColumn}
             </div>
 
             {/* Coluna 2: Preview do Chat */}
-            <div className={`h-full flex-col items-center overflow-hidden pb-10 ${mobileTab === "chat" ? "flex" : "hidden md:flex"}`}>
+            <div className={`h-full min-w-0 flex-col items-center overflow-hidden pb-10 ${mobileTab === "chat" ? "flex" : focused ? "hidden" : "hidden md:flex"}`}>
               <FeedPreview
                 channel={channel}
                 messages={messages}
@@ -279,14 +284,14 @@ export function ComposerShell({
 
             {/* Coluna 3: Editor (Mobile como overlay fixo, Desktop como 3ª coluna) */}
             <AnimatePresence mode="popLayout">
-              {rascunho ? (
+              {focused && mobileTab === "canal" ? null : rascunho ? (
                 <motion.div
                   key="editor"
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 20 }}
                   transition={{ type: "spring", bounce: 0.15, duration: 0.4 }}
-                  className="absolute inset-0 z-50 bg-(--bg-body)/95 backdrop-blur-md md:static md:bg-transparent md:z-auto h-full overflow-y-auto pl-2 custom-scrollbar pb-10"
+                  className={`absolute inset-0 z-50 bg-(--bg-body) ${focused ? "xl:static xl:bg-transparent xl:z-auto" : "md:static md:bg-transparent md:z-auto"} h-full overflow-y-auto pl-2 custom-scrollbar pb-10`}
                 >
                   <MessageEditor
                     value={rascunho}
@@ -331,7 +336,7 @@ export function ComposerShell({
                       setSelecionada(null);
                       setRascunho(null);
                     }}
-                    className="md:hidden mt-6 w-full rounded-lg bg-zinc-800 py-3 text-white font-medium"
+                    className={`${focused ? "xl:hidden" : "md:hidden"} mt-6 w-full rounded-lg bg-(--bg-overlay) py-3 text-foreground font-medium`}
                   >
                     Fechar Editor
                   </button>
@@ -342,7 +347,7 @@ export function ComposerShell({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="hidden md:flex items-center justify-center rounded-xl border border-dashed border-(--border-subtle) p-8 text-center text-sm text-(--text-muted) w-full h-fit py-20 bg-(--bg-input)/50"
+                  className={`hidden ${focused ? "xl:flex" : "md:flex"} items-center justify-center rounded-xl border border-dashed border-(--border-subtle) p-8 text-center text-sm text-(--text-muted) w-full h-fit py-20 bg-(--bg-input)/50`}
                 >
                   {emptyEditorHint}
                 </motion.aside>

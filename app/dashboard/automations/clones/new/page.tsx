@@ -7,6 +7,10 @@ import { listEligibleDestAccounts } from "@/app/dashboard/automations/clones/act
 import { listDestinationDialogs } from "@/app/dashboard/automations/scheduled/actions";
 import { CardShell } from "@/components/dashboard/analytics/card-shell";
 import { icons } from "@/components/dashboard/analytics/icons";
+import Link from "next/link";
+import { AutomationSectionPage } from "@/components/dashboard/automations/section-page";
+import { getAutomationPageContext } from "@/lib/automations/page-context";
+import { automationHref } from "@/lib/automations/navigation";
 
 export default async function NewClonePage({
   searchParams,
@@ -15,7 +19,35 @@ export default async function NewClonePage({
 }) {
   if (!(await canAccessAutomations())) notFound();
   const { dialogId, view } = await searchParams;
-  if (!dialogId) notFound();
+  if (!dialogId) {
+    const context = await getAutomationPageContext(searchParams);
+    let query = context.supabase.from("mtproto_accounts")
+      .select("id, display_name, phone_number")
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+    if (context.scope.tenantId) query = query.eq("tenant_id", context.scope.tenantId);
+    const { data: accounts, error } = await query;
+    if (error) throw new Error("Não foi possível carregar as contas.");
+    return (
+      <AutomationSectionPage title="Escolha a origem do clone" description="Abra uma conta para escolher o canal ou grupo que deseja copiar." context={context}>
+        {accounts?.length ? (
+          <div className="card max-w-3xl divide-y divide-(--border-default) px-5">
+            {accounts.map((account) => (
+              <Link key={account.id} href={context.href(`/dashboard/automations/accounts/${account.id}/dialogs`)} className="flex flex-wrap items-center justify-between gap-3 py-5 text-sm text-foreground hover:text-(--accent)">
+                <span>{account.display_name || account.phone_number}</span>
+                <span className="text-(--text-secondary)">Escolher canal ou grupo</span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="card max-w-2xl space-y-4 p-6">
+            <p className="text-sm text-(--text-secondary)">Conecte uma conta do Telegram e sincronize seu conteúdo para escolher a origem.</p>
+            <Link href={context.href("/dashboard/automations/accounts")} className="btn-primary">Conectar conta Telegram</Link>
+          </div>
+        )}
+      </AutomationSectionPage>
+    );
+  }
 
   const supabase = await createClient();
   // resolveActingTenantId reconfere admin no server — ?view= de um não-admin é ignorado.
@@ -42,9 +74,9 @@ export default async function NewClonePage({
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
-      <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
-        ← Voltar
-      </a>
+      <Link href={automationHref("/dashboard/automations/clones", view)} className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
+        Voltar para clonagem de canais
+      </Link>
       <header className="mt-3 mb-6 reveal">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Novo clone</h1>
         <p className="text-(--text-secondary) text-sm mt-1">

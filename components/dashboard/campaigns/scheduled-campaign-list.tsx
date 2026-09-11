@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: "RASCUNHO", badge: "badge-inactive" },
   ai_processing: { label: "IA", badge: "badge-info" },
@@ -50,7 +51,7 @@ export function ScheduledCampaignList({
             : 0;
 
         return (
-          <a
+          <AutomationLink
             key={c.id}
             href={`/dashboard/automations/scheduled/${c.id}`}
             className={`row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) hover:border-(--border-default) transition-colors`}
@@ -65,11 +66,11 @@ export function ScheduledCampaignList({
             <div className="flex items-center gap-3 mt-2">
               <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
                 <div
-                  className="h-full rounded-full"
+                  className="h-full origin-left rounded-full"
                   style={{
-                    width: `${pct}%`,
+                    transform: `scaleX(${pct / 100})`,
                     background: "linear-gradient(90deg, var(--accent), var(--cyan))",
-                    transition: "width 1s cubic-bezier(0.16,1,0.3,1)",
+                    transition: "transform 250ms ease-out",
                   }}
                 />
               </div>
@@ -82,7 +83,7 @@ export function ScheduledCampaignList({
                 {c.failed_count} falhou(ram)
               </div>
             )}
-          </a>
+          </AutomationLink>
         );
       })}
     </div>

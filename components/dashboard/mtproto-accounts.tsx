@@ -1,5 +1,8 @@
 "use client";
 
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
+
+
 import { useState, useTransition, useEffect } from "react";
 import {
   startAddAccount,
@@ -162,13 +165,13 @@ export function MtprotoAccounts({
           <div className="flex flex-wrap gap-2 mt-1">
             {a.status === "active" && (
               <>
-                <a
+                <AutomationLink
                   href={`/dashboard/automations/accounts/${a.id}/inbox`}
                   className="btn-ghost text-xs px-3 py-1.5"
                   title="Mensagens recebidas do Telegram oficial (códigos de login, alertas)"
                 >
                   Mensagens
-                </a>
+                </AutomationLink>
                 <button
                   onClick={() =>
                     startTransition(async () => {
@@ -187,12 +190,12 @@ export function MtprotoAccounts({
                 </button>
               </>
             )}
-            <a
+            <AutomationLink
               href={`/dashboard/automations/accounts/${a.id}/dialogs`}
               className="btn-ghost text-xs px-3 py-1.5"
             >
               Ver conteúdo
-            </a>
+            </AutomationLink>
             <button
               onClick={() =>
                 startTransition(() =>

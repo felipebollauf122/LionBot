@@ -44,8 +44,8 @@ export function AiCard({
 
       {aiStatus === "processing" && (
         <p className="text-(--text-muted) text-xs">
-          A IA está tratando o conteúdo. Você já pode revisar — as mensagens vão
-          se atualizando conforme ela termina cada lote.
+          A IA está tratando o conteúdo. As mensagens atualizam automaticamente;
+          aguarde a conclusão para editar e publicar.
         </p>
       )}
 

@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 import { MtprotoCampaignForm } from "@/components/dashboard/mtproto-campaign-form";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 import { resolveActingTenantId } from "@/lib/actions/admin-actions";
@@ -15,9 +16,9 @@ export default async function NewCampaignPage({ searchParams }: { searchParams: 
   const actingTenantId = await resolveActingTenantId(requestedView);
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
-      <a href="/dashboard/automations" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
+      <AutomationLink href="/dashboard/automations/campaigns" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
         ← Voltar
-      </a>
+      </AutomationLink>
       <header className="mt-3 mb-6 reveal">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Nova campanha</h1>
         <p className="text-(--text-secondary) text-sm mt-1">

@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
@@ -26,12 +27,12 @@ export default async function BotClonePage({
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
-      <a
-        href="/dashboard/automations"
+      <AutomationLink
+        href="/dashboard/automations/botclones"
         className="text-(--text-muted) hover:text-foreground text-sm transition-colors"
       >
         ← Voltar
-      </a>
+      </AutomationLink>
       <header className="mt-3 mb-6 reveal">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
           Progresso da clonagem

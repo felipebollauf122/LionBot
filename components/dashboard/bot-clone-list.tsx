@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   draft: { label: "RASCUNHO", badge: "badge-inactive" },
   exploring: { label: "EXPLORANDO", badge: "badge-info" },
@@ -26,7 +27,7 @@ export function BotCloneList({
   if (clones.length === 0) {
     return (
       <div className="py-8 text-center text-(--text-ghost) text-xs">
-        Nenhuma clonagem de bot ainda — clique em &quot;Novo&quot; e informe o @username do bot-alvo.
+        Nenhuma clonagem ainda. Use “Nova clonagem de bot” e informe o usuário do bot de origem.
       </div>
     );
   }
@@ -35,7 +36,7 @@ export function BotCloneList({
       {clones.map((c, i) => {
         const meta = STATUS_MAP[c.status] ?? { label: c.status.toUpperCase(), badge: "badge-inactive" };
         return (
-          <a
+          <AutomationLink
             key={c.id}
             href={`/dashboard/automations/botclones/${c.id}`}
             className={`row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) hover:border-(--border-default) transition-colors`}
@@ -50,7 +51,7 @@ export function BotCloneList({
               {c.nodes_discovered} nó{c.nodes_discovered === 1 ? "" : "s"} descoberto
               {c.nodes_discovered === 1 ? "" : "s"}
             </div>
-          </a>
+          </AutomationLink>
         );
       })}
     </div>

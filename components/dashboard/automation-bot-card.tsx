@@ -66,7 +66,11 @@ export function AutomationBotCard({
         desligado</strong> e <strong className="text-foreground">allow groups ligado</strong>,
         senão a promoção a admin falha.
       </p>
+      <label htmlFor="automation-bot-token" className="input-label">Token do bot</label>
       <input
+        id="automation-bot-token"
+        type="password"
+        autoComplete="new-password"
         value={token}
         onChange={(e) => setToken(e.target.value)}
         placeholder="123456789:AAF-xxxxxxxxxxxxxxxxxxxxx"
@@ -82,7 +86,7 @@ export function AutomationBotCard({
             else setToken("");
           })
         }
-        disabled={pending}
+        disabled={pending || !token.trim()}
         className="btn-primary"
       >
         {pending ? "Validando..." : "Salvar bot"}

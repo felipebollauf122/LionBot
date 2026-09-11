@@ -112,7 +112,7 @@ export async function saveAutomationBot(
     );
     if (error) return { ok: false, error: `Não deu pra salvar o bot: ${error.message}` };
 
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true, username: me.username };
   });
 }
@@ -123,7 +123,7 @@ export async function removeAutomationBot(actingTenantId?: string): Promise<Acti
     const supabase = await createClient();
     const { error } = await supabase.from("automation_bots").delete().eq("tenant_id", tenantId);
     if (error) return { ok: false, error: `Não deu pra remover o bot: ${error.message}` };
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true };
   });
 }
@@ -364,7 +364,7 @@ export async function createCloneJob(input: {
       }
     }
 
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true, cloneJobId: job.id, draftCampaignId: draftCampaignId ?? undefined };
   });
 }
@@ -395,7 +395,7 @@ export async function launchClone(cloneJobId: string): Promise<ActionResult> {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
 
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     revalidatePath(`/dashboard/automations/clones/${cloneJobId}`);
     return { ok: true };
   });
@@ -433,7 +433,7 @@ export async function deleteClone(cloneJobId: string): Promise<ActionResult> {
     if (!data || data.length === 0) {
       return { ok: false, error: "Clone não encontrado (ou sem permissão)." };
     }
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true };
   });
 }
@@ -523,7 +523,7 @@ export async function clearAccountRestriction(accountId: string): Promise<Action
     if (!data || data.length === 0) {
       return { ok: false, error: "Conta não encontrada (ou sem permissão)." };
     }
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true };
   });
 }

@@ -32,6 +32,7 @@ export function ScheduleCard({
   defaultDelaySeconds,
   hasDestination,
   messages,
+  importIncomplete = false,
 }: {
   campaignId: string;
   status: ScheduledCampaignStatus;
@@ -39,6 +40,7 @@ export function ScheduleCard({
   defaultDelaySeconds: number;
   hasDestination: boolean;
   messages: Array<Pick<ScheduledMessage, "id" | "delay_seconds" | "ai_discarded" | "status">>;
+  importIncomplete?: boolean;
 }) {
   const [inicio, setInicio] = useState(() => paraDatetimeLocal(startAt));
   const [delayMin, setDelayMin] = useState(Math.round(defaultDelaySeconds / 60));
@@ -77,7 +79,9 @@ export function ScheduleCard({
   // por conta própria (a tela não é a única porta), mas um botão que aceita
   // o clique pra devolver erro é pior que um botão que explica.
   const emTratamentoIa = status === "ai_processing";
-  const motivoDesabilitado = !hasDestination
+  const motivoDesabilitado = importIncomplete
+    ? "Conclua a importação do clone antes de publicar."
+    : !hasDestination
     ? "Escolha o canal de destino antes de publicar."
     : emTratamentoIa
       ? "A IA ainda está tratando esta campanha. Espere ela terminar pra publicar."
@@ -164,6 +168,7 @@ export function ScheduleCard({
       </div>
 
       {erro && <p className="text-(--red) text-xs">{erro}</p>}
+      {!jaRodando && motivoDesabilitado && <p className="text-sm text-(--text-secondary)">{motivoDesabilitado}</p>}
 
       {jaRodando ? (
         <button

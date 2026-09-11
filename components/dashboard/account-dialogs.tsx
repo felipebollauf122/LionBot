@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { listAccountDialogs, syncAccountDialogs } from "@/app/dashboard/automations/actions";
 import { isClonableKind } from "@/lib/mtproto/clone-kind";
+import Link from "next/link";
 
 type Dialog = {
   id: string;
@@ -41,6 +42,7 @@ export function AccountDialogs({
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<Dialog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   useEffect(() => {
@@ -49,6 +51,9 @@ export function AccountDialogs({
     listAccountDialogs(accountId)
       .then((data) => {
         if (alive) setRows(data);
+      })
+      .catch(() => {
+        if (alive) setError("Não foi possível carregar o conteúdo. Tente sincronizar a conta novamente.");
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -106,6 +111,7 @@ export function AccountDialogs({
       </div>
 
       <input
+        aria-label="Buscar canais, grupos, bots e contatos"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Buscar por nome ou @username"
@@ -113,7 +119,9 @@ export function AccountDialogs({
       />
 
       {loading && <p className="py-6 text-center text-(--text-ghost) text-xs">Carregando...</p>}
-      {!loading && visible.length === 0 && (
+      {error && <p role="alert" className="py-4 text-sm text-(--red)">{error}</p>}
+      {!hasBot && <p className="mb-4 text-sm text-(--text-secondary)">Para clonar, <Link href={`/dashboard/automations/companion?view=${ownerTenantId}`} className="text-(--accent) underline">configure o bot de publicação</Link>.</p>}
+      {!loading && !error && visible.length === 0 && (
         <p className="py-6 text-center text-(--text-ghost) text-xs">
           Nada aqui. Se a conta acabou de conectar, use &quot;Sincronizar agora&quot;.
         </p>
@@ -134,15 +142,15 @@ export function AccountDialogs({
             </div>
             {isClonableKind(d.kind) &&
               (hasBot ? (
-                <a
+                <Link
                   href={`/dashboard/automations/clones/new?dialogId=${d.id}&view=${ownerTenantId}`}
                   className="btn-primary text-xs px-3 py-1.5 shrink-0"
                 >
                   Clonar
-                </a>
+                </Link>
               ) : (
                 <span
-                  title="Cadastre o bot companheiro em Automações para poder clonar"
+                  title="Configure o bot na tela Bot de publicação para poder clonar"
                   className="shrink-0 px-3 py-1.5 rounded-lg border border-(--border-subtle) text-(--text-ghost) text-xs cursor-not-allowed"
                 >
                   Clonar

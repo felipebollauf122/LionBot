@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { automationHref } from "@/lib/automations/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { launchCampaign, pauseCampaign, deleteCampaign } from "@/app/dashboard/automations/actions";
 import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
@@ -62,6 +63,7 @@ export function MtprotoCampaignDetail({
   campaignId: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [campaign, setCampaign] = useState(initialCampaign);
   const [targets, setTargets] = useState<Target[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -131,7 +133,7 @@ export function MtprotoCampaignDetail({
               startTransition(async () => {
                 try {
                   await deleteCampaign(campaignId);
-                  router.push("/dashboard/automations");
+                  router.push(automationHref("/dashboard/automations/campaigns", searchParams.get("view")));
                   router.refresh();
                 } catch (err) {
                   alert(err instanceof Error ? err.message : "erro ao excluir");

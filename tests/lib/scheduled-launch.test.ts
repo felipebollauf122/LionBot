@@ -66,6 +66,32 @@ describe("launchScheduledCampaign — o que pode e o que não pode virar 'runnin
     vi.clearAllMocks();
   });
 
+  it.each(["draft", "running", "paused", "failed"])("recusa publicar antes da importação terminar: %s", async (status) => {
+    const { client, chamadas } = criarSupabase((ch) => {
+      if (ch.table === "clone_jobs") return { data: { status } };
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.op === "select") {
+        return { data: { ...CAMPANHA, source_clone_job_id: "clone-1" } };
+      }
+      return respostaPadrao("draft")(ch);
+    });
+    mockCreateClient.mockResolvedValue(client);
+    const result = await launchScheduledCampaign("camp-1", INICIO);
+    expect(result).toEqual({ ok: false, error: "Conclua a importação do clone antes de publicar." });
+    expect(chamadas.some((ch) => ch.op === "update")).toBe(false);
+  });
+
+  it("permite publicar depois de concluir a importação", async () => {
+    const { client } = criarSupabase((ch) => {
+      if (ch.table === "clone_jobs") return { data: { status: "completed" } };
+      if (ch.table === "mtproto_scheduled_campaigns" && ch.op === "select") {
+        return { data: { ...CAMPANHA, source_clone_job_id: "clone-1" } };
+      }
+      return respostaPadrao("draft")(ch);
+    });
+    mockCreateClient.mockResolvedValue(client);
+    expect((await launchScheduledCampaign("camp-1", INICIO)).ok).toBe(true);
+  });
+
   it("recusa publicar uma campanha em tratamento pela IA, e não escreve nada", async () => {
     const { client, chamadas } = criarSupabase(respostaPadrao("ai_processing"));
     mockCreateClient.mockResolvedValue(client);

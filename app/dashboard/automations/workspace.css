@@ -1,0 +1,26 @@
+.automation-workspace {
+  --text-secondary: color-mix(in srgb, var(--text-primary) 74%, var(--bg-surface));
+  --text-muted: color-mix(in srgb, var(--text-primary) 65%, var(--bg-surface));
+  --text-ghost: color-mix(in srgb, var(--text-primary) 60%, var(--bg-surface));
+  --bg-body: var(--bg-surface);
+  min-width: 0;
+}
+
+.automation-workspace :is(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.automation-workspace :is(h1, h2, h3) { overflow-wrap: anywhere; }
+.automation-workspace input::placeholder,
+.automation-workspace textarea::placeholder { color: var(--text-muted); }
+.automation-workspace :is(input, textarea) { caret-color: var(--accent); }
+.automation-workspace ::selection { background: var(--accent); color: var(--on-accent); }
+.automation-workspace .automation-composer { height: calc(100dvh - 190px); min-height: 560px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .automation-workspace *, .automation-workspace *::before, .automation-workspace *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

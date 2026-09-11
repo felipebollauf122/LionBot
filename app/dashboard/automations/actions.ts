@@ -69,7 +69,7 @@ export async function startAddAccount(
     .single();
   if (error) throw new Error(error.message);
   await enqueueJob({ kind: "auth.request-code", accountId: data.id, phoneNumber });
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
   return { accountId: data.id };
 }
 
@@ -88,7 +88,7 @@ export async function submitAuthCode(accountId: string, code: string): Promise<v
     phoneNumber: data.phone_number,
     code,
   });
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
 }
 
 export async function submitAuthPassword(
@@ -97,14 +97,14 @@ export async function submitAuthPassword(
 ): Promise<void> {
   await requireAutomationsAccess();
   await enqueueJob({ kind: "auth.submit-password", accountId, password });
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
 }
 
 export async function removeAccount(accountId: string): Promise<void> {
   await requireAutomationsAccess();
   const supabase = await createClient();
   await supabase.from("mtproto_accounts").delete().eq("id", accountId);
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
 }
 
 export type CreateCampaignResult =
@@ -195,7 +195,7 @@ export async function createCampaign(input: {
         }
       }
 
-      revalidatePath("/dashboard/automations");
+      revalidatePath("/dashboard/automations", "layout");
       return { ok: true, campaignId: campaign.id };
     }
 
@@ -265,7 +265,7 @@ export async function createCampaign(input: {
       if (tErr) return { ok: false, error: `Insert targets failed: ${tErr.message}` };
     }
 
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true, campaignId: campaign.id };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -287,7 +287,7 @@ export async function syncAccountDialogs(accountId: string): Promise<void> {
     .single();
   if (!account) throw new Error("Conta não encontrada");
   await enqueueJob({ kind: "account.sync-dialogs", accountId });
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
 }
 
 export async function listAccountDialogs(
@@ -361,7 +361,7 @@ export async function launchCampaign(campaignId: string): Promise<void> {
     .from("mtproto_campaigns")
     .update({ status: "running" })
     .eq("id", campaignId);
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
   revalidatePath(`/dashboard/automations/campaigns/${campaignId}`);
 }
 
@@ -443,7 +443,7 @@ export async function pauseCampaign(campaignId: string): Promise<void> {
     .from("mtproto_campaigns")
     .update({ status: "paused" })
     .eq("id", campaignId);
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
   revalidatePath(`/dashboard/automations/campaigns/${campaignId}`);
 }
 
@@ -461,5 +461,5 @@ export async function deleteCampaign(campaignId: string): Promise<void> {
     .delete()
     .eq("id", campaignId);
   if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
 }

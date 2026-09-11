@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
   running: { label: "RODANDO", badge: "badge-info" },
   waiting_flood: { label: "ESPERANDO", badge: "badge-info" },
@@ -25,7 +26,7 @@ export function CloneList({
   if (clones.length === 0) {
     return (
       <div className="py-8 text-center text-(--text-ghost) text-xs">
-        Nenhum clone ainda — abra &quot;Ver conteúdo&quot; numa conta e clique em Clonar.
+        Nenhum clone ainda. Use “Escolher canal de origem” para começar.
       </div>
     );
   }
@@ -40,7 +41,7 @@ export function CloneList({
               ? 100
               : 0;
         return (
-          <a
+          <AutomationLink
             key={c.id}
             href={`/dashboard/automations/clones/${c.id}`}
             className={`row-hover reveal-${Math.min(i + 1, 8)} block px-3 py-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) hover:border-(--border-default) transition-colors`}
@@ -67,7 +68,7 @@ export function CloneList({
                 {c.copied_count} copiadas
               </span>
             </div>
-          </a>
+          </AutomationLink>
         );
       })}
     </div>

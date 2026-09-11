@@ -6,33 +6,16 @@ import { ChannelMonitorsPanel } from "@/components/dashboard/channel-monitors-pa
 
 export default async function ChannelMonitorsPage() {
   if (!(await canAccessAutomations())) notFound();
-
   const [templates, monitors, accounts] = await Promise.all([
-    listChannelTemplates(),
-    listChannelMonitors(),
-    listActiveAccounts(),
+    listChannelTemplates(), listChannelMonitors(), listActiveAccounts(),
   ]);
-
   return (
-    <div className="p-8 max-w-5xl">
-      <a href="/dashboard/automations" className="text-white/40 hover:text-white text-sm">
-        ← Voltar
-      </a>
-      <h1 className="text-2xl font-bold text-white mt-4 mb-1">
-        Monitor de canais
-      </h1>
-      <p className="text-white/50 text-sm mb-8 max-w-2xl leading-relaxed">
-        Quando um canal monitorado for derrubado (canal banido ou conta dona freezada),
-        outra conta MTProto ativa cria automaticamente um canal substituto com o
-        template configurado abaixo (mídias + textos). O link de convite fica
-        disponível pra você divulgar.
-      </p>
-
-      <ChannelMonitorsPanel
-        initialTemplates={templates}
-        initialMonitors={monitors}
-        accounts={accounts}
-      />
-    </div>
+    <section className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8">
+      <header className="mb-8 max-w-2xl">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Monitoramento de canais</h1>
+        <p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">Monitore os canais da sua conta. Se um canal cair, uma conta ativa pode criar um substituto com o conteúdo do modelo escolhido.</p>
+      </header>
+      <ChannelMonitorsPanel initialTemplates={templates} initialMonitors={monitors} accounts={accounts} />
+    </section>
   );
 }

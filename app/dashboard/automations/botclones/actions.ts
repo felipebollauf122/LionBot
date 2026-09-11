@@ -167,7 +167,7 @@ export async function createBotCloneJob(input: {
       return { ok: false, error: error.message };
     }
 
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true, cloneJobId: job.id };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -180,7 +180,7 @@ export async function launchBotCloneJob(cloneJobId: string): Promise<void> {
   await requireAutomationsAccess();
   const supabase = await createClient();
   await casTransitionAndEnqueue(cloneJobId, "draft", "exploring", "botclone.explore", supabase);
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
   revalidatePath(`/dashboard/automations/botclones/${cloneJobId}`);
 }
 
@@ -226,7 +226,7 @@ export async function deleteBotCloneJob(cloneJobId: string): Promise<void> {
     .delete()
     .eq("id", cloneJobId);
   if (error) throw new Error(error.message);
-  revalidatePath("/dashboard/automations");
+  revalidatePath("/dashboard/automations", "layout");
 }
 
 type SkippedButton = { skip?: boolean; skip_reason?: string | null };

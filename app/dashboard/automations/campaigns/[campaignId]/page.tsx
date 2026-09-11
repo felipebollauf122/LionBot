@@ -1,3 +1,4 @@
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 import { createClient } from "@/lib/supabase/server";
 import { MtprotoCampaignDetail } from "@/components/dashboard/mtproto-campaign-detail";
 import { notFound } from "next/navigation";
@@ -22,12 +23,12 @@ export default async function CampaignDetailPage({
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
-      <a
-        href="/dashboard/automations"
+      <AutomationLink
+        href="/dashboard/automations/campaigns"
         className="text-(--text-muted) hover:text-foreground text-sm transition-colors"
       >
         ← Voltar
-      </a>
+      </AutomationLink>
       <header className="mt-3 mb-6 reveal">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
           Detalhe da campanha

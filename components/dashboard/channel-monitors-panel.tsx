@@ -79,16 +79,16 @@ export function ChannelMonitorsPanel({
 
   return (
     <div>
-      <div className="flex gap-1 border-b border-white/10 mb-6">
+      <div className="flex gap-1 border-b border-(--border-default) mb-6">
         <button
           onClick={() => setTab("templates")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === "templates" ? "border-(--accent) text-white" : "border-transparent text-white/50 hover:text-white"}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === "templates" ? "border-(--accent) text-foreground" : "border-transparent text-(--text-secondary) hover:text-foreground"}`}
         >
           Templates ({templates.length})
         </button>
         <button
           onClick={() => setTab("monitors")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === "monitors" ? "border-(--accent) text-white" : "border-transparent text-white/50 hover:text-white"}`}
+          className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === "monitors" ? "border-(--accent) text-foreground" : "border-transparent text-(--text-secondary) hover:text-foreground"}`}
         >
           Canais monitorados ({monitors.length})
         </button>
@@ -132,7 +132,7 @@ export function ChannelMonitorsPanel({
               </button>
 
               {templates.length === 0 ? (
-                <p className="text-white/40 text-sm">
+                <p className="text-(--text-muted) text-sm">
                   Nenhum template ainda. Crie um pra ele ser usado quando precisar substituir um canal.
                 </p>
               ) : (
@@ -140,12 +140,12 @@ export function ChannelMonitorsPanel({
                   {templates.map((t) => (
                     <div
                       key={t.id}
-                      className="p-4 rounded-lg border border-white/10 bg-white/[0.02] flex items-center justify-between"
+                      className="p-4 rounded-lg border border-(--border-default) bg-(--bg-surface) flex items-center justify-between"
                     >
                       <div>
-                        <div className="text-white font-medium">{t.name || "Sem nome"}</div>
-                        <div className="text-white/40 text-xs mt-1">
-                          Vai criar canal: <span className="text-white/70">{t.new_channel_title}</span> ·{" "}
+                        <div className="text-foreground font-medium">{t.name || "Sem nome"}</div>
+                        <div className="text-(--text-muted) text-xs mt-1">
+                          Vai criar canal: <span className="text-(--text-secondary)">{t.new_channel_title}</span> ·{" "}
                           {t.media_items?.length ?? 0} mídia(s)
                         </div>
                       </div>
@@ -227,49 +227,49 @@ function TemplateForm({
   }
 
   return (
-    <div className="border border-white/10 rounded-lg p-5 bg-white/[0.02] space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="border border-(--border-default) rounded-lg p-5 bg-(--bg-surface) space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-white/70 text-xs block mb-1">Nome interno do template</label>
+          <label className="text-(--text-secondary) text-xs block mb-1">Nome interno do template</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Vazados V2"
-            className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 text-white text-sm"
+            placeholder="Ex.: Canal de novidades"
+            className="w-full bg-(--bg-input) border border-(--border-default) rounded px-3 py-2 text-foreground text-sm"
           />
         </div>
         <div>
-          <label className="text-white/70 text-xs block mb-1">Título do canal novo</label>
+          <label className="text-(--text-secondary) text-xs block mb-1">Título do canal novo</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Ex: 🔥 Vazados HOT 🔥"
-            className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 text-white text-sm"
+            placeholder="Ex.: Novidades da comunidade"
+            className="w-full bg-(--bg-input) border border-(--border-default) rounded px-3 py-2 text-foreground text-sm"
           />
         </div>
       </div>
       <div>
-        <label className="text-white/70 text-xs block mb-1">Descrição do canal (about)</label>
+        <label className="text-(--text-secondary) text-xs block mb-1">Descrição do canal (about)</label>
         <textarea
           value={about}
           onChange={(e) => setAbout(e.target.value)}
           rows={2}
-          className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 text-white text-sm"
+          className="w-full bg-(--bg-input) border border-(--border-default) rounded px-3 py-2 text-foreground text-sm"
         />
       </div>
       <div>
-        <label className="text-white/70 text-xs block mb-1">Mensagem inicial (welcome HTML)</label>
+        <label className="text-(--text-secondary) text-xs block mb-1">Mensagem inicial (welcome HTML)</label>
         <textarea
           value={welcome}
           onChange={(e) => setWelcome(e.target.value)}
           rows={4}
           placeholder="Bem-vindo ao novo canal! Aproveite o conteúdo..."
-          className="w-full bg-black/30 border border-white/10 rounded px-3 py-2 text-white text-sm"
+          className="w-full bg-(--bg-input) border border-(--border-default) rounded px-3 py-2 text-foreground text-sm"
         />
       </div>
 
       <div>
-        <label className="text-white/70 text-xs block mb-2">Mídias ({media.length})</label>
+        <label className="text-(--text-secondary) text-xs block mb-2">Mídias ({media.length})</label>
         <input
           type="file"
           accept="image/*,video/*"
@@ -279,14 +279,14 @@ function TemplateForm({
             if (f) handleUpload(f);
             e.target.value = "";
           }}
-          className="text-white/70 text-xs"
+          className="text-(--text-secondary) text-xs"
         />
-        {uploading && <p className="text-white/50 text-xs mt-2">Enviando...</p>}
+        {uploading && <p className="text-(--text-secondary) text-xs mt-2">Enviando...</p>}
         {media.length > 0 && (
           <ul className="mt-3 space-y-1">
             {media.map((m, i) => (
               <li key={i} className="flex items-center justify-between p-2 bg-black/20 rounded text-xs">
-                <span className="text-white/80 truncate">
+                <span className="text-(--text-primary) truncate">
                   {m.kind === "photo" ? "📷" : "🎥"} {m.file_name ?? m.url}
                 </span>
                 <button
@@ -391,23 +391,23 @@ function MonitorsTab({
       )}
 
       {monitors.length === 0 ? (
-        <p className="text-white/40 text-sm">Nenhum canal sendo monitorado.</p>
+        <p className="text-(--text-muted) text-sm">Nenhum canal sendo monitorado.</p>
       ) : (
         <div className="space-y-2">
           {monitors.map((m) => (
-            <div key={m.id} className="p-4 rounded-lg border border-white/10 bg-white/[0.02]">
+            <div key={m.id} className="p-4 rounded-lg border border-(--border-default) bg-(--bg-surface)">
               <div className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white font-medium truncate">
+                    <span className="text-foreground font-medium truncate">
                       {m.channel_title || `canal ${m.peer_channel_id}`}
                     </span>
                     {m.channel_username && (
-                      <span className="text-white/40 text-xs">@{m.channel_username}</span>
+                      <span className="text-(--text-muted) text-xs">@{m.channel_username}</span>
                     )}
                     <StatusBadge status={m.status} />
                   </div>
-                  <div className="text-white/40 text-xs mt-1">
+                  <div className="text-(--text-muted) text-xs mt-1">
                     Conta dona: {m.account?.display_name || m.account?.phone_number || "—"} ·
                     Template: {m.template?.name || "—"}
                     {m.last_checked_at && (
@@ -443,7 +443,7 @@ function MonitorsTab({
                           );
                         });
                       }}
-                      className="text-white/60 hover:text-white text-xs"
+                      className="text-(--text-secondary) hover:text-foreground text-xs"
                       disabled={pending}
                     >
                       {m.status === "active" ? "Pausar" : "Retomar"}
@@ -479,7 +479,7 @@ function StatusBadge({ status }: { status: string }) {
     replaced: { text: "substituído", cls: "bg-(--accent)/20 text-(--accent)" },
     dead: { text: "morto", cls: "bg-red-500/20 text-red-300" },
   };
-  const s = map[status] ?? { text: status, cls: "bg-white/10 text-white/70" };
+  const s = map[status] ?? { text: status, cls: "bg-white/10 text-(--text-secondary)" };
   return <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${s.cls}`}>{s.text}</span>;
 }
 
@@ -516,17 +516,17 @@ function AddMonitorForm({
   }
 
   return (
-    <div className="border border-white/10 rounded-lg p-5 bg-white/[0.02] space-y-3">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="border border-(--border-default) rounded-lg p-5 bg-(--bg-surface) space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-white/70 text-xs block mb-1">Conta dona do canal</label>
+          <label className="text-(--text-secondary) text-xs block mb-1">Conta dona do canal</label>
           <select
             value={accountId}
             onChange={(e) => {
               setAccountId(e.target.value);
               loadDialogs(e.target.value);
             }}
-            className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-white text-sm"
+            className="w-full bg-(--bg-input) border border-(--border-default) rounded px-2 py-1.5 text-foreground text-sm"
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
@@ -536,11 +536,11 @@ function AddMonitorForm({
           </select>
         </div>
         <div>
-          <label className="text-white/70 text-xs block mb-1">Template a usar quando cair</label>
+          <label className="text-(--text-secondary) text-xs block mb-1">Template a usar quando cair</label>
           <select
             value={templateId}
             onChange={(e) => setTemplateId(e.target.value)}
-            className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-white text-sm"
+            className="w-full bg-(--bg-input) border border-(--border-default) rounded px-2 py-1.5 text-foreground text-sm"
           >
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
@@ -563,11 +563,11 @@ function AddMonitorForm({
 
       {dialogs.length > 0 && (
         <div>
-          <label className="text-white/70 text-xs block mb-1">Canal a monitorar</label>
+          <label className="text-(--text-secondary) text-xs block mb-1">Canal a monitorar</label>
           <select
             value={selectedDialogId}
             onChange={(e) => setSelectedDialogId(e.target.value)}
-            className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-white text-sm"
+            className="w-full bg-(--bg-input) border border-(--border-default) rounded px-2 py-1.5 text-foreground text-sm"
           >
             {dialogs.map((d) => (
               <option key={d.id} value={d.id}>

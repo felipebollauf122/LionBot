@@ -2,6 +2,8 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { automationHref } from "@/lib/automations/navigation";
+import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
 import {
   createCampaign,
   launchCampaign,
@@ -169,7 +171,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           return;
         }
         if (launch) await launchCampaign(res.campaignId);
-        router.push(`/dashboard/automations/campaigns/${res.campaignId}`);
+        router.push(automationHref(`/dashboard/automations/campaigns/${res.campaignId}`, actingTenantId));
       } catch (err) {
         setError(err instanceof Error ? err.message : "erro");
       }
@@ -301,7 +303,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
 
         {accounts.length === 0 ? (
           <p className="text-(--text-muted) text-sm">
-            Nenhuma conta ativa. Conecte uma conta MTProto primeiro em <code>/dashboard/automations</code>.
+            Nenhuma conta ativa. <AutomationLink href="/dashboard/automations/accounts" className="underline">Conecte uma conta Telegram</AutomationLink> para começar.
           </p>
         ) : (
           <>
@@ -389,7 +391,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
                 <p className="p-3 text-(--text-muted) text-xs">Carregando...</p>
               ) : dialogs.length === 0 ? (
                 <p className="p-3 text-(--text-muted) text-xs">
-                  Sem resultados. Sincronize a conta em <code>/dashboard/automations</code> antes.
+                  Sem resultados. <AutomationLink href="/dashboard/automations/accounts" className="underline">Sincronize o conteúdo da conta</AutomationLink> e tente novamente.
                 </p>
               ) : (
                 <>

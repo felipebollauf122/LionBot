@@ -64,6 +64,7 @@ async function comGuarda<T extends ActionResult>(
  */
 export async function createEmptyCampaign(
   actingTenantId?: string,
+  name = "Nova campanha",
 ): Promise<{ ok: true; campaignId: string } | { ok: false; error: string }> {
   try {
     await requireAutomationsAccess();
@@ -72,16 +73,22 @@ export async function createEmptyCampaign(
   }
 
   try {
+    if (actingTenantId === "all") {
+      return { ok: false, error: "Selecione um usuário antes de criar uma campanha." };
+    }
+    if (typeof name !== "string" || !name.trim() || name.trim().length > 120) {
+      return { ok: false, error: "Informe um nome de até 120 caracteres." };
+    }
     const tenantId = await resolveActingTenantId(actingTenantId);
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("mtproto_scheduled_campaigns")
-      .insert({ tenant_id: tenantId, name: "Nova campanha", status: "draft" })
+      .insert({ tenant_id: tenantId, name: name.trim(), status: "draft" })
       .select("id")
       .single();
     if (error) return { ok: false, error: `Não deu pra criar a campanha: ${error.message}` };
 
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true, campaignId: data.id as string };
   } catch (err) {
     console.error("[createEmptyCampaign] erro inesperado:", err);
@@ -776,10 +783,17 @@ export async function launchScheduledCampaign(
 
     const { data: campaign } = await supabase
       .from("mtproto_scheduled_campaigns")
-      .select("id, dest_channel_id, dest_access_hash, status")
+      .select("id, dest_channel_id, dest_access_hash, status, source_clone_job_id")
       .eq("id", campaignId)
       .maybeSingle();
     if (!campaign) return { ok: false, error: "Campanha não encontrada (ou sem permissão)." };
+    if (campaign.source_clone_job_id) {
+      const { data: source, error: sourceError } = await supabase.from("clone_jobs")
+        .select("status").eq("id", campaign.source_clone_job_id).maybeSingle();
+      if (sourceError || !source || source.status !== "completed") {
+        return { ok: false, error: "Conclua a importação do clone antes de publicar." };
+      }
+    }
     if (!campaign.dest_channel_id) {
       return { ok: false, error: "Escolha o canal de destino antes de publicar." };
     }
@@ -906,7 +920,7 @@ export async function launchScheduledCampaign(
     }
 
     revalidatePath(rota(campaignId));
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true };
   });
 }
@@ -929,7 +943,7 @@ export async function pauseScheduledCampaign(campaignId: string): Promise<Action
     }
 
     revalidatePath(rota(campaignId));
-    revalidatePath("/dashboard/automations");
+    revalidatePath("/dashboard/automations", "layout");
     return { ok: true };
   });
 }

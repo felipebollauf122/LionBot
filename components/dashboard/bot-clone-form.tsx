@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { automationHref } from "@/lib/automations/navigation";
 import { createBotCloneJob, launchBotCloneJob } from "@/app/dashboard/automations/botclones/actions";
 import { BotCloneRiskModal } from "@/components/dashboard/bot-clone-risk-modal";
 
@@ -61,7 +62,7 @@ export function BotCloneForm({
         // Ignorado de propósito: a tela de progresso é quem reporta a falha.
       }
       setShowRiskModal(false);
-      router.push(`/dashboard/automations/botclones/${res.cloneJobId}`);
+      router.push(automationHref(`/dashboard/automations/botclones/${res.cloneJobId}`, actingTenantId));
     });
   }
 

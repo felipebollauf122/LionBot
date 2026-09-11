@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ComposerShell } from "@/components/dashboard/composer/composer-shell";
 import { DestinationCard } from "./destination-card";
 import { ScheduleCard } from "./schedule-card";
@@ -39,9 +40,13 @@ const STATUS_CAMPANHA: Record<ScheduledCampaign["status"], string> = {
 export function CampaignComposer({
   campaign,
   messages,
+  returnHref = "/dashboard/automations/scheduled",
+  sourceClone,
 }: {
   campaign: ScheduledCampaign;
   messages: ScheduledMessage[];
+  returnHref?: string;
+  sourceClone?: { id: string; status: string; copied_count: number; last_error: string | null } | null;
 }) {
   // A identidade da prévia vem do DESTINO — não existe tabela de canal aqui,
   // e o que o inscrito vai ver é o canal onde a campanha publica.
@@ -92,6 +97,8 @@ export function CampaignComposer({
   // travada. Calculado das linhas reais, não do status da campanha — ela
   // continua 'running' durante a espera.
   const flood = earliestFloodWait(messages);
+  const importing = !!sourceClone && ["draft", "running", "waiting_flood"].includes(sourceClone.status);
+  const importIncomplete = !!sourceClone && sourceClone.status !== "completed";
 
   // Ligado uma vez só e reusado em dois lugares (`actions.aiAssist`, que
   // completa a interface, e o `onAssist` que de fato chega no editor via
@@ -101,6 +108,8 @@ export function CampaignComposer({
 
   return (
     <ComposerShell
+      focused
+      busy={importing || campaign.status === "ai_processing"}
       title={campaign.name}
       subtitle="Monte a sequência de posts e agende o disparo no canal de destino."
       channel={canal}
@@ -124,6 +133,7 @@ export function CampaignComposer({
             defaultDelaySeconds={campaign.default_delay_seconds}
             hasDestination={campaign.dest_channel_id !== null}
             messages={messages}
+            importIncomplete={importIncomplete}
           />
           <AiCard
             aiStatus={campaign.ai_status}
@@ -158,7 +168,12 @@ export function CampaignComposer({
         ) : null;
       }}
       notice={
-        flood ? (
+        importIncomplete ? (
+          <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-(--bg-overlay) px-4 py-3 text-sm text-(--text-secondary)">
+            <p>{importing ? `Importando conteúdo: ${sourceClone?.copied_count ?? 0} mensagens copiadas. A tela atualiza automaticamente.` : "A importação ainda não foi concluída. Confira o clone antes de publicar."}</p>
+            <Link href={returnHref.replace("/scheduled", `/clones/${sourceClone?.id}`)} className="font-medium text-(--accent) underline">Acompanhar clone</Link>
+          </div>
+        ) : flood ? (
           <p className="mb-4 rounded-lg border border-(--amber) bg-(--amber-muted) px-3 py-2 text-sm text-(--amber)">
             {describeFloodWait(flood, agora)}
           </p>
@@ -174,13 +189,13 @@ export function CampaignComposer({
             {STATUS_CAMPANHA[campaign.status]}
             {total > 0 && ` · ${enviadas}/${total} enviadas`}
           </span>
-          <a
-            href="/dashboard/automations"
+          <Link
+            href={returnHref}
             className="flex items-center gap-2 rounded-lg border border-(--border-default) px-3 py-2 text-sm text-(--text-secondary) transition-colors hover:bg-(--bg-hover) hover:text-(--text-primary)"
           >
-            <span className="hidden md:inline">Automações</span>
+            <span className="hidden md:inline">Postagens</span>
             <span className="md:hidden">Voltar</span>
-          </a>
+          </Link>
         </>
       }
       emptyEditorHint="Selecione uma mensagem da fila para ajustar texto, mídia e cadência."

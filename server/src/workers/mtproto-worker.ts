@@ -516,7 +516,7 @@ async function handleCampaignRun(campaignId: string): Promise<void> {
   }
 }
 
-async function runCampaignInner(campaignId: string, campaign: Record<string, unknown> & { tenant_id: string; is_global?: boolean; recurrence_hours?: number | null; started_at?: string | null; message_text: string; delay_min_seconds: number; delay_max_seconds: number }): Promise<void> {
+async function runCampaignInner(campaignId: string, campaign: Record<string, unknown> & { tenant_id: string; is_global?: boolean; recurrence_minutes?: number | null; started_at?: string | null; message_text: string; delay_min_seconds: number; delay_max_seconds: number }): Promise<void> {
   // Refresh global: deleta pending e recria do snapshot. Só roda no
   // INÍCIO de um ciclo — se já tem targets sent, é re-entrada via
   // hot-add e não pode apagar os pending recém-inseridos.
@@ -676,8 +676,8 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         }
         // Se a campanha é recorrente E completou: agenda próxima execução
         // e reseta a campanha de volta pra 'draft' (pronta pro próximo ciclo).
-        if (status === "completed" && campaign.recurrence_hours) {
-          const nextRun = new Date(Date.now() + campaign.recurrence_hours * 60 * 60 * 1000);
+        if (status === "completed" && campaign.recurrence_minutes) {
+          const nextRun = new Date(Date.now() + campaign.recurrence_minutes * 60 * 1000);
           patch.status = "scheduled";
           patch.last_run_at = new Date().toISOString();
           patch.next_run_at = nextRun.toISOString();

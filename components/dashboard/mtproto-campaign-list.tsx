@@ -15,7 +15,7 @@ interface Campaign {
   sent_count: number;
   failed_count: number;
   created_at: string;
-  recurrence_hours?: number | null;
+  recurrence_minutes?: number | null;
   next_run_at?: string | null;
 }
 
@@ -89,10 +89,22 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   return (
     <div className="space-y-1.5">
       {campaigns.map((c, i) => {
-        const isRecurrent = !!c.recurrence_hours;
+        const isRecurrent = !!c.recurrence_minutes;
         const nextRun = formatNextRun(c.next_run_at);
         const deleting = pendingId === c.id;
         const badge = campaignBadge(c.status);
+
+        const formatRecurrence = (minutes: number) => {
+          if (minutes >= 60) {
+            const h = Math.floor(minutes / 60);
+            const m = minutes % 60;
+            return m > 0 ? `${h}h${m}m` : `${h}h`;
+          }
+          return `${minutes}m`;
+        };
+
+        const recStr = c.recurrence_minutes ? formatRecurrence(c.recurrence_minutes) : "";
+
         const pct =
           c.total_targets > 0
             ? Math.min(100, Math.round((c.sent_count / c.total_targets) * 100))
@@ -109,7 +121,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
               <div className="min-w-0 flex-1">
                 <div className="text-(--text-primary) text-sm font-semibold flex items-center gap-2">
                   {isRecurrent && (
-                    <span title={`Recorrente a cada ${c.recurrence_hours}h`}>🔁</span>
+                    <span title={`Recorrente a cada ${recStr}`}>🔁</span>
                   )}
                   <span className="truncate">{c.name}</span>
                   <span className={`badge ${badge.cls} shrink-0`}>{badge.label}</span>
@@ -123,7 +135,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
                   {isRecurrent && (
                     <>
                       {" · "}
-                      a cada {c.recurrence_hours}h
+                      a cada {recStr}
                       {nextRun && c.status === "scheduled" ? ` · próxima ${nextRun}` : ""}
                     </>
                   )}

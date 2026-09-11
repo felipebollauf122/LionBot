@@ -60,7 +60,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
   const [delayMin, setDelayMin] = useState(15);
   const [delayMax, setDelayMax] = useState(45);
   const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
-  const [recurrenceHours, setRecurrenceHours] = useState(24);
+  const [recurrenceMinutes, setRecurrenceMinutes] = useState(24 * 60);
   const [isGlobal, setIsGlobal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -149,8 +149,8 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
       setError("Cole uma lista de alvos OU selecione contatos/grupos abaixo OU ative o disparo global.");
       return;
     }
-    if (recurrenceEnabled && recurrenceHours < 6) {
-      setError("Recorrência: mínimo 6 horas entre execuções (anti-ban).");
+    if (recurrenceEnabled && recurrenceMinutes < 1) {
+      setError("Recorrência: mínimo 1 minuto entre execuções.");
       return;
     }
     startTransition(async () => {
@@ -162,7 +162,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           delayMin,
           delayMax,
           dialogIds: isGlobal ? [] : Array.from(selectedDialogIds),
-          recurrenceHours: recurrenceEnabled ? recurrenceHours : null,
+          recurrenceMinutes: recurrenceEnabled ? recurrenceMinutes : null,
           global: isGlobal,
           actingTenantId,
         });
@@ -478,30 +478,39 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           <div>
             <div className="text-foreground text-sm font-medium">Repetir automaticamente (loop)</div>
             <div className="text-(--text-muted) text-xs">
-              Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete a cada X horas (mínimo 6h).
+              Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete a cada X minutos (mínimo 1m).
               Os mesmos alvos recebem a mensagem em todo ciclo.
             </div>
           </div>
         </label>
-        {recurrenceEnabled && (
-          <div className="pl-6">
-            <label className="input-label">Repetir a cada (horas)</label>
-            <input
-              type="number"
-              min={6}
-              value={recurrenceHours}
-              onChange={(e) => setRecurrenceHours(parseInt(e.target.value, 10) || 24)}
-              className="input w-32"
-            />
-            <span className="text-(--text-muted) text-xs ml-2">
-              {recurrenceHours === 24
-                ? "diário"
-                : recurrenceHours < 24
-                  ? `${recurrenceHours}h`
-                  : `~${Math.floor(recurrenceHours / 24)} dia(s)`}
-            </span>
-          </div>
-        )}
+          {recurrenceEnabled && (
+            <div className="pl-6 flex items-center gap-4">
+              <div>
+                <label className="input-label">Horas</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={Math.floor(recurrenceMinutes / 60)}
+                  onChange={(e) => setRecurrenceMinutes(Math.max(0, parseInt(e.target.value, 10) || 0) * 60 + (recurrenceMinutes % 60))}
+                  className="input w-24"
+                />
+              </div>
+              <div>
+                <label className="input-label">Minutos</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={recurrenceMinutes % 60}
+                  onChange={(e) => setRecurrenceMinutes(Math.floor(recurrenceMinutes / 60) * 60 + Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="input w-24"
+                />
+              </div>
+              <span className="text-(--text-muted) text-xs self-end mb-2">
+                Total: {recurrenceMinutes} minuto(s)
+              </span>
+            </div>
+          )}
       </div>
       {error && <p className="text-(--red) text-sm">{error}</p>}
       <div className="flex gap-2">

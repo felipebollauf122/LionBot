@@ -202,7 +202,7 @@ export async function createCampaign(input: {
   delayMin: number;
   delayMax: number;
   dialogIds?: string[];
-  recurrenceHours?: number | null;
+  recurrenceMinutes?: number | null;
   global?: boolean;
   actingTenantId?: string;
 }): Promise<CreateCampaignResult> {
@@ -211,12 +211,9 @@ export async function createCampaign(input: {
     const tenantId = await resolveActingTenantId(input.actingTenantId);
     const supabase = await createClient();
 
-    let recurrenceHours: number | null = null;
-    if (input.recurrenceHours != null && input.recurrenceHours > 0) {
-      if (input.recurrenceHours < 6) {
-        return { ok: false, error: "Mínimo 6 horas entre execuções (anti-ban)." };
-      }
-      recurrenceHours = Math.floor(input.recurrenceHours);
+    let recurrenceMinutes: number | null = null;
+    if (input.recurrenceMinutes != null && input.recurrenceMinutes > 0) {
+      recurrenceMinutes = Math.floor(input.recurrenceMinutes);
     }
 
     const isGlobal = Boolean(input.global);
@@ -256,7 +253,7 @@ export async function createCampaign(input: {
           total_targets: dialogList.length,
           status: "draft",
           failed_count: 0,
-          recurrence_hours: recurrenceHours,
+          recurrence_minutes: recurrenceMinutes,
           is_global: true,
         })
         .select("id")
@@ -314,7 +311,7 @@ export async function createCampaign(input: {
         total_targets: totalTargets,
         status: "draft",
         failed_count: invalid.length,
-        recurrence_hours: recurrenceHours,
+        recurrence_minutes: recurrenceMinutes,
         is_global: false,
       })
       .select("id")

@@ -480,7 +480,7 @@ export function startWorkers(): void {
           .from("mtproto_campaigns")
           .select("id")
           .eq("status", "scheduled")
-          .not("recurrence_hours", "is", null)
+          .not("recurrence_minutes", "is", null)
           .lte("next_run_at", new Date().toISOString())
           .limit(20);
         if (!due || due.length === 0) return;

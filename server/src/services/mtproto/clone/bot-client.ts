@@ -1,5 +1,6 @@
 import { Api } from "telegram";
 import { Bot, InputFile } from "grammy";
+import { reportBotCredentialFailure } from "../../../telegram/health.js";
 import { MtprotoClient } from "../client.js";
 import type { CloneMediaKind } from "./media-plan.js";
 import { toBotApiEntities } from "./entities.js";
@@ -111,6 +112,11 @@ export class CompanionBot {
     private creds: BotMtprotoCreds | null = null,
   ) {
     this.bot = new Bot(token);
+    this.bot.api.config.use(async (prev, method, payload, signal) => {
+      const result = await prev(method, payload, signal);
+      if (!result.ok) await reportBotCredentialFailure(token, result.error_code, result.description);
+      return result;
+    });
   }
 
   static destChatIdFromChannelId(channelId: string): string {

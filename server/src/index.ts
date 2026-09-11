@@ -12,6 +12,8 @@ import { MtprotoClient } from "./services/mtproto/client.js";
 import { ensureBotAccess } from "./services/mtproto/ensure-bot-access.js";
 import { isAuthorizedInternalRequest } from "./services/mtproto/internal-auth.js";
 import { GeminiClient } from "./services/ai/gemini.js";
+import { startBotHealing, stopBotHealing, scheduleHealingCheck } from "./services/bot-healing/runtime.js";
+import { botHealingRouter } from "./services/bot-healing/routes.js";
 import { buildAssistPrompt, mediaKindsParaIa, type AiAssistAction } from "./services/ai/assist.js";
 
 interface Bot {
@@ -89,6 +91,7 @@ app.post("/webhook/nowpayments", handleNowPaymentsWebhook);
 
 // Telegram webhook endpoint
 app.post("/webhook/:botId", handleTelegramWebhook);
+app.use("/api/bots", botHealingRouter);
 
 // Register webhook for a bot (called from dashboard when bot is activated)
 app.post("/api/bots/:botId/register-webhook", async (req, res) => {
@@ -118,6 +121,7 @@ app.post("/api/bots/:botId/register-webhook", async (req, res) => {
       .eq("id", botId);
 
     botCache.invalidate(botId);
+    void scheduleHealingCheck(botId).catch(() => console.error("[bot-healing] Initial backup scheduling failed"));
     res.json({ success: true, webhook_url: webhookUrl });
   } catch (error) {
     console.error("Failed to register webhook:", error);
@@ -939,6 +943,7 @@ const server = app.listen(config.port, () => {
   console.log(`EagleBot Engine running on port ${config.port}`);
   startWorkers();
   startMtprotoWorker();
+  void startBotHealing().catch(() => console.error("[bot-healing] Startup failed; check Redis and migration 076"));
 });
 
 // Graceful shutdown (#46): no SIGTERM/SIGINT (deploy, restart do Docker),
@@ -949,6 +954,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[shutdown] recebido ${signal} — encerrando graciosamente`);
+  void stopBotHealing().catch(() => console.error("[bot-healing] Shutdown failed"));
   try {
     const { shutdownMtprotoClients } = await import("./workers/mtproto-worker.js");
     await shutdownMtprotoClients();

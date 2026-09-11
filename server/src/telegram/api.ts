@@ -1,3 +1,4 @@
+import { reportBotCredentialFailure, TelegramApiError } from "./health.js";
 import {
   cacheVoiceFileId,
   forgetVoiceFileId,
@@ -353,6 +354,11 @@ export class TelegramApi {
     await this.request("setWebhook", { url });
   }
 
+  /** Management methods share the same timeout, error classification and monitoring. */
+  async call<T>(method: string, body: Record<string, unknown> = {}): Promise<T> {
+    return await this.request(method, body) as T;
+  }
+
   async editMessageText(params: {
     chatId: number;
     messageId: number;
@@ -441,7 +447,9 @@ export class TelegramApi {
             await new Promise((r) => setTimeout(r, retryAfter * 1000));
             continue;
           }
-          throw new Error(`Telegram API error (${method}): ${data.description ?? "Unknown error"}`);
+          const code = data.error_code ?? response.status;
+          await reportBotCredentialFailure(this.token, code, data.description);
+          throw new TelegramApiError(method, code, data.description ?? "Unknown error");
         }
         return data.result;
       } catch (error) {
@@ -470,7 +478,9 @@ export class TelegramApi {
     });
     const data = await response.json();
     if (!data.ok) {
-      throw new Error(`Telegram API error (${method}): ${data.description ?? "Unknown error"}`);
+      const code = data.error_code ?? response.status;
+      await reportBotCredentialFailure(this.token, code, data.description);
+      throw new TelegramApiError(method, code, data.description ?? "Unknown error");
     }
     return data.result;
   }

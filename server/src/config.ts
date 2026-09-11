@@ -57,4 +57,5 @@ export const config = {
   // flash estável atual é gemini-3.8-flash (gemini-2.5-flash virou geração
   // anterior). Reconfirme na doc antes de mudar este default de novo.
   geminiModel: envOptional("GEMINI_MODEL", "gemini-3.8-flash"),
+  botAutoHealEnabled: envOptional("BOT_AUTO_HEAL_ENABLED", "false") === "true",
 } as const;

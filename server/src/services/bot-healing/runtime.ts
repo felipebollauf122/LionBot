@@ -33,6 +33,16 @@ let queue: Queue<HealingJob> | undefined;
 let worker: Worker<HealingJob> | undefined;
 const scheduled = new MemoryCache<boolean>(60, 5000);
 
+/**
+ * Para o /health responder de fora "a recuperacao de bots ligou nesta VPS?".
+ * Reflete o PROCESSO, nao a intencao do env: com BOT_AUTO_HEAL_ENABLED=false o
+ * worker nao sobe e isto devolve false, que e a resposta util — dizer true
+ * mandaria procurar defeito onde so falta a variavel.
+ */
+export function isBotHealingRunning(): boolean {
+  return worker !== undefined;
+}
+
 export async function loadHealingBot(botId: string): Promise<HealingBot | null> {
   const { data, error } = await supabase.from("bots").select(BOT_FIELDS).eq("id", botId).maybeSingle();
   if (error) throw new Error("bot_read_failed");

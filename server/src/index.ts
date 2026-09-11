@@ -13,7 +13,7 @@ import { MtprotoClient } from "./services/mtproto/client.js";
 import { ensureBotAccess } from "./services/mtproto/ensure-bot-access.js";
 import { isAuthorizedInternalRequest } from "./services/mtproto/internal-auth.js";
 import { GeminiClient } from "./services/ai/gemini.js";
-import { startBotHealing, stopBotHealing, scheduleHealingCheck } from "./services/bot-healing/runtime.js";
+import { startBotHealing, stopBotHealing, scheduleHealingCheck, isBotHealingRunning } from "./services/bot-healing/runtime.js";
 import { botHealingRouter } from "./services/bot-healing/routes.js";
 import { buildAssistPrompt, mediaKindsParaIa, type AiAssistAction } from "./services/ai/assist.js";
 
@@ -69,6 +69,10 @@ app.get("/health", (_req, res) => {
     workers: {
       mtproto: isMtprotoWorkerRunning(),
       library: isLibraryWorkerRunning(),
+      // Anterior a este campo, saber se a recuperacao subiu exigia ler o log
+      // de boot dentro da maquina; os outros dois respondem true na imagem
+      // antiga tambem, por serem anteriores aquela feature.
+      botHealing: isBotHealingRunning(),
     },
   });
 });

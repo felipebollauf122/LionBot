@@ -6,7 +6,14 @@ import { useRouter } from "next/navigation";
 import { seedLoginBotFlow } from "@/lib/actions/flow-actions";
 import { syncBotFromTelegram } from "@/lib/actions/sync-bot-actions";
 
-export function CreateBotForm({ isOwner = false }: { isOwner?: boolean }) {
+/**
+ * `canCreateLoginBot`: o bot de login MTProto é a porta de entrada das contas
+ * (é ele que roda o fluxo de telefone + teclado), então quem tem as automações
+ * precisa poder criar o seu. Era `isOwner`, e o premium ficava com a página de
+ * Automações sem conseguir conectar conta por bot. O banco cobra a mesma regra
+ * no trigger `guard_mtproto_login_bot_flag` (migration 078).
+ */
+export function CreateBotForm({ canCreateLoginBot = false }: { canCreateLoginBot?: boolean }) {
   const [token, setToken] = useState("");
   const [isLoginBot, setIsLoginBot] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +146,7 @@ export function CreateBotForm({ isOwner = false }: { isOwner?: boolean }) {
           </p>
         </div>
 
-        {isOwner && (
+        {canCreateLoginBot && (
           <div className="card p-5 border border-amber-500/20 bg-amber-500/5">
             <label className="flex items-start gap-3 cursor-pointer select-none">
               <input

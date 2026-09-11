@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { CreateBotForm } from "@/components/dashboard/create-bot-form";
-import { isOwner } from "@/lib/actions/owner-actions";
+import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
 
 export default async function NewBotPage() {
-  const owner = await isOwner();
+  // Owner OU premium: mesma porta das Automações.
+  const podeCriarBotDeLogin = await canAccessAutomations();
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-lg mx-auto w-full">
       {/* Voltar */}
@@ -29,7 +30,7 @@ export default async function NewBotPage() {
         </p>
       </div>
 
-      <CreateBotForm isOwner={owner} />
+      <CreateBotForm canCreateLoginBot={podeCriarBotDeLogin} />
     </div>
   );
 }

@@ -61,7 +61,7 @@ describe("actions de conta — recusa vira dado, nunca throw", () => {
     vi.unstubAllGlobals();
   });
 
-  it("worker sem INTERNAL_API_SECRET: a recusa chega legível em vez de virar exceção apagada", async () => {
+  it("worker sem INTERNAL_API_SECRET (503): manda arrumar o lado do worker", async () => {
     montar(achaConta);
     // 503 = o que a rota responde quando ela mesma está sem o segredo.
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
@@ -69,7 +69,25 @@ describe("actions de conta — recusa vira dado, nunca throw", () => {
     const r = await syncAccountDialogs("acc-1");
 
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/INTERNAL_API_SECRET/);
+    if (!r.ok) {
+      expect(r.error).toMatch(/INTERNAL_API_SECRET/);
+      expect(r.error).toMatch(/servidor de automações subiu sem/i);
+    }
+  });
+
+  it("segredos diferentes (401): aponta a divergência, não manda mexer no worker", async () => {
+    // 401 = os dois lados TÊM segredo, mas não são o mesmo byte a byte.
+    // Aspas copiadas junto do .env são a origem clássica.
+    montar(achaConta);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+
+    const r = await syncAccountDialogs("acc-1");
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toMatch(/diferentes/i);
+      expect(r.error).toMatch(/sem aspas/i);
+    }
   });
 
   it("worker fora do ar: erro de rede vira recusa em português, não 'fetch failed'", async () => {

@@ -84,12 +84,21 @@ async function enqueueJob(job: MtprotoJob): Promise<{ ok: true } | { ok: false; 
     };
   }
   if (!res.ok) {
+    // 401 e 503 são causas DIFERENTES e o texto único mandava o operador
+    // conferir os dois lados quando só um estava errado:
+    //   503 = o worker subiu sem INTERNAL_API_SECRET (env não chegou no
+    //         container; em Docker o env_file é o `.env` da RAIZ);
+    //   401 = os dois têm segredo, mas são bytes diferentes — típico de
+    //         aspas copiadas junto do .env, espaço no fim, ou `$` que o
+    //         shell expandiu antes de gravar.
     return {
       ok: false,
       error:
-        res.status === 401 || res.status === 503
-          ? "O servidor de automações recusou a chamada interna. Confira INTERNAL_API_SECRET nos dois lados."
-          : `Falha ao enfileirar job (${res.status})`,
+        res.status === 503
+          ? "O servidor de automações subiu sem INTERNAL_API_SECRET. Defina a variável no env que o worker lê e reinicie-o."
+          : res.status === 401
+            ? "O painel e o servidor de automações estão com INTERNAL_API_SECRET diferentes. Copie o mesmo valor nos dois, sem aspas nem espaços, e publique o painel de novo."
+            : `Falha ao enfileirar job (${res.status})`,
     };
   }
   return { ok: true };

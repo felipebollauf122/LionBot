@@ -199,6 +199,8 @@ async function tick(){
   catch(error){console.warn("[library-worker]",errorText(error));}
   finally{scanning=false;}
 }
+/** Diagnóstico de deploy: `/health` responde se ESTE processo tem o coletor. */
+export function isLibraryWorkerRunning():boolean{return interval!==undefined;}
 export function startLibraryWorker():void{
   if(interval||!config.mtprotoWorkerEnabled||!config.telegramApiId||!config.telegramApiHash)return;
   stopped=false;interval=setInterval(()=>void tick(),5000);interval.unref();void tick();

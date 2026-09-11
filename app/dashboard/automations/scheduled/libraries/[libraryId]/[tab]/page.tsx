@@ -15,7 +15,7 @@ export default async function LibraryTabPage({params,searchParams}:{params:Promi
  if(tab==="sources"){
   const [result,dialogs]=await Promise.all([db.from("automation_library_sources").select("*").eq("library_id",libraryId).order("created_at"),listLibraryDialogs(library.tenant_id)]);
   if(result.error)throw new Error("Não foi possível carregar as origens.");
-  return <LibrarySources libraryId={libraryId} sources={(result.data??[]) as LibrarySource[]} dialogs={dialogs.filter(d=>d.id!==library.dest_dialog_id)}/>;
+  return <LibrarySources libraryId={libraryId} sources={(result.data??[]) as LibrarySource[]} dialogs={dialogs.filter(d=>d.id!==library.dest_dialog_id)} enabled={library.enabled}/>;
  }
  const sp=await searchParams;const rawPage=typeof sp.page==="string"?Number(sp.page):1;
  const page=Number.isSafeInteger(rawPage)&&rawPage>0?rawPage:1;

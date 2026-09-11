@@ -3,8 +3,8 @@ import { config } from "./config.js";
 import { handleTelegramWebhook } from "./webhook/telegram.js";
 import { handlePaymentWebhookGlobal, handlePaymentWebhook, handleEvPayWebhook, handleZuckPayWebhook, handleNowPaymentsWebhook } from "./webhook/payment.js";
 import { startWorkers } from "./queue.js";
-import { startMtprotoWorker } from "./workers/mtproto-worker.js";
-import { startLibraryWorker, stopLibraryWorker } from "./workers/library-worker.js";
+import { startMtprotoWorker, isMtprotoWorkerRunning } from "./workers/mtproto-worker.js";
+import { startLibraryWorker, stopLibraryWorker, isLibraryWorkerRunning } from "./workers/library-worker.js";
 import { enqueueMtproto, type MtprotoJobData } from "./queue-mtproto.js";
 import { supabase } from "./db.js";
 import { TelegramApi } from "./telegram/api.js";
@@ -59,7 +59,18 @@ app.use(
 
 // Health check
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "eaglebot-engine" });
+  // `workers` existe pra responder de fora uma pergunta que custou uma sessão
+  // de diagnóstico: "a VPS já está rodando o código novo?". Sem isto, um
+  // container com imagem antiga responde "ok" igualzinho a um atualizado.
+  // São só booleanos de processo — nada sensível.
+  res.json({
+    status: "ok",
+    service: "eaglebot-engine",
+    workers: {
+      mtproto: isMtprotoWorkerRunning(),
+      library: isLibraryWorkerRunning(),
+    },
+  });
 });
 
 // Diagnóstico do Web Push: mostra QUAL chave pública o server carregou (do .env)

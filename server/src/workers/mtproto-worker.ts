@@ -731,6 +731,12 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
   await runner.run(targetRows);
 }
 
+let mtprotoWorkerRunning = false;
+/** Diagnóstico de deploy: `/health` responde se ESTE processo tem o worker. */
+export function isMtprotoWorkerRunning(): boolean {
+  return mtprotoWorkerRunning;
+}
+
 export function startMtprotoWorker(): void {
   if (!config.mtprotoWorkerEnabled) {
     console.log("[mtproto] worker disabled via env");
@@ -740,6 +746,7 @@ export function startMtprotoWorker(): void {
     console.log("[mtproto] TELEGRAM_API_ID/HASH not configured — worker not started");
     return;
   }
+  mtprotoWorkerRunning = true;
 
   const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
 

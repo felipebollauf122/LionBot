@@ -66,17 +66,59 @@ export function parseRules(value: unknown): LibraryRules {
     start_at: start, timezone, media_mode: mediaMode, button_message: buttonMessage,
   };
 }
+/**
+ * Deslocamento real do fuso naquele instante — via Intl, sem dependencia nova
+ * e sem tabela de horario de verao no codigo.
+ */
+function zoneOffsetMs(utcMs: number, timeZone: string): number {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone, hour12: false, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(new Date(utcMs)).map(p => [p.type, p.value]));
+  const comoUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    Number(parts.hour) % 24, Number(parts.minute), Number(parts.second));
+  return comoUtc - utcMs;
+}
+
+/**
+ * "2026-09-12T20:00:00" no fuso do acervo -> mesmo instante em UTC explicito.
+ * Duas passadas porque o proprio deslocamento muda em fronteira de horario de
+ * verao: a primeira estima, a segunda corrige com o offset do instante certo.
+ */
+export function zonedIsoToUtc(local: string, timeZone: string): string {
+  const ingenuo = Date.parse(`${local}Z`);
+  if (!Number.isFinite(ingenuo)) throw new Error("Horário Gemini inválido");
+  const primeira = ingenuo - zoneOffsetMs(ingenuo, timeZone);
+  const instante = ingenuo - zoneOffsetMs(primeira, timeZone);
+  return new Date(instante).toISOString();
+}
+
 export interface AiResult { text?: string; delaySeconds?: number; scheduledAt?: string; media_mode?: "album" | "separate"; buttons?: Button[]; discard?: boolean }
-export function validateAi(value: unknown): AiResult {
+export function validateAi(value: unknown, timezone = "UTC"): AiResult {
   const a = object(value);
   if (Object.keys(a).some(k => !["text", "delaySeconds", "scheduledAt", "media_mode", "buttons", "discard"].includes(k))) {
     throw new Error("Gemini retornou campos não permitidos");
   }
   if (a.media_mode !== undefined && a.media_mode !== "album" && a.media_mode !== "separate") throw new Error("Formato Gemini inválido");
-  if (a.scheduledAt !== undefined && (typeof a.scheduledAt !== "string" || !/(Z|[+-]\d{2}:\d{2})$/.test(a.scheduledAt) || !Number.isFinite(Date.parse(a.scheduledAt)))) throw new Error("Horário Gemini exige ISO com fuso explícito");
+  // Horário SEM fuso não é motivo pra descartar o tratamento inteiro: o fuso do
+  // acervo está nas regras e é exatamente o que o operador quis dizer. Resolver
+  // aqui também protege o SQL, que interpretaria um horário ingênuo na timezone
+  // da sessão do Postgres.
+  let scheduledAt = a.scheduledAt;
+  if (scheduledAt !== undefined) {
+    if (typeof scheduledAt !== "string") throw new Error("Horário Gemini inválido");
+    if (!/(Z|[+-]\d{2}:\d{2})$/.test(scheduledAt)) {
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(scheduledAt)) {
+        throw new Error("Horário Gemini exige data ISO");
+      }
+      scheduledAt = zonedIsoToUtc(scheduledAt, timezone);
+    } else if (!Number.isFinite(Date.parse(scheduledAt))) {
+      throw new Error("Horário Gemini exige data ISO");
+    }
+  }
   return {
     ...(a.media_mode !== undefined ? { media_mode: a.media_mode as "album" | "separate" } : {}),
-    ...(a.scheduledAt !== undefined ? { scheduledAt: a.scheduledAt as string } : {}),
+    ...(scheduledAt !== undefined ? { scheduledAt: scheduledAt as string } : {}),
     ...(a.text !== undefined ? { text: string(a.text) } : {}),
     ...(a.delaySeconds !== undefined ? { delaySeconds: seconds(a.delaySeconds) } : {}),
     ...(a.buttons !== undefined ? { buttons: buttons(a.buttons) } : {}),
@@ -109,7 +151,7 @@ export async function treat(originals: Original[], memberIds: string[], rules: L
         media_mode: { type: "STRING", enum: ["album", "separate"] },
         buttons: { type: "ARRAY", items: { type: "OBJECT", properties: { text: { type: "STRING" }, url: { type: "STRING" } }, required: ["text", "url"] } },
       } },
-    }));
+    }), rules.timezone);
     text = result.text ?? text;
     links = result.buttons ?? links;
     delaySeconds = result.delaySeconds ?? 0;

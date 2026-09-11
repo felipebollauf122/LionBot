@@ -33,7 +33,7 @@ describe("permanent library treatment",()=>{
     const result=await treat([original()],["1"],parseRules({ai_enabled:true,allowed_kinds:["photo"]}),{generateJson});
     expect(result.discard).toBe(true);expect(generateJson).not.toHaveBeenCalled();
   });
-  it.each([{destination:"evil"},{buttons:[{text:"x",url:"javascript:alert(1)"}]},{delaySeconds:-1},{scheduledAt:"2027-01-01T10:00"},{media_mode:"anything"}])("rejects invalid AI output %j",value=>expect(()=>validateAi(value)).toThrow());
+  it.each([{destination:"evil"},{buttons:[{text:"x",url:"javascript:alert(1)"}]},{delaySeconds:-1},{scheduledAt:"amanha as 10"},{scheduledAt:"2027-13-45T99:00"},{media_mode:"anything"}])("rejects invalid AI output %j",value=>expect(()=>validateAi(value)).toThrow());
   it("rejects overlong media captions without truncating original",async()=>{
     await expect(treat([original({kind:"photo",content_text:"x".repeat(1025),media:[{kind:"photo",url:"https://file.test/1",file_name:"a.jpg"}]})],["1"],parseRules({}),ai)).rejects.toThrow("limite");
   });
@@ -56,5 +56,30 @@ describe("permanent library treatment",()=>{
   it("only downloads archived media in this tenant's Storage namespace",()=>{
     expect(()=>validateArchivedMediaUrl("https://db.test/storage/v1/object/public/media/t/library/s/file.jpg","https://db.test","t")).not.toThrow();
     for(const url of ["http://127.0.0.1/admin","https://db.test/storage/v1/object/public/media/other/library/s/file.jpg","https://db.test/storage/v1/object/public/media/t/library/%2e%2e%2fsecrets"])expect(()=>validateArchivedMediaUrl(url,"https://db.test","t")).toThrow();
+  });
+});
+
+describe("horario do Gemini sem fuso e resolvido no fuso do acervo",()=>{
+  /**
+   * O modelo devolveu "2026-09-12T20:00:00" e o item INTEIRO falhava com
+   * "Horário Gemini exige ISO com fuso explícito". O fuso ja esta nas regras,
+   * e o Postgres ainda interpretaria um horario sem fuso na timezone da
+   * sessao — normalizar aqui resolve os dois problemas.
+   */
+  it("interpreta horario ingenuo no fuso configurado, em UTC explicito",()=>{
+    // America/Sao_Paulo = UTC-3 o ano todo desde 2019 (sem horario de verao).
+    expect(validateAi({scheduledAt:"2027-01-15T20:00:00"},"America/Sao_Paulo").scheduledAt)
+      .toBe("2027-01-15T23:00:00.000Z");
+  });
+  it("respeita fuso diferente",()=>{
+    expect(validateAi({scheduledAt:"2027-01-15T20:00:00"},"UTC").scheduledAt)
+      .toBe("2027-01-15T20:00:00.000Z");
+  });
+  it("nao mexe em horario que ja veio com fuso",()=>{
+    expect(validateAi({scheduledAt:"2027-01-15T20:00:00-03:00"},"UTC").scheduledAt)
+      .toBe("2027-01-15T20:00:00-03:00");
+  });
+  it("texto que nao e data continua sendo recusa",()=>{
+    expect(()=>validateAi({scheduledAt:"quando der"},"UTC")).toThrow();
   });
 });

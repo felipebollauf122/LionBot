@@ -60,8 +60,18 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
   const [delayMin, setDelayMin] = useState(15);
   const [delayMax, setDelayMax] = useState(45);
   const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
-  const [recurrenceMinutes, setRecurrenceMinutes] = useState(24 * 60);
+  const [recurrenceSeconds, setRecurrenceSeconds] = useState(24 * 60 * 60);
   const [isGlobal, setIsGlobal] = useState(false);
+  // Recorrência é guardada em segundos; a UI só decompõe em h/m/s pra editar.
+  const recH = Math.floor(recurrenceSeconds / 3600);
+  const recM = Math.floor((recurrenceSeconds % 3600) / 60);
+  const recS = recurrenceSeconds % 60;
+  const setRecPart = (part: "h" | "m" | "s", raw: string) => {
+    const v = Math.max(0, parseInt(raw, 10) || 0);
+    setRecurrenceSeconds(
+      (part === "h" ? v : recH) * 3600 + (part === "m" ? v : recM) * 60 + (part === "s" ? v : recS),
+    );
+  };
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -149,8 +159,8 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
       setError("Cole uma lista de alvos OU selecione contatos/grupos abaixo OU ative o disparo global.");
       return;
     }
-    if (recurrenceEnabled && recurrenceMinutes < 1) {
-      setError("Recorrência: mínimo 1 minuto entre execuções.");
+    if (recurrenceEnabled && recurrenceSeconds < 5) {
+      setError("Recorrência: mínimo 5 segundos entre execuções.");
       return;
     }
     startTransition(async () => {
@@ -162,7 +172,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           delayMin,
           delayMax,
           dialogIds: isGlobal ? [] : Array.from(selectedDialogIds),
-          recurrenceMinutes: recurrenceEnabled ? recurrenceMinutes : null,
+          recurrenceSeconds: recurrenceEnabled ? recurrenceSeconds : null,
           global: isGlobal,
           actingTenantId,
         });
@@ -478,20 +488,20 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           <div>
             <div className="text-foreground text-sm font-medium">Repetir automaticamente (loop)</div>
             <div className="text-(--text-muted) text-xs">
-              Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete a cada X minutos (mínimo 1m).
-              Os mesmos alvos recebem a mensagem em todo ciclo.
+              Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete no intervalo abaixo (mínimo 5s).
+              Os mesmos alvos recebem a mensagem em todo ciclo. Um ciclo só começa depois que o anterior termina — se o envio demorar mais que o intervalo, os ciclos saem em sequência, sem se sobrepor.
             </div>
           </div>
         </label>
           {recurrenceEnabled && (
-            <div className="pl-6 flex items-center gap-4">
+            <div className="pl-6 flex flex-wrap items-center gap-4">
               <div>
                 <label className="input-label">Horas</label>
                 <input
                   type="number"
                   min={0}
-                  value={Math.floor(recurrenceMinutes / 60)}
-                  onChange={(e) => setRecurrenceMinutes(Math.max(0, parseInt(e.target.value, 10) || 0) * 60 + (recurrenceMinutes % 60))}
+                  value={recH}
+                  onChange={(e) => setRecPart("h", e.target.value)}
                   className="input w-24"
                 />
               </div>
@@ -501,13 +511,27 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
                   type="number"
                   min={0}
                   max={59}
-                  value={recurrenceMinutes % 60}
-                  onChange={(e) => setRecurrenceMinutes(Math.floor(recurrenceMinutes / 60) * 60 + Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  value={recM}
+                  onChange={(e) => setRecPart("m", e.target.value)}
+                  className="input w-24"
+                />
+              </div>
+              <div>
+                <label className="input-label">Segundos</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={recS}
+                  onChange={(e) => setRecPart("s", e.target.value)}
                   className="input w-24"
                 />
               </div>
               <span className="text-(--text-muted) text-xs self-end mb-2">
-                Total: {recurrenceMinutes} minuto(s)
+                Total: {recurrenceSeconds}s
+                {recurrenceSeconds > 0 && recurrenceSeconds < 5 && (
+                  <b className="text-(--red)"> — mínimo 5s</b>
+                )}
               </span>
             </div>
           )}

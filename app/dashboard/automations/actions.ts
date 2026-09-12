@@ -202,7 +202,7 @@ export async function createCampaign(input: {
   delayMin: number;
   delayMax: number;
   dialogIds?: string[];
-  recurrenceMinutes?: number | null;
+  recurrenceSeconds?: number | null;
   global?: boolean;
   actingTenantId?: string;
 }): Promise<CreateCampaignResult> {
@@ -211,9 +211,12 @@ export async function createCampaign(input: {
     const tenantId = await resolveActingTenantId(input.actingTenantId);
     const supabase = await createClient();
 
-    let recurrenceMinutes: number | null = null;
-    if (input.recurrenceMinutes != null && input.recurrenceMinutes > 0) {
-      recurrenceMinutes = Math.floor(input.recurrenceMinutes);
+    // Piso de 5s: o tick de recorrencia em server/src/queue.ts roda a cada
+    // 5s, entao valor menor nao encurta o ciclo — so mentiria na UI. Mesmo
+    // piso do check da migration 082.
+    let recurrenceSeconds: number | null = null;
+    if (input.recurrenceSeconds != null && input.recurrenceSeconds > 0) {
+      recurrenceSeconds = Math.max(5, Math.floor(input.recurrenceSeconds));
     }
 
     const isGlobal = Boolean(input.global);
@@ -233,7 +236,10 @@ export async function createCampaign(input: {
         .from("mtproto_dialogs")
         .select("id, account_id, title, username, kind")
         .in("account_id", accountIds)
-        .in("kind", GLOBAL_DIALOG_KINDS);
+        .in("kind", GLOBAL_DIALOG_KINDS)
+        // Mesmo filtro dos rebuilds no worker: destino que já recusou texto
+        // puro (CHAT_SEND_PLAIN_FORBIDDEN) não entra nem na criação.
+        .eq("plain_text_forbidden", false);
       if (dErr) return { ok: false, error: `Failed to load global dialogs: ${dErr.message}` };
       const dialogList = dialogs ?? [];
 
@@ -253,7 +259,7 @@ export async function createCampaign(input: {
           total_targets: dialogList.length,
           status: "draft",
           failed_count: 0,
-          recurrence_minutes: recurrenceMinutes,
+          recurrence_seconds: recurrenceSeconds,
           is_global: true,
         })
         .select("id")
@@ -311,7 +317,7 @@ export async function createCampaign(input: {
         total_targets: totalTargets,
         status: "draft",
         failed_count: invalid.length,
-        recurrence_minutes: recurrenceMinutes,
+        recurrence_seconds: recurrenceSeconds,
         is_global: false,
       })
       .select("id")

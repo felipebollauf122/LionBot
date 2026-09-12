@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function Page({ searchParams }: { searchParams: Promise<AutomationSearchParams> }) {
   const context = await getAutomationPageContext(searchParams);
   let query = context.supabase.from("mtproto_campaigns")
-    .select("id, name, status, total_targets, sent_count, failed_count, created_at, recurrence_minutes, next_run_at")
+    .select("id, name, status, total_targets, sent_count, failed_count, created_at, recurrence_seconds, next_run_at")
     .order("created_at", { ascending: false });
   if (context.scope.tenantId) query = query.eq("tenant_id", context.scope.tenantId);
   const { data, error } = await query;

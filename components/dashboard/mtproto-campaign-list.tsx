@@ -15,7 +15,7 @@ interface Campaign {
   sent_count: number;
   failed_count: number;
   created_at: string;
-  recurrence_minutes?: number | null;
+  recurrence_seconds?: number | null;
   next_run_at?: string | null;
 }
 
@@ -89,21 +89,25 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
   return (
     <div className="space-y-1.5">
       {campaigns.map((c, i) => {
-        const isRecurrent = !!c.recurrence_minutes;
+        const isRecurrent = !!c.recurrence_seconds;
         const nextRun = formatNextRun(c.next_run_at);
         const deleting = pendingId === c.id;
         const badge = campaignBadge(c.status);
 
-        const formatRecurrence = (minutes: number) => {
-          if (minutes >= 60) {
-            const h = Math.floor(minutes / 60);
-            const m = minutes % 60;
-            return m > 0 ? `${h}h${m}m` : `${h}h`;
-          }
-          return `${minutes}m`;
+        // Mostra só as duas maiores unidades com valor: 3661s vira "1h1m",
+        // 90s vira "1m30s", 45s vira "45s".
+        const formatRecurrence = (total: number) => {
+          const h = Math.floor(total / 3600);
+          const m = Math.floor((total % 3600) / 60);
+          const s = total % 60;
+          const parts = [];
+          if (h > 0) parts.push(`${h}h`);
+          if (m > 0) parts.push(`${m}m`);
+          if (s > 0) parts.push(`${s}s`);
+          return parts.slice(0, 2).join("") || "0s";
         };
 
-        const recStr = c.recurrence_minutes ? formatRecurrence(c.recurrence_minutes) : "";
+        const recStr = c.recurrence_seconds ? formatRecurrence(c.recurrence_seconds) : "";
 
         const pct =
           c.total_targets > 0

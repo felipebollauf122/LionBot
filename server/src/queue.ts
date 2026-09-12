@@ -468,8 +468,13 @@ export function startWorkers(): void {
   setTimeout(() => tickMtprotoHealth(), 45_000); // primeira rodada 45s após boot
 
   // MTProto: dispara campanhas recorrentes que chegaram na hora.
-  // Roda a cada 30s; pega mtproto_campaigns com status='scheduled' e
+  // Roda a cada 5s; pega mtproto_campaigns com status='scheduled' e
   // next_run_at <= now e enfileira campaign.run.
+  //
+  // O tick É a resolução real da recorrência: uma campanha com
+  // recurrence_seconds=5 não sai a cada 5s se o tick for de 30s. Por isso o
+  // intervalo aqui e o mínimo do check em recurrence_seconds (migration 082)
+  // andam juntos — mexeu em um, mexa no outro.
   let recurrentMtprotoRunning = false;
   setInterval(() => {
     if (recurrentMtprotoRunning) return;
@@ -480,7 +485,7 @@ export function startWorkers(): void {
           .from("mtproto_campaigns")
           .select("id")
           .eq("status", "scheduled")
-          .not("recurrence_minutes", "is", null)
+          .not("recurrence_seconds", "is", null)
           .lte("next_run_at", new Date().toISOString())
           .limit(20);
         if (!due || due.length === 0) return;
@@ -501,7 +506,7 @@ export function startWorkers(): void {
         recurrentMtprotoRunning = false;
       }
     })();
-  }, 30_000);
+  }, 5_000);
 
   // Campanhas de postagem agendada: enfileira o que venceu.
   //

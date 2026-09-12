@@ -358,7 +358,10 @@ async function addAccountToActiveGlobalCampaigns(accountId: string): Promise<voi
     .from("mtproto_dialogs")
     .select("id, title, username")
     .eq("account_id", accountId)
-    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[]);
+    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[])
+    // Destinos que já recusaram texto puro (CHAT_SEND_PLAIN_FORBIDDEN) ficam
+    // de fora: nunca vão receber, e cada tentativa é request desperdiçado.
+    .eq("plain_text_forbidden", false);
   if (!dialogs || dialogs.length === 0) return;
 
   for (const camp of campaigns) {
@@ -436,7 +439,10 @@ async function refreshGlobalCampaignTargets(
     .from("mtproto_dialogs")
     .select("id, account_id, title, username")
     .in("account_id", accountIds)
-    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[]);
+    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[])
+    // Mesmo filtro do hot-add: destino que recusou texto puro não volta pro
+    // rebuild. É o que faz o descarte durar entre ciclos recorrentes.
+    .eq("plain_text_forbidden", false);
   const dialogList = dialogs ?? [];
   if (dialogList.length === 0) {
     console.warn(`[mtproto.global-refresh] campaign ${campaignId}: no dialogs found after sync`);
@@ -589,6 +595,9 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           peerAccessHash: dialog.peer_access_hash,
         };
       }
+      if (t.dialog_id) {
+        row.dialogId = t.dialog_id;
+      }
       if (t.account_id) {
         row.pinnedAccountId = t.account_id;
       }
@@ -637,6 +646,34 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           .from("mtproto_targets")
           .update({ status: "failed", account_id: accountId, error_message: error })
           .eq("id", targetId);
+      },
+      dropTarget: async (targetId, target) => {
+        // 1. Marca o dialog: é ele que alimenta o rebuild da campanha global
+        //    (refreshGlobalCampaignTargets). Sem isso o alvo morto voltaria
+        //    pra fila no próximo ciclo e gastaria um request por ciclo.
+        if (target.dialogId) {
+          await supabase
+            .from("mtproto_dialogs")
+            .update({
+              plain_text_forbidden: true,
+              plain_text_forbidden_at: new Date().toISOString(),
+            })
+            .eq("id", target.dialogId);
+        }
+        // 2. Tira da campanha atual.
+        await supabase.from("mtproto_targets").delete().eq("id", targetId);
+        // 3. Desconta do total: a barra de progresso é (sent+failed)/total e
+        //    ficaria travada abaixo de 100% pra sempre com o alvo fantasma.
+        const { data: c } = await supabase
+          .from("mtproto_campaigns")
+          .select("total_targets")
+          .eq("id", campaignId)
+          .single();
+        const total = (c?.total_targets as number | undefined) ?? 0;
+        await supabase
+          .from("mtproto_campaigns")
+          .update({ total_targets: Math.max(0, total - 1) })
+          .eq("id", campaignId);
       },
       markTargetRetryAfter: async (targetId, retryAfterIso) => {
         // Mantém pending + seta retry_after (#47) — reprocessa depois do flood.

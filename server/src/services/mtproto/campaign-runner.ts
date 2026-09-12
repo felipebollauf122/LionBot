@@ -1,5 +1,6 @@
 import type { AccountPool } from "./pool.js";
 import { extractWaitSeconds } from "./flood.js";
+import { isPlainTextForbidden } from "./plain-forbidden.js";
 
 export interface CampaignTargetRow {
   id: string;
@@ -16,6 +17,13 @@ export interface CampaignTargetRow {
     peerType: "user" | "chat" | "channel";
     peerAccessHash: string | null;
   };
+  /**
+   * Id da linha em mtproto_dialogs que originou este target (quando veio da
+   * sincronização, não de lista colada). O runner não usa pra enviar — quem
+   * usa é o dropTarget, pra marcar o dialog e ele não voltar no próximo
+   * rebuild da campanha global.
+   */
+  dialogId?: string;
   /**
    * Quando setado, força essa conta específica a enviar (ignora round-robin
    * do pool). Usado em campanhas globais — cada target já vem com a conta
@@ -39,6 +47,16 @@ export interface RunnerDeps {
    * não for fornecida, cai no markTargetFailed (comportamento antigo).
    */
   markTargetRetryAfter?: (targetId: string, retryAfterIso: string) => Promise<void>;
+  /**
+   * Apaga o alvo da campanha de vez — usado só em CHAT_SEND_PLAIN_FORBIDDEN,
+   * destino que não aceita mensagem de texto. Não é falha (não entra no
+   * failed_count): é destino que nunca vai receber, então sai da lista pra não
+   * consumir envio nenhum daqui pra frente.
+   *
+   * Se a dep não for fornecida, o erro cai no markTargetFailed normal
+   * (comportamento antigo preservado).
+   */
+  dropTarget?: (targetId: string, target: CampaignTargetRow) => Promise<void>;
   incrementCounters: (campaignId: string, kind: "sent" | "failed") => Promise<void>;
   setCampaignStatus: (
     campaignId: string,
@@ -131,6 +149,31 @@ export class CampaignRunner {
     await this.deps.setCampaignStatus(this.cfg.campaignId, "completed");
   }
 
+  /**
+   * CHAT_SEND_PLAIN_FORBIDDEN: o destino não aceita mensagem de texto puro.
+   * É permissão DO CHAT, não da conta — trocar de conta dá a mesma recusa, e
+   * no próximo ciclo recorrente daria de novo. Então o alvo é apagado em vez
+   * de marcado como falha: some da lista, não entra no failed_count e nunca
+   * mais consome um envio. Todo o resto continua virando falha normal.
+   *
+   * Devolve true quando engoliu o erro (chamador não deve marcar falha).
+   *
+   * Quem chama NÃO pula o delay entre envios depois disso: a request recusada
+   * pelo Telegram conta no rate limit igual a uma aceita, então drenar alvos
+   * mortos em rajada queimaria a conta por flood — o oposto de alcance.
+   */
+  private async dropIfPlainForbidden(
+    err: unknown,
+    target: CampaignTargetRow,
+  ): Promise<boolean> {
+    if (!this.deps.dropTarget || !isPlainTextForbidden(err)) return false;
+    await this.deps.dropTarget(target.id, target);
+    console.log(
+      `[runner] campaign ${this.cfg.campaignId}: alvo ${target.identifier} não aceita texto puro (CHAT_SEND_PLAIN_FORBIDDEN) — removido da campanha`,
+    );
+    return true;
+  }
+
   private async processBatch(pending: CampaignTargetRow[]): Promise<void> {
     for (const target of pending) {
       // Verifica se o usuário pausou/deletou pela UI antes de cada envio.
@@ -197,18 +240,20 @@ export class CampaignRunner {
               await this.deps.markTargetSent(target.id, nextAccount.id);
               await this.deps.incrementCounters(this.cfg.campaignId, "sent");
             } catch (err2) {
-              const msg2 = err2 instanceof Error ? err2.message : String(err2);
-              if (isFatalAccountError(err2)) {
-                this.pool.markBanned(nextAccount.id);
-                if (this.deps.markAccountFatal) {
-                  await this.deps.markAccountFatal(nextAccount.id, msg2);
+              if (!(await this.dropIfPlainForbidden(err2, target))) {
+                const msg2 = err2 instanceof Error ? err2.message : String(err2);
+                if (isFatalAccountError(err2)) {
+                  this.pool.markBanned(nextAccount.id);
+                  if (this.deps.markAccountFatal) {
+                    await this.deps.markAccountFatal(nextAccount.id, msg2);
+                  }
                 }
+                await this.deps.markTargetFailed(target.id, nextAccount.id, msg2);
+                await this.deps.incrementCounters(this.cfg.campaignId, "failed");
               }
-              await this.deps.markTargetFailed(target.id, nextAccount.id, msg2);
-              await this.deps.incrementCounters(this.cfg.campaignId, "failed");
             }
           }
-        } else {
+        } else if (!(await this.dropIfPlainForbidden(err, target))) {
           const msg = err instanceof Error ? err.message : String(err);
           if (isFatalAccountError(err)) {
             this.pool.markBanned(account.id);

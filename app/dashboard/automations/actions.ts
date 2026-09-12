@@ -7,8 +7,10 @@ import { requireAutomationsAccess } from "@/lib/actions/automations-access-actio
 import { resolveActingTenantId } from "@/lib/actions/admin-actions";
 
 // Kinds elegíveis em campanha global — owner pediu alcance máximo, então
-// inclui grupos/canais onde só participa (risco de ban por spam aceito).
-// Exclui bot (desperdício) e self (Saved Messages).
+// inclui grupos onde só participa (risco de ban por spam aceito).
+// Exclui bot (desperdício), self (Saved Messages) e channel_subscriber: canal
+// broadcast onde a conta só assina — assinante nunca posta, era
+// CHAT_ADMIN_REQUIRED garantido em cada um.
 // Espelha GLOBAL_DIALOG_KINDS em server/src/workers/mtproto-worker.ts.
 const GLOBAL_DIALOG_KINDS = [
   "contact",
@@ -16,8 +18,35 @@ const GLOBAL_DIALOG_KINDS = [
   "group_admin",
   "group_member",
   "channel_owner",
-  "channel_subscriber",
 ];
+
+// Espelha buildGlobalTargetRows em server/src/services/mtproto/global-targets.ts
+// (módulo "use server" não importa do worker). Dialog bloqueado — write_block
+// visto na sincronização ou send_refusal de um envio recusado — entra como
+// 'skipped' com o motivo em vez de sumir: a tela mostra "Pulados N" e por quê,
+// e o trigger da migration 083 o deixa fora do total.
+interface DialogTargetSource {
+  id: string;
+  account_id: string;
+  title: string | null;
+  username: string | null;
+  write_block: string | null;
+  send_refusal: string | null;
+}
+function buildDialogTargetRows(campaignId: string, dialogs: DialogTargetSource[]) {
+  return dialogs.map((d) => {
+    const block = d.send_refusal ?? d.write_block;
+    return {
+      campaign_id: campaignId,
+      target_identifier: d.username ?? d.title ?? d.id,
+      target_type: "username" as const,
+      status: block ? ("skipped" as const) : ("pending" as const),
+      error_message: block,
+      dialog_id: d.id,
+      account_id: d.account_id,
+    };
+  });
+}
 
 type MtprotoJob =
   | { kind: "auth.request-code"; accountId: string; phoneNumber: string }
@@ -234,14 +263,11 @@ export async function createCampaign(input: {
 
       const { data: dialogs, error: dErr } = await supabase
         .from("mtproto_dialogs")
-        .select("id, account_id, title, username, kind")
+        .select("id, account_id, title, username, write_block, send_refusal")
         .in("account_id", accountIds)
-        .in("kind", GLOBAL_DIALOG_KINDS)
-        // Mesmo filtro dos rebuilds no worker: destino que já recusou texto
-        // puro (CHAT_SEND_PLAIN_FORBIDDEN) não entra nem na criação.
-        .eq("plain_text_forbidden", false);
+        .in("kind", GLOBAL_DIALOG_KINDS);
       if (dErr) return { ok: false, error: `Failed to load global dialogs: ${dErr.message}` };
-      const dialogList = dialogs ?? [];
+      const dialogList = (dialogs ?? []) as DialogTargetSource[];
 
       // Mesmo com dialogList vazio, segue criando a campanha — o worker faz
       // sync inline antes do run global (refreshGlobalCampaignTargets) e
@@ -256,9 +282,10 @@ export async function createCampaign(input: {
           message_text: input.message,
           delay_min_seconds: input.delayMin,
           delay_max_seconds: input.delayMax,
-          total_targets: dialogList.length,
+          // total/sent/failed/skipped seguem as linhas de mtproto_targets
+          // (trigger da migration 083); o zero aqui dura até o primeiro insert.
+          total_targets: 0,
           status: "draft",
-          failed_count: 0,
           recurrence_seconds: recurrenceSeconds,
           is_global: true,
         })
@@ -267,14 +294,7 @@ export async function createCampaign(input: {
       if (cErr) return { ok: false, error: cErr.message };
 
       if (dialogList.length > 0) {
-        const rows = dialogList.map((d) => ({
-          campaign_id: campaign.id,
-          target_identifier: d.username ?? d.title ?? d.id,
-          target_type: "username" as const,
-          status: "pending" as const,
-          dialog_id: d.id,
-          account_id: d.account_id,
-        }));
+        const rows = buildDialogTargetRows(campaign.id, dialogList);
         for (let i = 0; i < rows.length; i += 500) {
           const batch = rows.slice(i, i + 500);
           const { error } = await supabase.from("mtproto_targets").insert(batch);
@@ -290,15 +310,15 @@ export async function createCampaign(input: {
     const valid = parsed.filter((t) => t.valid);
     const invalid = parsed.filter((t) => !t.valid);
 
-    let dialogRows: Array<{ id: string; account_id: string; title: string | null; username: string | null }> = [];
+    let dialogRows: DialogTargetSource[] = [];
     if (input.dialogIds && input.dialogIds.length > 0) {
       const { data, error } = await supabase
         .from("mtproto_dialogs")
-        .select("id, account_id, title, username, mtproto_accounts!inner(tenant_id)")
+        .select("id, account_id, title, username, write_block, send_refusal, mtproto_accounts!inner(tenant_id)")
         .in("id", input.dialogIds)
         .eq("mtproto_accounts.tenant_id", tenantId);
       if (error) return { ok: false, error: `Failed to load dialogs: ${error.message}` };
-      dialogRows = (data ?? []) as typeof dialogRows;
+      dialogRows = (data ?? []) as unknown as DialogTargetSource[];
     }
 
     const totalTargets = valid.length + invalid.length + dialogRows.length;
@@ -316,7 +336,6 @@ export async function createCampaign(input: {
         delay_max_seconds: input.delayMax,
         total_targets: totalTargets,
         status: "draft",
-        failed_count: invalid.length,
         recurrence_seconds: recurrenceSeconds,
         is_global: false,
       })
@@ -338,14 +357,10 @@ export async function createCampaign(input: {
         status: "failed" as const,
         error_message: "invalid_identifier",
       })),
-      ...dialogRows.map((d) => ({
-        campaign_id: campaign.id,
-        target_identifier: d.username ?? d.title ?? d.id,
-        target_type: "username" as const,
-        status: "pending" as const,
-        dialog_id: d.id,
-        account_id: d.account_id,
-      })),
+      // Seleção manual passa pela mesma regra do global: canal onde a conta
+      // não é admin, grupo onde está silenciada etc. já nasce 'skipped' com o
+      // motivo, em vez de virar falha no envio.
+      ...buildDialogTargetRows(campaign.id, dialogRows),
     ];
     if (rows.length) {
       const { error: tErr } = await supabase.from("mtproto_targets").insert(rows);

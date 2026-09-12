@@ -23,9 +23,15 @@ function pool(...ids: string[]): AccountPool {
 }
 
 function targets(
-  ...items: Array<{ id: string; identifier: string; type: "username" | "phone" }>
+  ...items: Array<{ id: string; identifier: string; type: "username" | "phone"; pinnedAccountId?: string }>
 ): CampaignTargetRow[] {
-  return items.map((i) => ({ id: i.id, identifier: i.identifier, type: i.type, status: "pending" }));
+  return items.map((i) => ({
+    id: i.id,
+    identifier: i.identifier,
+    type: i.type,
+    status: "pending",
+    ...(i.pinnedAccountId ? { pinnedAccountId: i.pinnedAccountId } : {}),
+  }));
 }
 
 function makeDeps(
@@ -38,7 +44,6 @@ function makeDeps(
     },
     markTargetSent: vi.fn(async () => {}),
     markTargetFailed: vi.fn(async () => {}),
-    incrementCounters: vi.fn(async () => {}),
     setCampaignStatus: vi.fn(async () => {}),
     getCampaignStatus: vi.fn(async () => "running"),
     delay: async () => {},
@@ -47,15 +52,14 @@ function makeDeps(
   return Object.assign(base, { sends });
 }
 
+const cfg = { campaignId: "c1", messageText: "x", delayMinSeconds: 0, delayMaxSeconds: 0 };
+const rpc = (code: string, status = 400) =>
+  new Error(`${status}: ${code} (caused by messages.SendMessage)`);
+
 describe("CampaignRunner", () => {
   it("sends to all pending targets distributing across the pool", async () => {
     const deps = makeDeps();
-    const runner = new CampaignRunner(pool("a", "b"), deps, {
-      campaignId: "c1",
-      messageText: "oi",
-      delayMinSeconds: 0,
-      delayMaxSeconds: 0,
-    });
+    const runner = new CampaignRunner(pool("a", "b"), deps, { ...cfg, messageText: "oi" });
     await runner.run(
       targets(
         { id: "t1", identifier: "u1", type: "username" },
@@ -77,12 +81,7 @@ describe("CampaignRunner", () => {
         }
       },
     });
-    const runner = new CampaignRunner(pl, deps, {
-      campaignId: "c1",
-      messageText: "x",
-      delayMinSeconds: 0,
-      delayMaxSeconds: 0,
-    });
+    const runner = new CampaignRunner(pl, deps, cfg);
     await runner.run(targets({ id: "t1", identifier: "u1", type: "username" }));
     expect(deps.markTargetSent).toHaveBeenCalledWith("t1", "b");
   });
@@ -93,12 +92,7 @@ describe("CampaignRunner", () => {
         throw new Error("USERNAME_NOT_OCCUPIED");
       },
     });
-    const runner = new CampaignRunner(pool("a"), deps, {
-      campaignId: "c1",
-      messageText: "x",
-      delayMinSeconds: 0,
-      delayMaxSeconds: 0,
-    });
+    const runner = new CampaignRunner(pool("a"), deps, cfg);
     await runner.run(targets({ id: "t1", identifier: "bad", type: "username" }));
     expect(deps.markTargetFailed).toHaveBeenCalledWith(
       "t1",
@@ -111,67 +105,65 @@ describe("CampaignRunner", () => {
     const p = new AccountPool();
     p.load([]);
     const deps = makeDeps();
-    const runner = new CampaignRunner(p, deps, {
-      campaignId: "c1",
-      messageText: "x",
-      delayMinSeconds: 0,
-      delayMaxSeconds: 0,
-    });
+    const runner = new CampaignRunner(p, deps, cfg);
     await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
     expect(deps.setCampaignStatus).toHaveBeenCalledWith("c1", "paused");
   });
 
   it("completes the campaign when all targets are sent", async () => {
     const deps = makeDeps();
-    const runner = new CampaignRunner(pool("a"), deps, {
-      campaignId: "c1",
-      messageText: "x",
-      delayMinSeconds: 0,
-      delayMaxSeconds: 0,
-    });
+    const runner = new CampaignRunner(pool("a"), deps, cfg);
     await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
     expect(deps.setCampaignStatus).toHaveBeenCalledWith("c1", "completed");
   });
 
-  describe("CHAT_SEND_PLAIN_FORBIDDEN", () => {
-    const plainForbidden = () =>
-      new Error("403: CHAT_SEND_PLAIN_FORBIDDEN (caused by messages.SendMessage)");
+  it("USER_DEACTIVATED (sessão morta) marca a conta como fatal", async () => {
+    const markAccountFatal = vi.fn(async () => {});
+    const deps = makeDeps({
+      markAccountFatal,
+      sendMessage: async () => {
+        throw rpc("USER_DEACTIVATED", 401);
+      },
+    });
+    const runner = new CampaignRunner(pool("a"), deps, cfg);
+    await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
+    expect(markAccountFatal).toHaveBeenCalledWith("a", expect.stringContaining("USER_DEACTIVATED"));
+  });
 
-    it("apaga o alvo em vez de marcar falha, e não conta no failed_count", async () => {
-      const dropTarget = vi.fn(async () => {});
+  describe("recusa permanente do destino (alvo pulado)", () => {
+    it.each([
+      "CHAT_ADMIN_REQUIRED",
+      "CHAT_WRITE_FORBIDDEN",
+      "USER_BANNED_IN_CHANNEL",
+      "CHAT_RESTRICTED",
+      "CHANNEL_PRIVATE",
+      "PEER_ID_INVALID",
+      "TOPIC_CLOSED",
+      "CHAT_SEND_PLAIN_FORBIDDEN",
+    ])("%s pula o alvo com o código como motivo, sem marcar falha", async (code) => {
+      const skipTarget = vi.fn(async () => {});
       const deps = makeDeps({
-        dropTarget,
-        sendMessage: async (_accountId, target) => {
-          if (target.identifier === "grupo_sem_texto") throw plainForbidden();
+        skipTarget,
+        sendMessage: async () => {
+          throw rpc(code);
         },
       });
-      const runner = new CampaignRunner(pool("a"), deps, {
-        campaignId: "c1",
-        messageText: "x",
-        delayMinSeconds: 0,
-        delayMaxSeconds: 0,
-      });
-      await runner.run(targets({ id: "t1", identifier: "grupo_sem_texto", type: "username" }));
+      const runner = new CampaignRunner(pool("a"), deps, cfg);
+      await runner.run(targets({ id: "t1", identifier: "canal_x", type: "username" }));
 
-      expect(dropTarget).toHaveBeenCalledWith("t1", expect.objectContaining({ id: "t1" }));
+      expect(skipTarget).toHaveBeenCalledWith("t1", expect.objectContaining({ id: "t1" }), code);
       expect(deps.markTargetFailed).not.toHaveBeenCalled();
-      expect(deps.incrementCounters).not.toHaveBeenCalledWith("c1", "failed");
     });
 
     it("não derruba a campanha: os alvos seguintes continuam recebendo", async () => {
       const deps = makeDeps({
-        dropTarget: vi.fn(async () => {}),
+        skipTarget: vi.fn(async () => {}),
         sendMessage: async (accountId, target) => {
-          if (target.identifier === "morto") throw plainForbidden();
+          if (target.identifier === "morto") throw rpc("CHAT_ADMIN_REQUIRED");
           deps.sends.push({ accountId, target: target.identifier });
         },
       });
-      const runner = new CampaignRunner(pool("a"), deps, {
-        campaignId: "c1",
-        messageText: "x",
-        delayMinSeconds: 0,
-        delayMaxSeconds: 0,
-      });
+      const runner = new CampaignRunner(pool("a"), deps, cfg);
       await runner.run(
         targets(
           { id: "t1", identifier: "vivo1", type: "username" },
@@ -185,45 +177,63 @@ describe("CampaignRunner", () => {
       expect(deps.setCampaignStatus).toHaveBeenCalledWith("c1", "completed");
     });
 
-    // O pedido era explícito: SÓ esse código some. Guarda de regressão pra
-    // ninguém alargar o detector depois e engolir falha de verdade.
-    it("qualquer OUTRO erro continua virando falha visível", async () => {
-      const dropTarget = vi.fn(async () => {});
+    it("INPUT_USER_DEACTIVATED é o CONTATO desativado: pula o alvo e NÃO bane a conta", async () => {
+      const skipTarget = vi.fn(async () => {});
+      const markAccountFatal = vi.fn(async () => {});
       const deps = makeDeps({
-        dropTarget,
+        skipTarget,
+        markAccountFatal,
         sendMessage: async () => {
-          throw new Error("403: CHAT_WRITE_FORBIDDEN (caused by messages.SendMessage)");
+          throw rpc("INPUT_USER_DEACTIVATED");
         },
       });
-      const runner = new CampaignRunner(pool("a"), deps, {
-        campaignId: "c1",
-        messageText: "x",
-        delayMinSeconds: 0,
-        delayMaxSeconds: 0,
-      });
+      const runner = new CampaignRunner(pool("a"), deps, cfg);
       await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
 
-      expect(dropTarget).not.toHaveBeenCalled();
-      expect(deps.markTargetFailed).toHaveBeenCalledWith(
-        "t1",
-        "a",
-        expect.stringContaining("CHAT_WRITE_FORBIDDEN"),
-      );
-      expect(deps.incrementCounters).toHaveBeenCalledWith("c1", "failed");
+      expect(skipTarget).toHaveBeenCalledWith("t1", expect.anything(), "INPUT_USER_DEACTIVATED");
+      expect(markAccountFatal).not.toHaveBeenCalled();
     });
 
-    it("sem a dep dropTarget, cai no caminho antigo de falha", async () => {
+    it("recusa na conta reserva (depois de flood na primeira) também pula", async () => {
+      const skipTarget = vi.fn(async () => {});
       const deps = makeDeps({
-        sendMessage: async () => {
-          throw plainForbidden();
+        skipTarget,
+        sendMessage: async (accountId: string) => {
+          if (accountId === "a") throw Object.assign(new Error("FLOOD_WAIT"), { seconds: 30 });
+          throw rpc("CHAT_WRITE_FORBIDDEN", 403);
         },
       });
-      const runner = new CampaignRunner(pool("a"), deps, {
-        campaignId: "c1",
-        messageText: "x",
-        delayMinSeconds: 0,
-        delayMaxSeconds: 0,
+      const runner = new CampaignRunner(pool("a", "b"), deps, cfg);
+      await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
+
+      expect(skipTarget).toHaveBeenCalledWith("t1", expect.anything(), "CHAT_WRITE_FORBIDDEN");
+      expect(deps.markTargetFailed).not.toHaveBeenCalled();
+    });
+
+    // Guarda de regressão: só recusa PERMANENTE some da campanha. Erro
+    // genérico continua falha visível na tela.
+    it("qualquer OUTRO erro continua virando falha visível", async () => {
+      const skipTarget = vi.fn(async () => {});
+      const deps = makeDeps({
+        skipTarget,
+        sendMessage: async () => {
+          throw new Error("500: INTERNAL (caused by messages.SendMessage)");
+        },
       });
+      const runner = new CampaignRunner(pool("a"), deps, cfg);
+      await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
+
+      expect(skipTarget).not.toHaveBeenCalled();
+      expect(deps.markTargetFailed).toHaveBeenCalledWith("t1", "a", expect.stringContaining("INTERNAL"));
+    });
+
+    it("sem a dep skipTarget, cai no caminho antigo de falha", async () => {
+      const deps = makeDeps({
+        sendMessage: async () => {
+          throw rpc("CHAT_SEND_PLAIN_FORBIDDEN", 403);
+        },
+      });
+      const runner = new CampaignRunner(pool("a"), deps, cfg);
       await runner.run(targets({ id: "t1", identifier: "u", type: "username" }));
 
       expect(deps.markTargetFailed).toHaveBeenCalledWith(

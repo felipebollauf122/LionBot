@@ -5,6 +5,7 @@ import { CustomFile } from "telegram/client/uploads.js";
 import { randomBytes } from "crypto";
 import bigInt from "big-integer";
 import { extractWaitSeconds } from "./flood.js";
+import { channelWriteBlock, chatWriteBlock } from "./dialog-writability.js";
 import type { ParsedIdentifier } from "./link-parse.js";
 
 /**
@@ -58,6 +59,14 @@ export interface MtprotoDialog {
   title: string;
   username: string | null;
   isBot: boolean;
+  /**
+   * O que as permissões vistas aqui já dizem que impede escrever (canal
+   * broadcast sem admin, conta silenciada, chat restrito, saiu do grupo...).
+   * null = pode. Ver dialog-writability.ts. Vira mtproto_dialogs.write_block.
+   */
+  writeBlock: string | null;
+  /** Grupo em modo fórum (precisa de tópico pra postar). */
+  isForum: boolean;
 }
 
 export class MtprotoClient {
@@ -207,6 +216,13 @@ export class MtprotoClient {
     peerType: "user" | "chat" | "channel",
     peerAccessHash: string | null,
     text: string,
+    opts: {
+      /**
+       * Tópico de fórum onde ancorar a mensagem. Omitido, vai pro General —
+       * que em muitos fóruns está fechado (TOPIC_CLOSED); ver forum-fallback.ts.
+       */
+      topMsgId?: number;
+    } = {},
   ): Promise<void> {
     await this.connect();
 
@@ -228,7 +244,7 @@ export class MtprotoClient {
       });
     }
 
-    await this.client.sendMessage(inputPeer as never, { message: text });
+    await this.client.sendMessage(inputPeer as never, { message: text, topMsgId: opts.topMsgId });
   }
 
   /**
@@ -268,6 +284,8 @@ export class MtprotoClient {
               title: "Saved Messages",
               username: user.username ?? null,
               isBot: false,
+              writeBlock: null,
+              isForum: false,
             });
             continue;
           }
@@ -280,6 +298,8 @@ export class MtprotoClient {
               title: [user.firstName, user.lastName].filter(Boolean).join(" ") || (user.username ?? peerId),
               username: user.username ?? null,
               isBot: true,
+              writeBlock: null,
+              isForum: false,
             });
             continue;
           }
@@ -291,6 +311,8 @@ export class MtprotoClient {
             title: [user.firstName, user.lastName].filter(Boolean).join(" ") || (user.username ?? peerId),
             username: user.username ?? null,
             isBot: false,
+            writeBlock: null,
+            isForum: false,
           });
         }
       }
@@ -373,6 +395,8 @@ export class MtprotoClient {
               title: "Saved Messages",
               username: u.username ?? null,
               isBot: false,
+              writeBlock: null,
+              isForum: false,
             });
             continue;
           }
@@ -385,6 +409,8 @@ export class MtprotoClient {
               title: [u.firstName, u.lastName].filter(Boolean).join(" ") || (u.username ?? userId),
               username: u.username ?? null,
               isBot: true,
+              writeBlock: null,
+              isForum: false,
             });
             continue;
           }
@@ -396,6 +422,8 @@ export class MtprotoClient {
             title: [u.firstName, u.lastName].filter(Boolean).join(" ") || (u.username ?? userId),
             username: u.username ?? null,
             isBot: false,
+            writeBlock: null,
+            isForum: false,
           });
         } else if (dialogPeer instanceof Api.PeerChat) {
           const chatId = String(dialogPeer.chatId);
@@ -413,6 +441,8 @@ export class MtprotoClient {
             title: c.title || chatId,
             username: null,
             isBot: false,
+            writeBlock: chatWriteBlock(c),
+            isForum: false,
           });
         } else if (dialogPeer instanceof Api.PeerChannel) {
           const channelId = String(dialogPeer.channelId);
@@ -438,6 +468,8 @@ export class MtprotoClient {
             title: c.title || channelId,
             username: c.username ?? null,
             isBot: false,
+            writeBlock: channelWriteBlock(c),
+            isForum: Boolean(c.forum),
           });
         }
       }

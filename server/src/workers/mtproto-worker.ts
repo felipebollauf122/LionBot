@@ -9,22 +9,26 @@ import {
   type CampaignTargetRow,
 } from "../services/mtproto/campaign-runner.js";
 import { enqueueMtproto, type MtprotoJobData } from "../queue-mtproto.js";
+import { buildGlobalTargetRows, type GlobalDialogRow } from "../services/mtproto/global-targets.js";
+import { sendWithForumFallback } from "../services/mtproto/forum-fallback.js";
 import { handleCloneRun } from "./clone-handler.js";
 import { handleBotCloneExplore, handleBotCloneBuildFlow } from "./bot-clone-handler.js";
 import { handleScheduledSend } from "./scheduled-campaign-handler.js";
 import { handleCampaignAiProcess } from "./campaign-ai-handler.js";
 
-// Kinds elegíveis pra disparo global. Inclui grupos/canais onde só participa
-// — o owner aceita o risco de ban por spam em troca de alcance máximo.
-// Exclui só 'bot' (mandar pra bots é desperdício) e 'self' (Saved Messages
-// do próprio dono — ele já leu).
+// Kinds elegíveis pra disparo global. Inclui grupos onde só participa — o
+// owner aceita o risco de ban por spam em troca de alcance máximo.
+// Exclui 'bot' (mandar pra bots é desperdício), 'self' (Saved Messages do
+// próprio dono — ele já leu) e 'channel_subscriber': canal broadcast onde a
+// conta só assina. Assinante NUNCA posta em broadcast — cada um desses era um
+// CHAT_ADMIN_REQUIRED garantido, a maior fatia das "falhas" da tela.
+// Espelhado em app/dashboard/automations/actions.ts.
 const GLOBAL_DIALOG_KINDS = [
   "contact",
   "dm",
   "group_admin",
   "group_member",
   "channel_owner",
-  "channel_subscriber",
 ] as const;
 
 // liveClients com TTL (#45): rastreia último uso pra evitar crescimento
@@ -269,6 +273,11 @@ async function doSyncDialogs(accountId: string): Promise<void> {
     title: d.title,
     username: d.username,
     is_bot: d.isBot,
+    // Sobrescrito a cada sync (permissão mudou → volta a null). send_refusal e
+    // forum_topic_id NÃO entram aqui de propósito: são sticky (o upsert só
+    // toca nas colunas listadas).
+    write_block: d.writeBlock,
+    is_forum: d.isForum,
     last_synced_at: now,
   }));
 
@@ -347,37 +356,27 @@ async function addAccountToActiveGlobalCampaigns(accountId: string): Promise<voi
   // Campanhas globais elegíveis do tenant
   const { data: campaigns } = await supabase
     .from("mtproto_campaigns")
-    .select("id, status, total_targets")
+    .select("id, status")
     .eq("tenant_id", account.tenant_id)
     .eq("is_global", true)
     .in("status", ["running", "scheduled", "paused"]);
   if (!campaigns || campaigns.length === 0) return;
 
-  // Dialogs da conta em kinds seguros
+  // Dialogs da conta em kinds elegíveis. Bloqueados (write_block da sync,
+  // send_refusal de envio recusado) vêm junto: entram como 'skipped' com o
+  // motivo, pra tela mostrar por quê em vez de sumirem em silêncio.
   const { data: dialogs } = await supabase
     .from("mtproto_dialogs")
-    .select("id, title, username")
+    .select("id, account_id, title, username, write_block, send_refusal")
     .eq("account_id", accountId)
-    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[])
-    // Destinos que já recusaram texto puro (CHAT_SEND_PLAIN_FORBIDDEN) ficam
-    // de fora: nunca vão receber, e cada tentativa é request desperdiçado.
-    .eq("plain_text_forbidden", false);
+    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[]);
   if (!dialogs || dialogs.length === 0) return;
 
   for (const camp of campaigns) {
-    // Insere targets pending; collision (mesmo dialog já no DB) é raro
-    // porque conta nova => dialogs novos. Se houver, on conflict do unique
-    // index nos pegaria, mas não temos um — então só não duplica se o
-    // mesmo dialog_id já existe pro campaign (improvável: dialog_id vem
-    // do mtproto_dialogs row, único por (account_id, peer)).
-    const rows = dialogs.map((d) => ({
-      campaign_id: camp.id,
-      target_identifier: d.username ?? d.title ?? d.id,
-      target_type: "username" as const,
-      status: "pending" as const,
-      dialog_id: d.id,
-      account_id: accountId,
-    }));
+    // Insere targets; collision (mesmo dialog já no DB) é raro porque conta
+    // nova => dialogs novos. Contadores da campanha seguem sozinhos (trigger
+    // da migration 083).
+    const rows = buildGlobalTargetRows(camp.id, dialogs as GlobalDialogRow[]);
     for (let i = 0; i < rows.length; i += 500) {
       const batch = rows.slice(i, i + 500);
       const { error } = await supabase.from("mtproto_targets").insert(batch);
@@ -386,11 +385,6 @@ async function addAccountToActiveGlobalCampaigns(accountId: string): Promise<voi
         return;
       }
     }
-    // Incrementa total_targets na campanha
-    await supabase
-      .from("mtproto_campaigns")
-      .update({ total_targets: (camp.total_targets ?? 0) + rows.length })
-      .eq("id", camp.id);
     console.log(
       `[mtproto.hot-add] ${rows.length} targets da conta ${accountId} adicionados à campanha ${camp.id} (status=${camp.status})`,
     );
@@ -437,33 +431,26 @@ async function refreshGlobalCampaignTargets(
   const accountIds = accounts.map((a) => a.id);
   const { data: dialogs } = await supabase
     .from("mtproto_dialogs")
-    .select("id, account_id, title, username")
+    .select("id, account_id, title, username, write_block, send_refusal")
     .in("account_id", accountIds)
-    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[])
-    // Mesmo filtro do hot-add: destino que recusou texto puro não volta pro
-    // rebuild. É o que faz o descarte durar entre ciclos recorrentes.
-    .eq("plain_text_forbidden", false);
-  const dialogList = dialogs ?? [];
+    .in("kind", GLOBAL_DIALOG_KINDS as unknown as string[]);
+  const dialogList = (dialogs ?? []) as GlobalDialogRow[];
   if (dialogList.length === 0) {
     console.warn(`[mtproto.global-refresh] campaign ${campaignId}: no dialogs found after sync`);
     return;
   }
 
-  // Remove pendings antigos e insere o snapshot atual.
+  // Remove pendings e pulados do ciclo anterior e insere o snapshot atual.
+  // Bloqueado (write_block da sync, send_refusal de envio recusado) volta
+  // como 'skipped' com o motivo — é o que faz o descarte durar entre ciclos
+  // sem sumir da tela. Contadores seguem sozinhos (trigger da migration 083).
   await supabase
     .from("mtproto_targets")
     .delete()
     .eq("campaign_id", campaignId)
-    .eq("status", "pending");
+    .in("status", ["pending", "skipped"]);
 
-  const rows = dialogList.map((d) => ({
-    campaign_id: campaignId,
-    target_identifier: d.username ?? d.title ?? d.id,
-    target_type: "username" as const,
-    status: "pending" as const,
-    dialog_id: d.id,
-    account_id: d.account_id,
-  }));
+  const rows = buildGlobalTargetRows(campaignId, dialogList);
   for (let i = 0; i < rows.length; i += 500) {
     const batch = rows.slice(i, i + 500);
     const { error } = await supabase.from("mtproto_targets").insert(batch);
@@ -472,11 +459,10 @@ async function refreshGlobalCampaignTargets(
       return;
     }
   }
-  await supabase
-    .from("mtproto_campaigns")
-    .update({ total_targets: rows.length })
-    .eq("id", campaignId);
-  console.log(`[mtproto.global-refresh] campaign ${campaignId}: ${rows.length} targets refreshed`);
+  const skipped = rows.filter((r) => r.status === "skipped").length;
+  console.log(
+    `[mtproto.global-refresh] campaign ${campaignId}: ${rows.length - skipped} targets refreshed, ${skipped} pulados`,
+  );
 }
 
 async function handleCampaignRun(campaignId: string): Promise<void> {
@@ -574,7 +560,7 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
     // FLOOD_WAIT da conta pinned. Inclui retry_after null OU já vencido.
     const { data: targets } = await supabase
       .from("mtproto_targets")
-      .select("*, mtproto_dialogs(peer_id, peer_type, peer_access_hash)")
+      .select("*, mtproto_dialogs(peer_id, peer_type, peer_access_hash, is_forum, forum_topic_id)")
       .eq("campaign_id", campaignId)
       .eq("status", "pending")
       .or(`retry_after.is.null,retry_after.lte.${nowIso}`);
@@ -586,13 +572,21 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         status: t.status,
       };
       const dialog = t.mtproto_dialogs as
-        | { peer_id: string; peer_type: "user" | "chat" | "channel"; peer_access_hash: string | null }
+        | {
+            peer_id: string;
+            peer_type: "user" | "chat" | "channel";
+            peer_access_hash: string | null;
+            is_forum: boolean | null;
+            forum_topic_id: number | null;
+          }
         | null;
       if (dialog) {
         row.dialog = {
           peerId: dialog.peer_id,
           peerType: dialog.peer_type,
           peerAccessHash: dialog.peer_access_hash,
+          isForum: Boolean(dialog.is_forum),
+          forumTopicId: dialog.forum_topic_id ?? null,
         };
       }
       if (t.dialog_id) {
@@ -616,12 +610,38 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         const client = await getOrCreateClient(accountId, acc.session_string ?? "");
         if (target.dialog) {
           // Peer estruturado (vindo da sincronização) — caminho rápido e seguro.
-          await client.sendMessageToPeer(
-            target.dialog.peerId,
-            target.dialog.peerType,
-            target.dialog.peerAccessHash,
-            text,
-          );
+          const { peerId, peerType, peerAccessHash } = target.dialog;
+          if (peerType === "channel" && peerAccessHash) {
+            // Supergrupo pode ser fórum com o General fechado: no TOPIC_CLOSED
+            // escolhe um tópico aberto e guarda pra próxima vez ir direto.
+            // Vale pra todo channel (não só is_forum) porque a flag pode estar
+            // velha entre syncs; em não-fórum listTopics falha, devolve [] e o
+            // TOPIC_CLOSED original segue pro runner, que pula o alvo.
+            const dialogId = target.dialogId;
+            await sendWithForumFallback({
+              knownTopicId: target.dialog.forumTopicId ?? null,
+              send: (topMsgId) =>
+                client.sendMessageToPeer(peerId, peerType, peerAccessHash, text, { topMsgId }),
+              listTopics: async () => {
+                try {
+                  const topics = await client.listForumTopics(peerId, peerAccessHash);
+                  return topics.map((t) => ({ id: t.id, closed: t.closed, hidden: t.hidden, title: t.title }));
+                } catch (err) {
+                  console.warn(`[mtproto] listForumTopics falhou pra ${peerId}:`, err);
+                  return [];
+                }
+              },
+              rememberTopic: async (topicId) => {
+                if (!dialogId) return;
+                await supabase
+                  .from("mtproto_dialogs")
+                  .update({ is_forum: true, forum_topic_id: topicId })
+                  .eq("id", dialogId);
+              },
+            });
+          } else {
+            await client.sendMessageToPeer(peerId, peerType, peerAccessHash, text);
+          }
         } else {
           // Caminho legado: lista colada com @username ou +telefone.
           await client.sendMessage(target.identifier, target.type, text);
@@ -647,33 +667,23 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           .update({ status: "failed", account_id: accountId, error_message: error })
           .eq("id", targetId);
       },
-      dropTarget: async (targetId, target) => {
-        // 1. Marca o dialog: é ele que alimenta o rebuild da campanha global
-        //    (refreshGlobalCampaignTargets). Sem isso o alvo morto voltaria
-        //    pra fila no próximo ciclo e gastaria um request por ciclo.
+      skipTarget: async (targetId, target, reason) => {
+        // 1. Marca o dialog: é ele que alimenta os rebuilds da campanha global
+        //    (hot-add e refresh). Sem isso o destino morto voltaria pra fila
+        //    no próximo ciclo e gastaria um request por ciclo, pra sempre.
         if (target.dialogId) {
           await supabase
             .from("mtproto_dialogs")
-            .update({
-              plain_text_forbidden: true,
-              plain_text_forbidden_at: new Date().toISOString(),
-            })
+            .update({ send_refusal: reason, send_refused_at: new Date().toISOString() })
             .eq("id", target.dialogId);
         }
-        // 2. Tira da campanha atual.
-        await supabase.from("mtproto_targets").delete().eq("id", targetId);
-        // 3. Desconta do total: a barra de progresso é (sent+failed)/total e
-        //    ficaria travada abaixo de 100% pra sempre com o alvo fantasma.
-        const { data: c } = await supabase
-          .from("mtproto_campaigns")
-          .select("total_targets")
-          .eq("id", campaignId)
-          .single();
-        const total = (c?.total_targets as number | undefined) ?? 0;
+        // 2. Alvo vira 'skipped' com o motivo: sai do progresso (o trigger da
+        //    migration 083 o deixa fora do total) mas continua na tela, pra
+        //    quem opera ver por que aquele grupo não recebe.
         await supabase
-          .from("mtproto_campaigns")
-          .update({ total_targets: Math.max(0, total - 1) })
-          .eq("id", campaignId);
+          .from("mtproto_targets")
+          .update({ status: "skipped", error_message: reason })
+          .eq("id", targetId);
       },
       markTargetRetryAfter: async (targetId, retryAfterIso) => {
         // Mantém pending + seta retry_after (#47) — reprocessa depois do flood.
@@ -682,19 +692,9 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           .update({ status: "pending", retry_after: retryAfterIso })
           .eq("id", targetId);
       },
-      incrementCounters: async (id, kind) => {
-        const field = kind === "sent" ? "sent_count" : "failed_count";
-        const { data: c } = await supabase
-          .from("mtproto_campaigns")
-          .select(field)
-          .eq("id", id)
-          .single();
-        const current = (c as unknown as Record<string, number> | null)?.[field] ?? 0;
-        await supabase
-          .from("mtproto_campaigns")
-          .update({ [field]: current + 1 })
-          .eq("id", id);
-      },
+      // Contadores (sent/failed/skipped/total) não são escritos aqui: o trigger
+      // da migration 083 recalcula a partir das linhas de mtproto_targets a
+      // cada mudança. Era read-then-write em seis caminhos e divergia.
       getCampaignStatus: async (id) => {
         const { data } = await supabase
           .from("mtproto_campaigns")
@@ -718,18 +718,48 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           patch.status = "scheduled";
           patch.last_run_at = new Date().toISOString();
           patch.next_run_at = nextRun.toISOString();
-          patch.sent_count = 0;
-          patch.failed_count = 0;
           patch.started_at = null;
           patch.completed_at = null;
-          // Reseta targets de 'sent'/'failed' (recuperáveis) pra 'pending'
-          // pra próxima execução. Mantém 'failed' com error_message='invalid_identifier'
-          // (esses foram listados pelo user; não vão funcionar nunca).
-          await supabase
+          // Reseta 'sent'/'failed' recuperáveis pra 'pending' pro próximo
+          // ciclo. Ficam como estão: 'skipped' (destino que não aceita) e
+          // 'failed' com error_message='invalid_identifier' (colado errado
+          // pelo user; nunca vai funcionar). Os contadores zeram sozinhos pelo
+          // trigger da migration 083.
+          //
+          // ARMADILHA que travava a tela em "Enviadas 0 de N": o filtro era
+          // .neq("error_message", "invalid_identifier") — em SQL, `<>` sobre
+          // NULL dá NULL, então toda linha 'sent' (error_message nulo) ficava
+          // FORA do reset. sent_count zerava, as linhas continuavam 'sent', o
+          // refresh global via "já tem sent" e se pulava, e só as falhas eram
+          // retentadas — ciclo após ciclo. Por isso o `.or` com `is.null`.
+          //
+          // Alvo com dialog_id MANTÉM account_id: o access_hash do peer é da
+          // conta dona, então o pin é obrigatório (zerar dava PEER_ID_INVALID
+          // em outra conta). Lista colada volta ao round-robin (account_id
+          // null).
+          const { error: e1 } = await supabase
             .from("mtproto_targets")
-            .update({ status: "pending", account_id: null, sent_at: null, error_message: null })
+            .update({ status: "pending", sent_at: null, error_message: null, retry_after: null })
             .eq("campaign_id", id)
-            .neq("error_message", "invalid_identifier");
+            .in("status", ["sent", "failed"])
+            .not("dialog_id", "is", null)
+            .or("error_message.is.null,error_message.neq.invalid_identifier");
+          const { error: e2 } = await supabase
+            .from("mtproto_targets")
+            .update({
+              status: "pending",
+              account_id: null,
+              sent_at: null,
+              error_message: null,
+              retry_after: null,
+            })
+            .eq("campaign_id", id)
+            .in("status", ["sent", "failed"])
+            .is("dialog_id", null)
+            .or("error_message.is.null,error_message.neq.invalid_identifier");
+          if (e1 || e2) {
+            console.error(`[mtproto] campaign ${id}: reset da recorrência falhou:`, e1 ?? e2);
+          }
           console.log(`[mtproto] campaign ${id} is recurrent — next run scheduled at ${nextRun.toISOString()}`);
         }
         await supabase.from("mtproto_campaigns").update(patch).eq("id", id);

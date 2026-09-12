@@ -14,6 +14,7 @@ interface Campaign {
   total_targets: number;
   sent_count: number;
   failed_count: number;
+  skipped_count?: number | null;
   created_at: string;
   recurrence_seconds?: number | null;
   next_run_at?: string | null;
@@ -136,6 +137,14 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
                   <span className={c.failed_count > 0 ? "text-(--red)" : ""}>
                     {c.failed_count} falhas
                   </span>
+                  {(c.skipped_count ?? 0) > 0 && (
+                    <>
+                      {" · "}
+                      <span className="text-(--amber)" title="Destinos que não aceitam mensagem desta conta; fora do total">
+                        {c.skipped_count} pulados
+                      </span>
+                    </>
+                  )}
                   {isRecurrent && (
                     <>
                       {" · "}

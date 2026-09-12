@@ -251,13 +251,16 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
           />
           <div>
             <div className="text-foreground text-sm font-medium">
-              🌍 Disparo global — todas as contas, todos os contatos/DMs/grupos meus/canais meus
+              🌍 Disparo global — todas as contas, todos os contatos/DMs/grupos/canais meus
             </div>
             <div className="text-(--text-secondary) text-xs mt-1 leading-relaxed">
               Quando ativo, ignora a lista de alvos e a seleção manual. Cada conta MTProto
               conectada dispara a mesma mensagem pra <b>tudo onde a conta consegue mandar</b>:
-              contatos, DMs, grupos (admin <i>ou</i> só participante) e canais (dono <i>ou</i>
-              só inscrito). <b>Não inclui</b> bots e Saved Messages.
+              contatos, DMs, grupos (admin <i>ou</i> só participante) e canais onde a conta é
+              dona/admin. <b>Não inclui</b> bots, Saved Messages nem canais onde a conta só
+              assina (assinante não publica em canal). Grupo onde a conta está silenciada,
+              banida ou sem permissão de escrever aparece como <b>pulado</b> na campanha, com o
+              motivo, e não conta como falha.
               {" "}A base é <b>sincronizada automaticamente</b>: ao conectar a conta, antes de
               cada disparo global e em loop a cada 24h.
             </div>

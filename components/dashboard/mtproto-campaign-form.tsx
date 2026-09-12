@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { automationHref } from "@/lib/automations/navigation";
 import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
@@ -54,6 +54,12 @@ const ALL_FILTERABLE_KINDS = [
 ];
 
 export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
+  // Navegação com outro ?view pode reutilizar o componente. O rascunho e seus
+  // destinos pertencem a um usuário: a chave descarta todo o estado anterior.
+  return <TenantCampaignForm key={actingTenantId ?? "mine"} actingTenantId={actingTenantId} />;
+}
+
+function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [targetsRaw, setTargetsRaw] = useState("");
@@ -85,40 +91,45 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
   const [dialogs, setDialogs] = useState<Dialog[]>([]);
   const [loadingDialogs, setLoadingDialogs] = useState(false);
   const [selectedDialogIds, setSelectedDialogIds] = useState<Set<string>>(new Set());
+  const selectionVersion = useRef(0);
+
+  useEffect(() => () => { selectionVersion.current += 1; }, []);
 
   useEffect(() => {
+    let active = true;
     listActiveAccounts(actingTenantId)
       .then((accs) => {
+        if (!active) return;
         setAccounts(accs);
-        if (accs.length > 0 && !selectedAccountId) {
-          setSelectedAccountId(accs[0].id);
-        }
+        setSelectedAccountId(accs[0]?.id ?? "");
       })
-      .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => {
+        if (active) setError("Não foi possível carregar as contas do usuário selecionado.");
+      });
+    return () => { active = false; };
+  }, [actingTenantId]);
 
   // Recarrega dialogs quando muda conta, filtros ou busca (debounced)
   useEffect(() => {
-    if (!selectedAccountId) {
-      setDialogs([]);
-      return;
-    }
+    if (!selectedAccountId) return;
+    let active = true;
     const timer = setTimeout(async () => {
       setLoadingDialogs(true);
       try {
         const ds = await listAccountDialogs(selectedAccountId, {
           kinds: Array.from(kindFilters),
           search,
-        });
-        setDialogs(ds);
+        }, actingTenantId);
+        if (active) setDialogs(ds);
       } catch {
-        setDialogs([]);
+        if (active) setDialogs([]);
       } finally {
-        setLoadingDialogs(false);
+        if (active) setLoadingDialogs(false);
       }
     }, 300);
-    return () => clearTimeout(timer);
-  }, [selectedAccountId, kindFilters, search]);
+    // Cancelar apenas o timer não cancela uma consulta que já começou.
+    return () => { active = false; clearTimeout(timer); };
+  }, [selectedAccountId, kindFilters, search, actingTenantId]);
 
   function toggleKind(kind: string) {
     const next = new Set(kindFilters);
@@ -141,6 +152,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
   }
 
   function clearSelection() {
+    selectionVersion.current += 1;
     setSelectedDialogIds(new Set());
   }
 
@@ -208,13 +220,17 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
       setError("Selecione uma conta primeiro.");
       return;
     }
+    const version = selectionVersion.current;
     try {
-      const ds = await listAccountDialogs(selectedAccountId, { kinds: [kind] });
-      const next = new Set(selectedDialogIds);
-      ds.forEach((d) => next.add(d.id));
-      setSelectedDialogIds(next);
+      const ds = await listAccountDialogs(selectedAccountId, { kinds: [kind] }, actingTenantId);
+      if (version !== selectionVersion.current) return;
+      setSelectedDialogIds((selected) => {
+        const next = new Set(selected);
+        ds.forEach((d) => next.add(d.id));
+        return next;
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "erro");
+      if (version === selectionVersion.current) setError(err instanceof Error ? err.message : "erro");
     }
   }
 
@@ -300,7 +316,7 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
       <div className="rounded-lg p-4 space-y-3 border border-(--border-subtle) bg-white/[0.02]">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-foreground text-sm font-medium">Selecionar do meu Telegram</h3>
+            <h3 className="text-foreground text-sm font-medium">Selecionar do Telegram</h3>
             <p className="text-(--text-muted) text-xs">
               Contatos, conversas, grupos e canais sincronizados da conta MTProto.
             </p>
@@ -333,7 +349,10 @@ export function MtprotoCampaignForm({ actingTenantId }: { actingTenantId?: strin
               <select
                 value={selectedAccountId}
                 onChange={(e) => {
+                  selectionVersion.current += 1;
                   setSelectedAccountId(e.target.value);
+                  setDialogs([]);
+                  setLoadingDialogs(true);
                   setSelectedDialogIds(new Set());
                 }}
                 className="input"

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { automationHref } from "@/lib/automations/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LionMark } from "@/components/brand/lion-mark";
 
@@ -17,6 +18,7 @@ interface SidebarProps {
 export function Sidebar({ isAdmin, isOwner, isPremium, open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const params = useSearchParams();
   const supabase = createClient();
 
   // Close the mobile drawer whenever the route changes.
@@ -110,7 +112,7 @@ export function Sidebar({ isAdmin, isOwner, isPremium, open = false, onClose }: 
         </a>
         {(isOwner || isPremium) && (
           <a
-            href="/dashboard/automations"
+            href={automationHref("/dashboard/automations", isAdmin ? params.get("view") : null)}
             className={`nav-item ${isAutomationsActive ? "active" : ""}`}
           >
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isAutomationsActive ? "bg-(--accent)/15" : "bg-white/4"}`} style={isAutomationsActive ? { boxShadow: "0 0 12px -4px color-mix(in srgb, var(--accent) 30%, transparent)" } : {}}>

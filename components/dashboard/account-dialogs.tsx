@@ -48,7 +48,7 @@ export function AccountDialogs({
   useEffect(() => {
     let alive = true;
     // `loading` já nasce true (useState(true)); evita setState síncrono no corpo do efeito.
-    listAccountDialogs(accountId)
+    listAccountDialogs(accountId, undefined, ownerTenantId)
       .then((data) => {
         if (alive) setRows(data);
       })
@@ -61,7 +61,7 @@ export function AccountDialogs({
     return () => {
       alive = false;
     };
-  }, [accountId]);
+  }, [accountId, ownerTenantId]);
 
   const active = TABS.find((t) => t.id === tab)!;
   const term = search.trim().toLowerCase();
@@ -96,7 +96,7 @@ export function AccountDialogs({
             start(async () => {
               try {
                 await syncAccountDialogs(accountId);
-                setRows(await listAccountDialogs(accountId));
+                setRows(await listAccountDialogs(accountId, undefined, ownerTenantId));
                 alert("Sincronização enfileirada. Em alguns segundos a lista será atualizada.");
               } catch (err) {
                 alert(err instanceof Error ? err.message : "erro");

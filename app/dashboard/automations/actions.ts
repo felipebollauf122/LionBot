@@ -399,6 +399,7 @@ export async function syncAccountDialogs(
 export async function listAccountDialogs(
   accountId: string,
   filter?: { kinds?: string[]; search?: string },
+  actingTenantId?: string,
 ): Promise<Array<{
   id: string;
   title: string | null;
@@ -407,13 +408,15 @@ export async function listAccountDialogs(
   peer_type: string;
   is_bot: boolean;
 }>> {
+  const tenantId = await resolveActingTenantId(actingTenantId);
   const supabase = await createClient();
-  // Sem filtro de tenant_id — RLS de mtproto_accounts cobre (própria ou, se
-  // admin, qualquer tenant).
+  // O admin passa no RLS de qualquer conta. A lista também precisa pertencer
+  // ao usuário escolhido para este disparo, validado novamente no servidor.
   const { data: account } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("id", accountId)
+    .eq("tenant_id", tenantId)
     .single();
   if (!account) return [];
 

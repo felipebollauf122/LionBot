@@ -1,12 +1,12 @@
 $ErrorActionPreference = 'Stop'
-# Valida a migration 083 (contadores derivados + alvos pulados) num PostgreSQL 16
+# Valida as migrations 083/084 (contadores + concorrencia) num PostgreSQL 16
 # descartavel, no mesmo molde de test-bot-healing-migration.ps1: conteiner sem
 # rede nem volumes de host, removido ao terminar. Nao toca no Supabase real.
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $migrations = Join-Path $projectRoot 'supabase/migrations'
 $checks = Join-Path $projectRoot 'server/tests/sql/mtproto-campaign-counters.sql'
 $containerName = 'eaglebot-mtproto-counters-test-' + [Guid]::NewGuid().ToString('N')
-$containerId = docker run --rm --detach --network none --name $containerName -e POSTGRES_PASSWORD=local-disposable-test -e POSTGRES_DB=counters_test postgres:16-alpine
+$containerId = docker run --rm --detach --network none --memory 256m --cpus 1 --name $containerName -e POSTGRES_PASSWORD=local-disposable-test -e POSTGRES_DB=counters_test postgres:16-alpine
 if ($LASTEXITCODE -ne 0 -or $containerId -notmatch '^[a-f0-9]{64}$') { throw 'Failed to start disposable PostgreSQL container' }
 try {
   $ready = $false

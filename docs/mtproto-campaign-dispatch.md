@@ -2,16 +2,22 @@
 
 ## Deploy
 
-1. Aplicar `supabase/migrations/083_mtproto_campaign_skipped_targets.sql` no Supabase
-   (`supabase db push` aplica as pendentes). **Antes** de publicar o server e o Next.
-2. Publicar o server (worker) e o Next a partir do código atualizado.
+1. Preparar a versão atualizada do server e do Next. Pausar as campanhas e
+   interromper o worker antigo antes da alteração do banco.
+2. Aplicar, nesta ordem, `supabase/migrations/083_mtproto_campaign_skipped_targets.sql`
+   e `supabase/migrations/084_mtproto_campaign_counter_concurrency.sql` no Supabase.
+   Se a 083 já foi aplicada, executar apenas a 084.
+3. Publicar o server (worker) e o Next a partir do código atualizado. Conferir
+   os contadores com as linhas de alvos antes de retomar as campanhas.
 
 A ordem importa: a partir desta versão o código **não escreve mais**
 `sent_count`, `failed_count`, `skipped_count` nem `total_targets` — quem
 mantém os quatro é o trigger da migration, recalculando a partir das linhas
 de `mtproto_targets` a cada INSERT/UPDATE/DELETE. Código novo sem a migration
-deixa os contadores congelados. Código antigo com a migration é inofensivo: o
-trigger sobrescreve o incremento manual na próxima mudança de linha.
+deixa os contadores congelados. O worker antigo também é incompatível: a 083
+remove as colunas `plain_text_forbidden` usadas por ele, e seus incrementos
+manuais podem sobrescrever a contagem derivada. Evite essa combinação durante
+o deploy.
 
 A migration também roda um backfill: toda campanha existente passa a mostrar
 o que as linhas dizem (é o que corrige na hora uma tela em "Enviadas 0 de
@@ -19,7 +25,10 @@ o que as linhas dizem (é o que corrige na hora uma tela em "Enviadas 0 de
 
 Para validar a migration localmente sem tocar no Supabase:
 `./server/scripts/test-mtproto-campaign-counters.ps1` (PostgreSQL 16 em
-contêiner descartável, mesmo molde do teste da 076).
+contêiner descartável limitado a 256 MB e uma CPU, mesmo molde do teste da 076).
+O teste inclui duas conexões reais para reproduzir envio e inclusão de novos
+alvos simultâneos. A 084 bloqueia a linha da campanha antes de recontar com um
+snapshot atualizado; sem ela, essa concorrência pode voltar a zerar enviadas.
 
 ## O que mudou no comportamento
 

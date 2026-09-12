@@ -40,6 +40,7 @@ insert into public.mtproto_targets (campaign_id, target_identifier, target_type,
   ('00000000-0000-0000-0000-0000000000c1', 'e', 'username', 'pending', null);
 
 \i /tmp/migrations/083_mtproto_campaign_skipped_targets.sql
+\i /tmp/migrations/084_mtproto_campaign_counter_concurrency.sql
 
 -- 1. O backfill da migration ja corrige a campanha existente.
 do $$
@@ -145,5 +146,56 @@ begin
     raise exception 'plain_text_forbidden ainda existe';
   end if;
 end $$;
+
+-- 9. Um envio e o hot-add podem alterar alvos da mesma campanha ao mesmo
+-- tempo. Esperar o UPDATE da campanha nao pode gravar uma contagem calculada
+-- ANTES do commit do envio. Duas conexoes reais, sincronizadas pelo lock.
+create extension if not exists dblink;
+insert into public.mtproto_campaigns (id, tenant_id, name, message_text)
+  values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-000000000001', 'concurrent', 'oi');
+insert into public.mtproto_targets (campaign_id, target_identifier, target_type)
+  values ('00000000-0000-0000-0000-0000000000c2', 'sending', 'username');
+
+select dblink_connect('sender', 'dbname=counters_test user=postgres');
+select dblink_connect('hot_add', 'dbname=counters_test user=postgres application_name=mtproto-counter-hot-add-test options=-cstatement_timeout=15000');
+select dblink_exec('sender', 'begin');
+select dblink_exec('sender', $$
+  update public.mtproto_targets set status = 'sent'
+  where campaign_id = '00000000-0000-0000-0000-0000000000c2'
+    and target_identifier = 'sending'
+$$);
+select dblink_send_query('hot_add', $$
+  insert into public.mtproto_targets (campaign_id, target_identifier, target_type)
+  values ('00000000-0000-0000-0000-0000000000c2', 'new-contact', 'username')
+  returning target_identifier
+$$);
+do $$
+declare deadline timestamptz := clock_timestamp() + interval '10 seconds';
+begin
+  loop
+    perform pg_stat_clear_snapshot();
+    exit when exists (
+      select 1 from pg_stat_activity
+      where application_name = 'mtproto-counter-hot-add-test' and wait_event_type = 'Lock'
+    );
+    if clock_timestamp() > deadline then
+      raise exception 'hot-add nao chegou ao lock; concorrencia nao foi exercitada';
+    end if;
+    perform pg_sleep(0.01);
+  end loop;
+end $$;
+select dblink_exec('sender', 'commit');
+select * from dblink_get_result('hot_add') as r(target_identifier text);
+select dblink_disconnect('sender');
+select dblink_disconnect('hot_add');
+do $$
+declare c record;
+begin
+  select * into c from public.mtproto_campaigns where id = '00000000-0000-0000-0000-0000000000c2';
+  if c.total_targets <> 2 or c.sent_count <> 1 or c.failed_count <> 0 or c.skipped_count <> 0 then
+    raise exception 'envio + hot-add concorrentes: total=% sent=% failed=% skipped=% (esperado 2/1/0/0)', c.total_targets, c.sent_count, c.failed_count, c.skipped_count;
+  end if;
+end $$;
+delete from public.mtproto_campaigns where id = '00000000-0000-0000-0000-0000000000c2';
 
 select 'mtproto-campaign-counters: OK' as resultado;

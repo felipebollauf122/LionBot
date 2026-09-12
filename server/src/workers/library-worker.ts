@@ -137,8 +137,20 @@ export async function ingestLibrarySource(library:Library,initial:Source,watchLa
  */
 const aiCooldown=new Map<string,number>();
 const AI_COOLDOWN_MS=60_000;
+/**
+ * Cota DIARIA estourada nao volta antes da virada do dia no fuso do Google.
+ * Um minuto de espera ali sao ~1400 respostas 429 por dia por acervo, todas
+ * pelo mesmo balde que ja acabou; quinze minutos ainda pegam a virada logo e
+ * cortam a insistencia por um fator de quinze.
+ */
+const AI_COOLDOWN_DIARIO_MS=900_000;
 /** Erro que o chamador nao deve tratar como definitivo (ver GeminiError). */
 const isTransient=(error:unknown):boolean=>(error as {transient?:boolean})?.transient===true;
+/** Quando o Gemini diz quanto esperar, quem manda e ele — nunca menos que o piso. */
+function aiCooldownDe(error:unknown):number{
+  const e=error as {retryAfterMs?:number|null;quotaDiaria?:boolean};
+  return Math.max(AI_COOLDOWN_MS,e?.retryAfterMs??0,e?.quotaDiaria?AI_COOLDOWN_DIARIO_MS:0);
+}
 
 export async function processItems(library:Library):Promise<void>{
   if((aiCooldown.get(library.id)??0)>Date.now())return;
@@ -163,7 +175,7 @@ export async function processItems(library:Library):Promise<void>{
       if(isTransient(error)){
         // Volta pra fila com o motivo a vista. O original fica intacto e o
         // tratamento e refeito quando o modelo voltar — nada se perde.
-        aiCooldown.set(library.id,Date.now()+AI_COOLDOWN_MS);
+        aiCooldown.set(library.id,Date.now()+aiCooldownDe(error));
         await repo.processingDeferred(claimed,errorText(error));
       }else{
         await repo.processingFailed(claimed,errorText(error));

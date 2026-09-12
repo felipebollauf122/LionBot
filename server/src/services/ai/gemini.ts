@@ -33,10 +33,72 @@ const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
  * uma dessas como definitiva joga fora trabalho que só precisava esperar.
  */
 export class GeminiError extends Error {
-  constructor(message: string, readonly transient: boolean) {
+  constructor(
+    message: string,
+    readonly transient: boolean,
+    /** Espera pedida pelo serviço, quando ele diz. Null = nós é que decidimos. */
+    readonly retryAfterMs: number | null = null,
+    /** Cota de JANELA DIÁRIA estourada — não volta antes da virada do dia. */
+    readonly quotaDiaria: boolean = false,
+  ) {
     super(message);
     this.name = "GeminiError";
   }
+}
+
+/**
+ * O corpo de um 429 diz MUITO mais que a frase de abertura.
+ *
+ * "You exceeded your current quota, please check your plan and billing
+ * details" é idêntica nos três casos que exigem condutas opostas: cota por
+ * MINUTO (passa esperando segundos), cota por DIA (não volta antes da virada)
+ * e limite 0 (o modelo não existe pro plano daquela chave — esperar nunca
+ * resolve). Quem separa os três é `error.details`: as violações trazem
+ * quotaId/quotaMetric/quotaValue, e o RetryInfo traz `retryDelay`.
+ *
+ * Cortar o corpo em 300 caracteres apagava exatamente essa parte — a
+ * mensagem que chegava no operador terminava em "* Quota ex". Por isso aqui
+ * se lê o corpo inteiro e só depois se resume.
+ *
+ * Tudo é defensivo de propósito: a doc pública (ai.google.dev/gemini-api/
+ * docs/api-errors, consultada em 2026-09-11) não fixa esse formato, então
+ * campo ausente tem que degradar pro texto cru, nunca estourar.
+ */
+interface DetalheHttp {
+  mensagem: string;
+  cotas: string[];
+  esperaMs: number | null;
+  diaria: boolean;
+}
+
+function lerDetalheHttp(bruto: string): DetalheHttp {
+  const cru: DetalheHttp = { mensagem: bruto.slice(0, 400), cotas: [], esperaMs: null, diaria: false };
+  let json: unknown;
+  try { json = JSON.parse(bruto); } catch { return cru; }
+  const erro = (json as { error?: unknown })?.error;
+  if (!erro || typeof erro !== "object") return cru;
+  const { message, details } = erro as { message?: unknown; details?: unknown };
+  const cotas: string[] = [];
+  let esperaMs: number | null = null;
+  for (const detalhe of Array.isArray(details) ? details : []) {
+    for (const v of Array.isArray((detalhe as { violations?: unknown })?.violations) ? (detalhe as { violations: unknown[] }).violations : []) {
+      const { quotaId, quotaMetric, quotaValue } = (v ?? {}) as Record<string, unknown>;
+      const id = typeof quotaId === "string" ? quotaId : typeof quotaMetric === "string" ? quotaMetric : null;
+      if (id) cotas.push(quotaValue === undefined ? id : `${id}=${String(quotaValue)}`);
+    }
+    const atraso = (detalhe as { retryDelay?: unknown })?.retryDelay;
+    // Formato Duration do Google: "36s", "1.5s".
+    const segundos = typeof atraso === "string" ? /^(\d+(?:\.\d+)?)s$/.exec(atraso)?.[1] : undefined;
+    if (segundos !== undefined) esperaMs = Math.round(Number(segundos) * 1000);
+  }
+  return {
+    mensagem: typeof message === "string" && message ? message.slice(0, 400) : cru.mensagem,
+    cotas,
+    esperaMs,
+    // "PerDay" no id da cota, "per day" no texto: o mesmo limite aparece nos
+    // dois lugares dependendo de qual campo o serviço mandou.
+    diaria: cotas.some((c) => /per\s?day/i.test(c)),
+  };
 }
 
 /** 408/429 e 5xx são do lado deles; 4xx restante é pedido nosso malformado. */
@@ -48,11 +110,11 @@ const MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 
-function backoffFor(attempt: number, retryAfter: string | null): number {
-  const seconds = Number(retryAfter);
-  // Retry-After em segundos é uma instrução do servidor: obedecer é melhor
-  // que insistir mais cedo e levar outro 429.
-  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, MAX_BACKOFF_MS);
+function backoffFor(attempt: number, esperaPedidaMs: number | null): number {
+  // Espera pedida pelo servidor — header `Retry-After` ou o `retryDelay` do
+  // corpo — é instrução, não sugestão: obedecer é melhor que insistir mais
+  // cedo e levar outro 429.
+  if (esperaPedidaMs !== null && esperaPedidaMs > 0) return Math.min(esperaPedidaMs, MAX_BACKOFF_MS);
   const exponencial = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
   // Jitter: várias origens tratando ao mesmo tempo não podem voltar juntas.
   return Math.round(exponencial * (0.5 + Math.random() * 0.5));
@@ -132,12 +194,32 @@ export class GeminiClient {
       }
 
       if (!res.ok) {
-        const detalhe = await res.text().catch(() => "");
+        const bruto = await res.text().catch(() => "");
+        const detalhe = lerDetalheHttp(bruto);
         const transient = isTransientStatus(res.status);
-        ultimo = new GeminiError(`Gemini respondeu ${res.status}: ${detalhe.slice(0, 300)}`, transient);
+        // O corpo inteiro fica no log do processo, onde cabe; a UI recebe só
+        // o resumo. Sem esta linha, o único registro do erro é o `last_error`
+        // do item — e ali o diagnóstico completo não caberia sem poluir a
+        // tela do operador.
+        console.warn(`[gemini] HTTP ${res.status}: ${bruto.slice(0, 2000)}`);
+        const cabecalho = Number(res.headers?.get?.("retry-after"));
+        const esperaMs = detalhe.esperaMs
+          ?? (Number.isFinite(cabecalho) && cabecalho > 0 ? cabecalho * 1000 : null);
+        ultimo = new GeminiError(
+          `Gemini respondeu ${res.status}: ${detalhe.mensagem}` +
+            (detalhe.cotas.length ? ` [cota: ${detalhe.cotas.join(", ")}]` : ""),
+          transient,
+          esperaMs,
+          detalhe.diaria,
+        );
         if (!transient) throw ultimo;
+        // Cota DIÁRIA estourada não passa por insistir: as duas tentativas
+        // seguintes seriam três 429 no lugar de um, gastando o mesmo balde
+        // que já acabou. Sai transitório do mesmo jeito — o item volta pra
+        // fila intacto e quem chamou decide quando tentar de novo.
+        if (detalhe.diaria) throw ultimo;
         if (attempt < MAX_ATTEMPTS) {
-          await sleep(backoffFor(attempt, res.headers?.get?.("retry-after") ?? null));
+          await sleep(backoffFor(attempt, esperaMs));
           continue;
         }
         throw ultimo;

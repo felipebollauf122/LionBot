@@ -7,6 +7,8 @@ export interface CampaignProgressSource {
   is_processing?: boolean;
   processing_started_at?: string | null;
   next_run_at?: string | null;
+  recurrence_seconds?: number | null;
+  delay_min_seconds?: number;
 }
 
 export function campaignProgress(c: CampaignProgressSource, now = Date.now()) {

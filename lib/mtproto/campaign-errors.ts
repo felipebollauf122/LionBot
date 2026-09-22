@@ -116,8 +116,8 @@ const RULES: Rule[] = [
       const m = raw.match(/flood_wait_(\d+)|A wait of (\d+) seconds|FLOOD_WAIT_(\d+)|SLOWMODE_WAIT_(\d+)/i);
       const n = m ? m[1] ?? m[2] ?? m[3] ?? m[4] : null;
       return n
-        ? `O Telegram pediu para esperar ${n}s (flood). O disparo retoma sozinho depois desse tempo.`
-        : "O Telegram pediu para esperar (flood). O disparo retoma sozinho depois do tempo.";
+        ? `O Telegram recusou o envio (FLOOD_WAIT_${n}). A próxima tentativa segue o intervalo configurado.`
+        : "O Telegram recusou o envio (flood). A próxima tentativa segue o intervalo configurado.";
     },
   },
   {

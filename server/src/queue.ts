@@ -474,15 +474,25 @@ export function startWorkers(): void {
     if (recurrentMtprotoRunning || !config.mtprotoWorkerEnabled) return;
     recurrentMtprotoRunning = true;
     try {
-      const { recoverCampaigns } = await import("./services/mtproto/campaign-recovery.js");
+      const { recoverCampaigns, cappedCampaignRetry } = await import("./services/mtproto/campaign-recovery.js");
       const { enqueueMtproto } = await import("./queue-mtproto.js");
       // Paginação estável: campanhas longas não escondem as posteriores ao limite.
       for (let offset = 0; ; offset += 200) {
         const { data, error } = await supabase.from("mtproto_campaigns")
-          .select("id,status,next_run_at,is_processing,processing_started_at")
+          .select("id,status,next_run_at,is_processing,processing_started_at,recurrence_seconds,delay_min_seconds,started_at")
           .in("status", ["running", "scheduled"]).order("id")
           .range(offset, offset + 199);
         if (error) throw error;
+        for (const campaign of data ?? []) {
+          const capped = cappedCampaignRetry(campaign);
+          if (!capped) continue;
+          // Compare-and-swap: um clique em pausar/enviar agora vence esta leitura.
+          const { data: changed, error: capError } = await supabase.from("mtproto_campaigns")
+            .update({ next_run_at: capped }).eq("id", campaign.id).eq("status", "scheduled")
+            .eq("next_run_at", campaign.next_run_at).select("id").maybeSingle();
+          if (capError) throw capError;
+          if (changed) campaign.next_run_at = capped;
+        }
         await recoverCampaigns(data ?? [],
           (id) => enqueueMtproto({ kind: "campaign.run", campaignId: id }),
           (id, error) => console.error(`[mtproto-recovery] ${id}`, error));

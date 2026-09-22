@@ -537,8 +537,10 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           id: a.id,
           phoneNumber: a.phone_number,
           sessionString: a.session_string ?? "",
-          status: a.status as PoolAccount["status"],
-          floodWaitUntil: a.flood_wait_until ? new Date(a.flood_wait_until) : null,
+          // Disparos seguem o intervalo do cliente, inclusive para uma nova
+          // tentativa após recusa. Não altera a conta usada por outros recursos.
+          status: "active" as PoolAccount["status"],
+          floodWaitUntil: null,
         }),
       ),
     );
@@ -548,15 +550,12 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
   await loadAccountsAndPool(pool);
 
   async function fetchPendingTargets(): Promise<CampaignTargetRow[]> {
-    const nowIso = new Date().toISOString();
-    // Pula targets com retry_after no futuro (#47) — aguardando fim do
-    // FLOOD_WAIT da conta pinned. Inclui retry_after null OU já vencido.
+    // A campanha controla o intervalo. retry_after antigo não bloqueia destinos.
     const { data: targets, error } = await supabase
       .from("mtproto_targets")
       .select("*, mtproto_dialogs(peer_id, peer_type, peer_access_hash, is_forum, forum_topic_id)")
       .eq("campaign_id", campaignId)
-      .eq("status", "pending")
-      .or(`retry_after.is.null,retry_after.lte.${nowIso}`);
+      .eq("status", "pending");
     if (error) throw error;
     return (targets ?? []).map((t) => {
       const row: CampaignTargetRow = {
@@ -645,7 +644,7 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         if (!acc) throw new Error("account missing");
         let client = campaignClients.get(accountId);
         if (!client) {
-          client = new MtprotoClient(config.telegramApiId, config.telegramApiHash, acc.session_string ?? "");
+          client = new MtprotoClient(config.telegramApiId, config.telegramApiHash, acc.session_string ?? "", { campaignDispatch: true });
           campaignClients.set(accountId, client);
         }
         const sendingClient = client;

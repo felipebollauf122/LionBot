@@ -129,7 +129,7 @@ export class CampaignRunner {
   private needsSpacing = false;
 
   private retrySeconds(): number {
-    return Math.max(1, this.cfg.recurrenceSeconds ?? this.cfg.delayMinSeconds);
+    return Math.max(1, this.cfg.delayMinSeconds);
   }
   constructor(
     private pool: AccountPool,
@@ -255,7 +255,7 @@ export class CampaignRunner {
         : this.pool.next();
       if (!account) {
         if (this.deps.deferCampaign) {
-          await this.defer(this.pool.waitSeconds(target.pinnedAccountId) ?? this.retrySeconds(), "ACCOUNT_UNAVAILABLE", target);
+          await this.defer(this.retrySeconds(), "ACCOUNT_UNAVAILABLE", target);
           return;
         }
         if (isPinned) {
@@ -284,7 +284,7 @@ export class CampaignRunner {
         if (this.deps.deferCampaign) {
           const text = err instanceof Error ? err.message : String(err);
           if (floodSeconds !== null) {
-            await this.defer(Math.max(1, floodSeconds), `FLOOD_WAIT_${floodSeconds}`, target, account.id);
+            await this.defer(this.retrySeconds(), `FLOOD_WAIT_${floodSeconds}`, target, account.id);
             return;
           }
           if (/PEER_FLOOD/i.test(text)) {
@@ -298,13 +298,13 @@ export class CampaignRunner {
           }
         }
         if (floodSeconds !== null) {
-          this.pool.markFloodWait(account.id, floodSeconds);
+          this.pool.markFloodWait(account.id, this.retrySeconds());
           // Em targets pinned não dá pra trocar de conta (access_hash
           // não bate). Em vez de marcar falha permanente (perdendo o lead),
           // marca retry_after pra reprocessar depois do flood (#47).
           if (isPinned) {
             if (this.deps.markTargetRetryAfter) {
-              const retryAfter = new Date(Date.now() + Math.max(1, floodSeconds) * 1000).toISOString();
+              const retryAfter = new Date(Date.now() + this.retrySeconds() * 1000).toISOString();
               await this.deps.markTargetRetryAfter(target.id, retryAfter);
             } else {
               await this.deps.markTargetFailed(

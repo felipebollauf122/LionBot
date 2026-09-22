@@ -1,9 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
-import { campaignNeedsJob, recoverCampaigns, type RecoverableCampaign } from "../../src/services/mtproto/campaign-recovery.js";
+import { campaignNeedsJob, recoverCampaigns, cappedCampaignRetry, type RecoverableCampaign } from "../../src/services/mtproto/campaign-recovery.js";
 
 const now = Date.parse("2026-09-22T02:00:00Z");
 const campaign: RecoverableCampaign = { id: "c1", status: "running", next_run_at: null, is_processing: true, processing_started_at: "2026-09-21T18:00:00Z" };
 describe("recuperação de disparos", () => {
+  it("retenta em 5s durante o ciclo mesmo com recorrência de um dia", () => {
+    const waiting = { ...campaign, status: "scheduled", started_at: new Date(now - 60000).toISOString(),
+      delay_min_seconds: 5, recurrence_seconds: 86400, next_run_at: new Date(now + 86400000).toISOString() };
+    expect(cappedCampaignRetry(waiting, now)).toBe(new Date(now + 5000).toISOString());
+    expect(cappedCampaignRetry({ ...waiting, started_at: null }, now)).toBeNull();
+  });
+  it("limita o horário antigo de horas ao intervalo de 5 segundos, sem adiar a cada tick", () => {
+    const old = { ...campaign, status: "scheduled", recurrence_seconds: 5, next_run_at: new Date(now + 86400000).toISOString() };
+    const capped = cappedCampaignRetry(old, now);
+    expect(capped).toBe(new Date(now + 5000).toISOString());
+    expect(cappedCampaignRetry({ ...old, next_run_at: capped }, now + 1000)).toBeNull();
+    expect(cappedCampaignRetry({ ...old, status: "paused" }, now)).toBeNull();
+  });
   it("recupera o caso real: running abandonado depois da perda do job", () => {
     expect(campaignNeedsJob(campaign, now)).toBe(true);
   });

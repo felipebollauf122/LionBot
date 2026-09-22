@@ -5,6 +5,7 @@ import {
   type RunnerDeps,
 } from "../../src/services/mtproto/campaign-runner.js";
 import { AccountPool, type PoolAccount } from "../../src/services/mtproto/pool.js";
+import { FloodWaitError } from "telegram/errors/index.js";
 
 function pool(...ids: string[]): AccountPool {
   const p = new AccountPool();
@@ -57,13 +58,17 @@ const rpc = (code: string, status = 400) =>
   new Error(`${status}: ${code} (caused by messages.SendMessage)`);
 
 describe("CampaignRunner", () => {
-  it.each(["PEER_FLOOD", "TIMEOUT"])("%s usa o intervalo configurado, sem espera artificial", async code => {
+  it.each(["PEER_FLOOD", "TIMEOUT", "FLOOD_WAIT_86400"])("%s usa o intervalo configurado, sem espera artificial", async code => {
     const now = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     try {
-      const deps = makeDeps({ sendMessage: async () => { throw rpc(code); }, deferCampaign: vi.fn(async () => {}), deferAccount: vi.fn(async () => {}), markTargetRetryAfter: vi.fn(async () => {}) });
-      await new CampaignRunner(pool("a"), deps, { ...cfg, recurrenceSeconds: 3 }).run(targets({ id: "t1", identifier: "u", type: "username" }));
-      expect(deps.deferCampaign).toHaveBeenCalledWith(new Date(now + 3000).toISOString(), code === "PEER_FLOOD" ? code : "CONNECTION_RETRY");
+      const deps = makeDeps({ sendMessage: async () => {
+        if (code === "FLOOD_WAIT_86400") throw new FloodWaitError({ request: undefined as never, capture: 86400 } as never);
+        throw rpc(code);
+      }, deferCampaign: vi.fn(async () => {}), deferAccount: vi.fn(async () => {}), markTargetRetryAfter: vi.fn(async () => {}) });
+      await new CampaignRunner(pool("a"), deps, { ...cfg, delayMinSeconds: 5, delayMaxSeconds: 5, recurrenceSeconds: 86400 }).run(targets({ id: "t1", identifier: "u", type: "username" }));
+      expect(deps.deferCampaign).toHaveBeenCalledWith(new Date(now + 5000).toISOString(), code === "TIMEOUT" ? "CONNECTION_RETRY" : code);
+      expect(deps.markTargetRetryAfter).toHaveBeenCalledWith("t1", new Date(now + 5000).toISOString(), code === "TIMEOUT" ? "CONNECTION_RETRY" : code);
     } finally { clock.mockRestore(); }
   });
   it("aguarda apenas entre envios, sem acrescentar espera ao fim do ciclo", async () => {

@@ -183,7 +183,7 @@ export function MtprotoCampaignDetail({
             setDraft({ name: campaign.name, message: campaign.message_text, delayMin: campaign.delay_min_seconds, delayMax: campaign.delay_max_seconds, recurrenceSeconds: campaign.recurrence_seconds ?? null });
             setEditing(true); setSaved(false); setErroAcao(null);
           }}>Editar disparo</button>
-          {(["draft", "paused", "failed"].includes(campaign.status)) && (
+          {(["draft", "paused", "failed", "scheduled"].includes(campaign.status)) && (
             <button
               disabled={pending}
               onClick={() =>
@@ -194,13 +194,17 @@ export function MtprotoCampaignDetail({
                   try {
                     const r = await launchCampaign(campaignId);
                     setErroAcao(r.ok ? null : r.error);
-                    if (r.ok) setCampaign(c => ({ ...c, status: "running", is_processing: false }));
+                    if (r.ok) {
+                      actionVersion.current += 1;
+                      setCampaign(c => ({ ...c, status: "running", next_run_at: null }));
+                      setTargets(ts => ts.map(t => t.status === "pending" ? { ...t, retry_after: null } : t));
+                    }
                   } catch { setErroAcao("Não foi possível retomar. Tente novamente."); }
                 })
               }
               className="btn-primary text-xs px-4 py-2"
             >
-              {campaign.status === "paused" ? "Retomar" : "Disparar"}
+              {campaign.status === "scheduled" ? "Enviar agora" : campaign.status === "paused" ? "Retomar" : "Disparar"}
             </button>
           )}
           {emAndamento && (
@@ -329,7 +333,6 @@ export function MtprotoCampaignDetail({
                     </span>
                   </div>
                   {t.sent_at && <p className="mt-1 text-xs text-(--text-muted) tabular-nums">Enviado em {new Date(t.sent_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>}
-                  {t.status === "pending" && t.retry_after && <p className="mt-1 text-xs text-(--text-muted) tabular-nums">Nova tentativa a partir de {new Date(t.retry_after).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>}
                   {motivo && (
                     <p className="text-(--text-muted) text-sm mt-1 leading-relaxed break-words">
                       {motivo}

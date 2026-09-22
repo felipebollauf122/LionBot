@@ -5,6 +5,22 @@ export interface RecoverableCampaign {
   next_run_at: string | null;
   is_processing: boolean;
   processing_started_at: string | null;
+  recurrence_seconds?: number | null;
+  delay_min_seconds?: number;
+  started_at?: string | null;
+}
+
+/** Corrige registros antigos sem depender da aplicação manual de uma migration. */
+export function cappedCampaignRetry(c: RecoverableCampaign, now = Date.now()): string | null {
+  if (c.status !== "scheduled" || !c.next_run_at) return null;
+  // Um ciclo interrompido retenta no intervalo entre mensagens. A recorrência
+  // só vale quando o ciclo anterior terminou (started_at foi limpo).
+  const seconds = c.started_at
+    ? c.delay_min_seconds
+    : c.recurrence_seconds ?? c.delay_min_seconds;
+  if (seconds == null || !Number.isFinite(seconds)) return null;
+  const latest = now + Math.max(1, seconds) * 1000;
+  return Date.parse(c.next_run_at) > latest ? new Date(latest).toISOString() : null;
 }
 
 export function campaignNeedsJob(c: RecoverableCampaign, now = Date.now()): boolean {
@@ -30,5 +46,5 @@ export async function recoverCampaigns(
 
 export function transientCampaignError(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error);
-  return /TIMEOUT|TIMED_OUT|ECONN|ENET|EAI_AGAIN|fetch failed|disconnected|Not connected|CONNECTION|RPC_CALL_FAIL|INTERNAL_SERVER_ERROR/i.test(text);
+  return /TIMEOUT|TIMED_OUT|ECONN|ENET|EAI_AGAIN|fetch failed|disconnected|Not connected|CONNECTION|RPC_CALL_FAIL|INTERNAL_SERVER_ERROR|Request was unsuccessful/i.test(text);
 }

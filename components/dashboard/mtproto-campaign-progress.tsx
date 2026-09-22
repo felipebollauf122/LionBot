@@ -15,7 +15,7 @@ export function MtprotoCampaignProgress({ campaign, latestSent }: { campaign: Ca
       <div className="max-w-xl"><h2 className="text-xl font-semibold text-foreground">{p.label}</h2><p className="mt-2 text-sm leading-relaxed text-(--text-secondary)">{p.description}</p></div>
       <div className="text-sm text-(--text-secondary)"><p>Último envio</p><p className="mt-1 tabular-nums text-foreground">{latestSent ? date(latestSent) : "Ainda não houve envio"}</p><p className="mt-1 text-xs">Horário de Brasília</p></div>
     </div>
-    {campaign.status === "scheduled" && campaign.next_run_at && <p className="mt-4 text-sm text-(--amber)">Próxima tentativa: <strong className="tabular-nums">{date(campaign.next_run_at)}</strong></p>}
+    {campaign.status === "scheduled" && <p className="mt-4 text-sm text-(--amber)">Nova tentativa no intervalo configurado{campaign.recurrence_seconds != null || campaign.delay_min_seconds != null ? `: ${Math.max(1, campaign.recurrence_seconds ?? campaign.delay_min_seconds ?? 1)}s` : ""}. Você pode enviar agora pelo botão acima.</p>}
     <dl className="my-6 grid grid-cols-2 gap-5 sm:grid-cols-4">{metrics.map(m => <div key={m.label}><dt className="text-sm text-(--text-secondary)">{m.label}</dt><dd className={`mt-1 text-3xl font-semibold tabular-nums ${m.color}`}>{n(m.value)}</dd></div>)}</dl>
     <div className="mb-2 flex flex-wrap justify-between gap-2 text-sm text-(--text-secondary)"><span>{n(p.processed)} de {n(p.total)} destinos processados</span><span className="tabular-nums">{p.percent}%</span></div>
     <div role="progressbar" aria-label="Destinos processados" aria-valuemin={0} aria-valuemax={p.total || 1} aria-valuenow={p.processed} className="flex h-2 overflow-hidden rounded-full bg-(--bg-input)">

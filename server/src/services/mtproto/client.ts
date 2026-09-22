@@ -86,9 +86,12 @@ export class MtprotoClient {
     private apiId: number,
     private apiHash: string,
     sessionString: string = "",
+    options: { campaignDispatch?: boolean } = {},
   ) {
     this.client = new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
       connectionRetries: 3,
+      // O runner controla as tentativas dos disparos; não dormir dentro do SDK.
+      ...(options.campaignDispatch ? { floodSleepThreshold: 0, requestRetries: 1 } : {}),
     });
   }
 

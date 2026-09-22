@@ -466,19 +466,33 @@ export async function launchCampaign(
   campaignId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return comGuarda("launchCampaign", async () => {
+    const supabase = await createClient();
+    const { data: campaign, error: readError } = await supabase.from("mtproto_campaigns")
+      .select("id").eq("id", campaignId).maybeSingle();
+    if (readError) return { ok: false as const, error: readError.message };
+    if (!campaign) return { ok: false as const, error: "Campanha não encontrada." };
     // A marcação `running` só depois da fila aceitar: antes o enqueue lançava
     // e a atualização nem acontecia. Agora que a recusa volta como dado, uma
     // campanha enfileirada com sucesso ZERO não pode ficar exibida como em
     // andamento — ninguém a retomaria.
     const fila = await enqueueJob({ kind: "campaign.run", campaignId });
     if (!fila.ok) return fila;
-    const supabase = await createClient();
-    await supabase
+    const { error: targetError } = await supabase.from("mtproto_targets")
+      .update({ retry_after: null }).eq("campaign_id", campaignId).eq("status", "pending");
+    if (targetError) return { ok: false as const, error: targetError.message };
+    const { data, error } = await supabase
       .from("mtproto_campaigns")
-      .update({ status: "running" })
-      .eq("id", campaignId);
+      .update({ status: "running", next_run_at: null })
+      .eq("id", campaignId).select("id");
+    if (error) return { ok: false as const, error: error.message };
+    if (!data?.length) return { ok: false as const, error: "Campanha não encontrada." };
+    // O primeiro job pode ter sido consumido enquanto o banco ainda dizia
+    // scheduled/paused. Acorda a fila novamente após liberar o disparo.
+    // O jobId fixo e a trava do worker impedem envios simultâneos.
+    const retomada = await enqueueJob({ kind: "campaign.run", campaignId });
     revalidatePath("/dashboard/automations", "layout");
     revalidatePath(`/dashboard/automations/campaigns/${campaignId}`);
+    if (!retomada.ok) return { ok: false as const, error: `Envio solicitado; aguardando a recuperação automática da fila. ${retomada.error}` };
     return { ok: true as const };
   });
 }

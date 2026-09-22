@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MtprotoCampaignDetail } from "@/components/dashboard/mtproto-campaign-detail";
 import { createClient } from "@/lib/supabase/client";
-import { pauseCampaign, updateCampaign } from "@/app/dashboard/automations/actions";
+import { pauseCampaign, updateCampaign, launchCampaign } from "@/app/dashboard/automations/actions";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), useSearchParams: () => new URLSearchParams("view=naves") }));
 vi.mock("@/lib/supabase/client", () => ({ createClient: vi.fn() }));
@@ -10,10 +10,10 @@ vi.mock("@/app/dashboard/automations/actions", () => ({ launchCampaign: vi.fn(),
 const campaign = { id: "c1", name: "Naves", message_text: "Mensagem", status: "running", total_targets: 630, sent_count: 22, failed_count: 58, skipped_count: 370, delay_min_seconds: 1, delay_max_seconds: 1, started_at: null, completed_at: null, is_processing: true, processing_started_at: "2026-09-21T18:16:32Z", recurrence_seconds: 5 };
 const targets = Array.from({ length: 1000 }, (_, i) => ({ id: String(i), target_identifier: `destino-${String(i).padStart(4, "0")}`, target_type: "username", status: i < 22 ? "sent" : i < 80 ? "failed" : i < 450 ? "skipped" : "pending", error_message: i >= 22 && i < 80 ? "PEER_FLOOD" : i >= 80 && i < 450 ? "CHAT_WRITE_FORBIDDEN" : null, sent_at: i < 22 ? "2026-09-21T18:32:11Z" : null, retry_after: null }));
 
-function database(fail = false) {
+function database(fail = false, row = campaign) {
   vi.mocked(createClient).mockReturnValue({ from: (table: string) => {
     const q = { select: () => q, eq: () => q, order: () => q,
-      single: async () => ({ data: campaign, error: null }),
+      single: async () => ({ data: row, error: null }),
       range: async (from: number, to: number) => ({ data: fail ? null : targets.slice(from, to + 1), error: fail ? { message: "offline" } : null }),
     }; return table ? q : q;
   } } as unknown as ReturnType<typeof createClient>);
@@ -21,6 +21,18 @@ function database(fail = false) {
 
 describe("acompanhamento do disparo", () => {
   beforeEach(() => { vi.clearAllMocks(); database(); });
+  it("permite enviar agora mesmo com horário antigo de retomada", async () => {
+    const scheduled = { ...campaign, status: "scheduled", next_run_at: "2026-09-22T23:01:56-03:00" };
+    database(false, scheduled);
+    vi.mocked(launchCampaign).mockResolvedValue({ ok: true });
+    render(<MtprotoCampaignDetail campaignId="c1" initialCampaign={scheduled} />);
+    await screen.findByText("Destinos (1.000)");
+    expect(screen.queryByText(/23:01:56/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Nova tentativa no intervalo configurado: 5s/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enviar agora" }));
+    await waitFor(() => expect(launchCampaign).toHaveBeenCalledWith("c1"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Enviar agora" })).not.toBeInTheDocument());
+  });
   it("edita mensagem e intervalo durante a execução sem pausar", async () => {
     vi.mocked(updateCampaign).mockResolvedValue({ ok: true });
     render(<MtprotoCampaignDetail campaignId="c1" initialCampaign={campaign} />);

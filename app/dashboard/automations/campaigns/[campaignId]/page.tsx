@@ -3,8 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { MtprotoCampaignDetail } from "@/components/dashboard/mtproto-campaign-detail";
 import { notFound } from "next/navigation";
 import { canAccessAutomations } from "@/lib/actions/automations-access-actions";
-import { CardShell } from "@/components/dashboard/analytics/card-shell";
-import { icons } from "@/components/dashboard/analytics/icons";
 
 export default async function CampaignDetailPage({
   params,
@@ -22,7 +20,7 @@ export default async function CampaignDetailPage({
   if (!campaign) notFound();
 
   return (
-    <div className="p-6 md:p-8 max-w-2xl mx-auto">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <AutomationLink
         href="/dashboard/automations/campaigns"
         className="text-(--text-muted) hover:text-foreground text-sm transition-colors"
@@ -31,20 +29,13 @@ export default async function CampaignDetailPage({
       </AutomationLink>
       <header className="mt-3 mb-6 reveal">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
-          Detalhe da campanha
+          {campaign.name}
         </h1>
         <p className="text-(--text-secondary) text-sm mt-1">
           Acompanhe o disparo em tempo real.
         </p>
       </header>
-      <CardShell
-        title={campaign.name}
-        subtitle="disparo em massa"
-        icon={icons.megaphone}
-        accent="amber"
-      >
         <MtprotoCampaignDetail initialCampaign={campaign} campaignId={campaignId} />
-      </CardShell>
     </div>
   );
 }

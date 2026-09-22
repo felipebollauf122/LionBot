@@ -17,6 +17,8 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
+  { test: /CONNECTION_RETRY|CAMPAIGN_SEND_TIMEOUT/i, message: "A conexão foi interrompida. O destino foi preservado para retomada automática." },
+  { test: /ACCOUNT_UNAVAILABLE/i, message: "Aguardando a conta Telegram ficar disponível. A campanha verifica novamente sem perder este destino." },
   // --- Recusas permanentes do destino (alvo pulado) ---
   {
     test: /CHAT_ADMIN_REQUIRED/i,
@@ -121,7 +123,7 @@ const RULES: Rule[] = [
   {
     test: /PEER_FLOOD/i,
     message:
-      "A conta foi limitada por spam pelo Telegram (PEER_FLOOD). Espere alguns dias usando a conta normalmente, ou use outra conta.",
+      "O Telegram limitou os envios desta conta por spam (PEER_FLOOD). Novas ocorrências entram em espera, com reavaliação após 24h; esse prazo não garante a liberação.",
   },
   {
     test: /PHONE_NUMBER_BANNED|USER_DEACTIVATED|AUTH_KEY_UNREGISTERED|SESSION_REVOKED/i,

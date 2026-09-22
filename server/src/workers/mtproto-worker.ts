@@ -2,6 +2,7 @@ import { Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 import { config } from "../config.js";
 import { supabase } from "../db.js";
+import { campaignDeliveryDeadline, campaignMessageId } from "../services/mtproto/campaign-delivery.js";
 import { MtprotoClient } from "../services/mtproto/client.js";
 import { AccountPool, type PoolAccount } from "../services/mtproto/pool.js";
 import {
@@ -409,22 +410,15 @@ async function refreshGlobalCampaignTargets(
   campaignId: string,
   tenantId: string,
 ): Promise<void> {
-  // Sync inline de todas as contas ativas do tenant antes da run global.
-  // Garante que a campanha pegue contatos novos a cada ciclo recorrente.
-  const { data: accounts } = await supabase
+  // Usa o snapshot sincronizado. A sincronização tem seu próprio job e
+  // agendamento: uma conexão travada na sync não pode prender o disparo.
+  const { data: accounts, error: accountsError } = await supabase
     .from("mtproto_accounts")
     .select("id")
     .eq("tenant_id", tenantId)
     .eq("status", "active");
+  if (accountsError) throw accountsError;
   if (!accounts || accounts.length === 0) return;
-
-  for (const acc of accounts) {
-    try {
-      await handleSyncDialogs(acc.id);
-    } catch (err) {
-      console.error(`[mtproto.global-refresh] sync ${acc.id} failed:`, err);
-    }
-  }
 
   // Rebuild targets: deleta os pending atuais e recria do snapshot fresco.
   // Não toca em targets já 'sent' do ciclo anterior — esses ficam pra histórico.
@@ -466,53 +460,51 @@ async function refreshGlobalCampaignTargets(
 }
 
 async function handleCampaignRun(campaignId: string): Promise<void> {
-  const { data: campaign } = await supabase
-    .from("mtproto_campaigns")
-    .select("*")
-    .eq("id", campaignId)
-    .single();
-  if (!campaign) return;
+  const { data: campaign, error } = await supabase.from("mtproto_campaigns").select("*").eq("id", campaignId).single();
+  if (error) throw error;
+  if (!campaign || !["running", "scheduled"].includes(campaign.status)) return;
+  if (campaign.status === "scheduled" && campaign.next_run_at && Date.parse(campaign.next_run_at) > Date.now()) return;
+  const { campaignNeedsJob } = await import("../services/mtproto/campaign-recovery.js");
+  if (!campaignNeedsJob(campaign)) return;
 
-  // Lock: garante 1 runner por campanha. Se outro worker já tá processando,
-  // retorna — o hot-add reenfileira via campaign.run quando precisar.
-  // TTL stale (30min): se o lock tá velho, considera worker morto e força.
-  const now = new Date();
-  const staleThreshold = new Date(now.getTime() - 30 * 60 * 1000);
-  if (campaign.is_processing) {
-    const started = campaign.processing_started_at ? new Date(campaign.processing_started_at) : null;
-    if (started && started > staleThreshold) {
-      console.log(`[runner] campanha ${campaignId} já em processamento, abortando reentrada`);
-      return;
-    }
-    console.warn(`[runner] lock stale (>30min) na campanha ${campaignId}, forçando reset`);
-  }
-  const { data: locked, error: lockErr } = await supabase
-    .from("mtproto_campaigns")
-    .update({ is_processing: true, processing_started_at: now.toISOString() })
-    .eq("id", campaignId)
-    .eq("is_processing", campaign.is_processing) // CAS
-    .select("id")
-    .maybeSingle();
-  if (lockErr || !locked) {
-    console.log(`[runner] CAS lock falhou na campanha ${campaignId}, outro worker pegou`);
-    return;
-  }
+  let stamp = new Date().toISOString();
+  let claim = supabase.from("mtproto_campaigns")
+    .update({ is_processing: true, processing_started_at: stamp, status: "running", next_run_at: null })
+    .eq("id", campaignId).eq("status", campaign.status).eq("is_processing", campaign.is_processing);
+  claim = campaign.processing_started_at ? claim.eq("processing_started_at", campaign.processing_started_at) : claim.is("processing_started_at", null);
+  const { data: locked, error: lockError } = await claim.select("id").maybeSingle();
+  if (lockError) throw lockError;
+  if (!locked) return;
 
-  try {
-    await runCampaignInner(campaignId, campaign);
-  } finally {
-    await supabase
-      .from("mtproto_campaigns")
-      .update({ is_processing: false, processing_started_at: null })
-      .eq("id", campaignId);
+  let lost = false;
+  let heartbeat: Promise<void> | null = null;
+  const assertLease = () => { if (lost) throw new Error("CAMPAIGN_LEASE_LOST"); };
+  const timer = setInterval(() => {
+    if (heartbeat || lost) return;
+    heartbeat = (async () => {
+      const next = new Date().toISOString();
+      const { data, error } = await supabase.from("mtproto_campaigns")
+        .update({ processing_started_at: next }).eq("id", campaignId)
+        .eq("processing_started_at", stamp).select("id").maybeSingle();
+      if (error || !data) { lost = true; return; }
+      stamp = next;
+    })().catch(() => { lost = true; }).finally(() => { heartbeat = null; });
+  }, 30_000);
+  try { await runCampaignInner(campaignId, campaign, assertLease); }
+  finally {
+    clearInterval(timer);
+    if (heartbeat) await heartbeat;
+    // Um processo antigo nunca libera a trava que outro adquiriu após crash.
+    await supabase.from("mtproto_campaigns").update({ is_processing: false, processing_started_at: null })
+      .eq("id", campaignId).eq("processing_started_at", stamp).throwOnError();
   }
 }
 
-async function runCampaignInner(campaignId: string, campaign: Record<string, unknown> & { tenant_id: string; is_global?: boolean; recurrence_seconds?: number | null; started_at?: string | null; message_text: string; delay_min_seconds: number; delay_max_seconds: number }): Promise<void> {
+async function runCampaignInner(campaignId: string, campaign: Record<string, unknown> & { tenant_id: string; is_global?: boolean; recurrence_seconds?: number | null; started_at?: string | null; message_text: string; delay_min_seconds: number; delay_max_seconds: number }, assertLease: () => void): Promise<void> {
   // Refresh global: deleta pending e recria do snapshot. Só roda no
   // INÍCIO de um ciclo — se já tem targets sent, é re-entrada via
   // hot-add e não pode apagar os pending recém-inseridos.
-  if (campaign.is_global) {
+  if (campaign.is_global && !campaign.started_at) {
     const { count: alreadySent } = await supabase
       .from("mtproto_targets")
       .select("id", { count: "exact", head: true })
@@ -532,11 +524,12 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
   let accountsSnapshot: Array<{ id: string; phone_number: string; session_string: string | null; status: string; flood_wait_until: string | null }> = [];
 
   async function loadAccountsAndPool(pool: AccountPool): Promise<void> {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("mtproto_accounts")
       .select("id, phone_number, session_string, status, flood_wait_until")
       .eq("tenant_id", campaign.tenant_id)
       .in("status", ["active", "flood_wait"]);
+    if (error) throw error;
     accountsSnapshot = data ?? [];
     pool.load(
       accountsSnapshot.map(
@@ -558,12 +551,13 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
     const nowIso = new Date().toISOString();
     // Pula targets com retry_after no futuro (#47) — aguardando fim do
     // FLOOD_WAIT da conta pinned. Inclui retry_after null OU já vencido.
-    const { data: targets } = await supabase
+    const { data: targets, error } = await supabase
       .from("mtproto_targets")
       .select("*, mtproto_dialogs(peer_id, peer_type, peer_access_hash, is_forum, forum_topic_id)")
       .eq("campaign_id", campaignId)
       .eq("status", "pending")
       .or(`retry_after.is.null,retry_after.lte.${nowIso}`);
+    if (error) throw error;
     return (targets ?? []).map((t) => {
       const row: CampaignTargetRow = {
         id: t.id,
@@ -601,13 +595,45 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
 
   const targetRows = await fetchPendingTargets();
 
+  const campaignClients = new Map<string, MtprotoClient>();
   const runner = new CampaignRunner(
     pool,
     {
+      prepareTarget: async (target, accountId) => {
+        assertLease();
+        // Persiste a conta ANTES da rede: retomada de resposta perdida usa
+        // a mesma conta e random_id, inclusive em listas manuais.
+        await supabase.from("mtproto_targets").update({ account_id: accountId })
+          .eq("id", target.id).eq("status", "pending").throwOnError();
+      },
+      deferCampaign: async (until, reason) => {
+        assertLease();
+        await supabase.from("mtproto_campaigns").update({ status: "scheduled", next_run_at: until })
+          .eq("id", campaignId).eq("status", "running").throwOnError();
+        console.log(`[mtproto-wait] ${campaignId}: ${reason}; próxima avaliação ${until}`);
+      },
+      deferAccount: async (accountId, until, reason) => {
+        await supabase.from("mtproto_accounts").update({ status: "flood_wait", flood_wait_until: until, last_error: reason })
+          .eq("id", accountId).throwOnError();
+      },
+      hasPendingTargets: async () => {
+        const { count, error } = await supabase.from("mtproto_targets").select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaignId).eq("status", "pending");
+        if (error) throw error;
+        return (count ?? 0) > 0;
+      },
       sendMessage: async (accountId, target, text) => {
+        assertLease();
         const acc = accountsSnapshot.find((a) => a.id === accountId);
         if (!acc) throw new Error("account missing");
-        const client = await getOrCreateClient(accountId, acc.session_string ?? "");
+        let client = campaignClients.get(accountId);
+        if (!client) {
+          client = new MtprotoClient(config.telegramApiId, config.telegramApiHash, acc.session_string ?? "");
+          campaignClients.set(accountId, client);
+        }
+        const sendingClient = client;
+        const randomId = campaignMessageId(target.id, String(campaign.last_run_at ?? campaign.created_at));
+        await campaignDeliveryDeadline(async () => {
         if (target.dialog) {
           // Peer estruturado (vindo da sincronização) — caminho rápido e seguro.
           const { peerId, peerType, peerAccessHash } = target.dialog;
@@ -621,10 +647,10 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
             await sendWithForumFallback({
               knownTopicId: target.dialog.forumTopicId ?? null,
               send: (topMsgId) =>
-                client.sendMessageToPeer(peerId, peerType, peerAccessHash, text, { topMsgId }),
+                sendingClient.sendMessageToPeer(peerId, peerType, peerAccessHash, text, { topMsgId, randomId }),
               listTopics: async () => {
                 try {
-                  const topics = await client.listForumTopics(peerId, peerAccessHash);
+                  const topics = await sendingClient.listForumTopics(peerId, peerAccessHash);
                   return topics.map((t) => ({ id: t.id, closed: t.closed, hidden: t.hidden, title: t.title }));
                 } catch (err) {
                   console.warn(`[mtproto] listForumTopics falhou pra ${peerId}:`, err);
@@ -640,12 +666,13 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
               },
             });
           } else {
-            await client.sendMessageToPeer(peerId, peerType, peerAccessHash, text);
+            await sendingClient.sendMessageToPeer(peerId, peerType, peerAccessHash, text, { randomId });
           }
         } else {
           // Caminho legado: lista colada com @username ou +telefone.
-          await client.sendMessage(target.identifier, target.type, text);
+          await sendingClient.sendMessage(target.identifier, target.type, text, randomId);
         }
+        }, () => { sendingClient.abort(); campaignClients.delete(accountId); });
         await supabase
           .from("mtproto_accounts")
           .update({ last_used_at: new Date().toISOString() })
@@ -658,14 +685,16 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
             status: "sent",
             account_id: accountId,
             sent_at: new Date().toISOString(),
+            error_message: null,
+            retry_after: null,
           })
-          .eq("id", targetId);
+          .eq("id", targetId).throwOnError();
       },
       markTargetFailed: async (targetId, accountId, error) => {
         await supabase
           .from("mtproto_targets")
           .update({ status: "failed", account_id: accountId, error_message: error })
-          .eq("id", targetId);
+          .eq("id", targetId).throwOnError();
       },
       skipTarget: async (targetId, target, reason) => {
         // 1. Marca o dialog: é ele que alimenta os rebuilds da campanha global
@@ -683,27 +712,30 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         await supabase
           .from("mtproto_targets")
           .update({ status: "skipped", error_message: reason })
-          .eq("id", targetId);
+          .eq("id", targetId).throwOnError();
       },
-      markTargetRetryAfter: async (targetId, retryAfterIso) => {
+      markTargetRetryAfter: async (targetId, retryAfterIso, reason) => {
         // Mantém pending + seta retry_after (#47) — reprocessa depois do flood.
         await supabase
           .from("mtproto_targets")
-          .update({ status: "pending", retry_after: retryAfterIso })
-          .eq("id", targetId);
+          .update({ status: "pending", retry_after: retryAfterIso, error_message: reason ?? null })
+          .eq("id", targetId).throwOnError();
       },
       // Contadores (sent/failed/skipped/total) não são escritos aqui: o trigger
       // da migration 083 recalcula a partir das linhas de mtproto_targets a
       // cada mudança. Era read-then-write em seis caminhos e divergia.
       getCampaignStatus: async (id) => {
-        const { data } = await supabase
+        assertLease();
+        const { data, error } = await supabase
           .from("mtproto_campaigns")
           .select("status")
           .eq("id", id)
           .single();
+        if (error) throw error;
         return (data?.status as string | undefined) ?? null;
       },
       setCampaignStatus: async (id, status) => {
+        assertLease();
         const patch: Record<string, unknown> = { status };
         if (status === "running" && !campaign.started_at) {
           patch.started_at = new Date().toISOString();
@@ -758,11 +790,11 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
             .is("dialog_id", null)
             .or("error_message.is.null,error_message.neq.invalid_identifier");
           if (e1 || e2) {
-            console.error(`[mtproto] campaign ${id}: reset da recorrência falhou:`, e1 ?? e2);
+            throw e1 ?? e2;
           }
           console.log(`[mtproto] campaign ${id} is recurrent — next run scheduled at ${nextRun.toISOString()}`);
         }
-        await supabase.from("mtproto_campaigns").update(patch).eq("id", id);
+        await supabase.from("mtproto_campaigns").update(patch).eq("id", id).eq("status", "running").throwOnError();
       },
       refetchPending: fetchPendingTargets,
       reloadPool: () => loadAccountsAndPool(pool),
@@ -795,7 +827,8 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
     },
   );
 
-  await runner.run(targetRows);
+  try { await runner.run(targetRows); }
+  finally { for (const client of campaignClients.values()) client.abort(); }
 }
 
 let mtprotoWorkerRunning = false;

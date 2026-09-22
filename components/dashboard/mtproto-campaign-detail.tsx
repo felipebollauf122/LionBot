@@ -1,37 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { automationHref } from "@/lib/automations/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { launchCampaign, pauseCampaign, deleteCampaign } from "@/app/dashboard/automations/actions";
 import { friendlyCampaignError, targetStatusLabel } from "@/lib/mtproto/campaign-errors";
-import { KpiCard } from "@/components/dashboard/analytics/kpi-card";
-import { icons } from "@/components/dashboard/analytics/icons";
-
-// Mapa canônico de status → badge (mesmo do mtproto-campaign-list.tsx):
-// running=info/cyan, scheduled=purple, pending/paused=pending/âmbar,
-// completed=active/magenta, draft=inactive/cinza, failed=error/vermelho.
-function campaignBadge(status: string): { cls: string; label: string } {
-  switch (status) {
-    case "running":
-      return { cls: "badge-info", label: "Ativa" };
-    case "scheduled":
-      return { cls: "badge-purple", label: "Agendada" };
-    case "pending":
-      return { cls: "badge-pending", label: "Pendente" };
-    case "completed":
-      return { cls: "badge-active", label: "Concluída" };
-    case "paused":
-      return { cls: "badge-pending", label: "Pausada" };
-    case "draft":
-      return { cls: "badge-inactive", label: "Rascunho" };
-    case "failed":
-      return { cls: "badge-error", label: "Falhou" };
-    default:
-      return { cls: "badge-inactive", label: status };
-  }
-}
+import { MtprotoCampaignProgress } from "@/components/dashboard/mtproto-campaign-progress";
+import { campaignProgress } from "@/lib/mtproto/campaign-progress";
 
 interface Campaign {
   id: string;
@@ -46,6 +22,10 @@ interface Campaign {
   delay_max_seconds: number;
   started_at: string | null;
   completed_at: string | null;
+  is_processing?: boolean;
+  processing_started_at?: string | null;
+  next_run_at?: string | null;
+  recurrence_seconds?: number | null;
 }
 
 interface Target {
@@ -55,6 +35,7 @@ interface Target {
   status: string;
   error_message: string | null;
   sent_at: string | null;
+  retry_after?: string | null;
 }
 
 type Filtro = "todos" | "sent" | "failed" | "skipped" | "pending";
@@ -94,40 +75,46 @@ export function MtprotoCampaignDetail({
   const [campaign, setCampaign] = useState(initialCampaign);
   const [targets, setTargets] = useState<Target[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   /** Recusa de disparar/retomar (fila interna fora do ar, env faltando). */
   const [erroAcao, setErroAcao] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
+  const actionVersion = useRef(0);
 
   const emAndamento = campaign.status === "running" || campaign.status === "scheduled";
 
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
+    let loading = false;
     async function load() {
-      const { data: c } = await supabase
-        .from("mtproto_campaigns")
-        .select("*")
-        .eq("id", campaignId)
-        .single();
-      const todos: Target[] = [];
-      for (let from = 0; ; from += PAGINA) {
-        const { data: pagina } = await supabase
-          .from("mtproto_targets")
-          .select("id, target_identifier, target_type, status, error_message, sent_at")
-          .eq("campaign_id", campaignId)
-          .order("sent_at", { ascending: false, nullsFirst: false })
-          .order("id", { ascending: true })
-          .range(from, from + PAGINA - 1);
-        if (!pagina || pagina.length === 0) break;
-        todos.push(...(pagina as Target[]));
-        if (pagina.length < PAGINA) break;
-      }
-      if (cancelled) return;
-      if (c) setCampaign(c as Campaign);
-      setTargets(todos);
+      if (loading) return;
+      loading = true;
+      const version = actionVersion.current;
+      try {
+        const { data: c, error } = await supabase.from("mtproto_campaigns").select("*").eq("id", campaignId).single();
+        if (error || !c) throw error ?? new Error("Campanha não encontrada");
+        const todos: Target[] = [];
+        // Ordem estável durante envios; não exibir páginas parciais em caso de erro.
+        for (let from = 0; !cancelled; from += PAGINA) {
+          const { data: pagina, error: pageError } = await supabase.from("mtproto_targets")
+            .select("id,target_identifier,target_type,status,error_message,sent_at,retry_after")
+            .eq("campaign_id", campaignId).order("id").range(from, from + PAGINA - 1);
+          if (pageError) throw pageError;
+          todos.push(...(pagina ?? []));
+          if (!pagina || pagina.length < PAGINA) break;
+        }
+        if (cancelled || version !== actionVersion.current) return;
+        setCampaign(c); setTargets(todos); setLoaded(true); setLoadError(null);
+      } catch {
+        if (!cancelled) setLoadError("Não foi possível atualizar agora. Mantivemos os últimos dados e vamos tentar novamente.");
+      } finally { loading = false; }
     }
-    load();
+    void load();
     // Em andamento a tela acompanha quase ao vivo; parada, só confere de vez
     // em quando (a lista inteira vem a cada rodada).
     const interval = setInterval(load, emAndamento ? 5000 : 30000);
@@ -136,14 +123,6 @@ export function MtprotoCampaignDetail({
       clearInterval(interval);
     };
   }, [campaignId, emAndamento]);
-
-  const skipped = campaign.skipped_count ?? 0;
-  const progress =
-    campaign.total_targets > 0
-      ? Math.round(
-          ((campaign.sent_count + campaign.failed_count) / campaign.total_targets) * 100,
-        )
-      : 0;
 
   const contagem = useMemo(() => {
     const c = { sent: 0, failed: 0, skipped: 0, pending: 0 };
@@ -154,7 +133,8 @@ export function MtprotoCampaignDetail({
   }, [targets]);
 
   const visiveis = useMemo(() => {
-    const lista = filtro === "todos" ? targets : targets.filter((t) => t.status === filtro);
+    const term = search.trim().toLocaleLowerCase("pt-BR");
+    const lista = targets.filter(t => (filtro === "todos" || t.status === filtro) && (!term || `${t.target_identifier} ${friendlyCampaignError(t.error_message) ?? ""}`.toLocaleLowerCase("pt-BR").includes(term)));
     return [...lista].sort((a, b) => {
       const oa = ORDEM_STATUS[a.status] ?? 9;
       const ob = ORDEM_STATUS[b.status] ?? 9;
@@ -162,9 +142,19 @@ export function MtprotoCampaignDetail({
       if (a.sent_at && b.sent_at) return b.sent_at.localeCompare(a.sent_at);
       return a.target_identifier.localeCompare(b.target_identifier, "pt-BR");
     });
-  }, [targets, filtro]);
+  }, [targets, filtro, search]);
 
-  const badge = campaignBadge(campaign.status);
+  const displayedCampaign = loaded ? { ...campaign, sent_count: contagem.sent, failed_count: contagem.failed, skipped_count: contagem.skipped, total_targets: contagem.sent + contagem.failed + contagem.pending } : campaign;
+  const display = campaignProgress(displayedCampaign);
+  const latestSent = targets.reduce<string | null>((last, t) => t.sent_at && (!last || t.sent_at > last) ? t.sent_at : last, null);
+  const lastPage = Math.max(0, Math.ceil(visiveis.length / 50) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const reasons = new Map<string, number>();
+  for (const target of targets) {
+    if (!target.error_message || target.status === "sent") continue;
+    const reason = friendlyCampaignError(target.error_message) ?? target.error_message;
+    reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+  }
 
   const chips: Array<{ id: Filtro; label: string; n: number }> = [
     { id: "todos", label: "Todos", n: targets.length },
@@ -181,16 +171,21 @@ export function MtprotoCampaignDetail({
       )}
       {/* Status + ações */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className={`badge ${badge.cls}`}>{badge.label}</span>
+        <p className="text-sm text-(--text-secondary)">{campaign.recurrence_seconds ? `Repete até você pausar · ${campaign.recurrence_seconds}s entre ciclos` : "Um ciclo · retomada automática dos pendentes"}</p>
         <div className="flex items-center gap-2">
-          {(campaign.status === "draft" || campaign.status === "paused") && (
+          {(["draft", "paused", "failed"].includes(campaign.status)) && (
             <button
+              disabled={pending}
               onClick={() =>
                 startTransition(async () => {
                   // Recusa da fila interna vem como dado: sem isto, o clique
                   // não fazia nada visível e a campanha seguia em rascunho.
-                  const r = await launchCampaign(campaignId);
-                  setErroAcao(r.ok ? null : r.error);
+                  actionVersion.current += 1;
+                  try {
+                    const r = await launchCampaign(campaignId);
+                    setErroAcao(r.ok ? null : r.error);
+                    if (r.ok) setCampaign(c => ({ ...c, status: "running", is_processing: false }));
+                  } catch { setErroAcao("Não foi possível retomar. Tente novamente."); }
                 })
               }
               className="btn-primary text-xs px-4 py-2"
@@ -200,10 +195,15 @@ export function MtprotoCampaignDetail({
           )}
           {emAndamento && (
             <button
-              onClick={() => startTransition(() => pauseCampaign(campaignId))}
-              className="btn-ghost text-xs px-4 py-2"
+              disabled={pending}
+              onClick={() => startTransition(async () => {
+                actionVersion.current += 1;
+                try { await pauseCampaign(campaignId); setCampaign(c => ({ ...c, status: "paused" })); setErroAcao(null); }
+                catch { setErroAcao("Não foi possível pausar. Tente novamente."); }
+              })}
+              className="btn-primary min-h-11 text-sm px-4 py-2 disabled:opacity-50"
             >
-              Pausar
+              Pausar envio
             </button>
           )}
           <button
@@ -230,98 +230,35 @@ export function MtprotoCampaignDetail({
         </div>
       </div>
 
-      {/* Métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard
-          label="Enviadas"
-          value=""
-          numericValue={campaign.sent_count}
-          format="int"
-          hint={`de ${campaign.total_targets}`}
-          accent="cyan"
-          icon={icons.check}
-          revealIndex={1}
-        />
-        <KpiCard
-          label="Falhas"
-          value=""
-          numericValue={campaign.failed_count}
-          format="int"
-          hint={campaign.failed_count > 0 ? "erro no envio; veja a lista" : "sem falhas"}
-          accent="amber"
-          icon={icons.bolt}
-          revealIndex={2}
-        />
-        <KpiCard
-          label="Pulados"
-          value=""
-          numericValue={skipped}
-          format="int"
-          hint={skipped > 0 ? "destinos que não aceitam" : "nenhum destino bloqueado"}
-          accent="purple"
-          icon={icons.users}
-          revealIndex={3}
-        />
-        <KpiCard
-          label="Total"
-          value=""
-          numericValue={campaign.total_targets}
-          format="int"
-          hint="alvos que podem receber"
-          accent="magenta"
-          icon={icons.megaphone}
-          revealIndex={4}
-        />
-      </div>
-
-      {/* Progresso */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5 text-xs">
-          <span className="text-(--text-muted)">Progresso</span>
-          <span className="text-(--text-secondary)">{Math.min(100, progress)}%</span>
-        </div>
-        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-          <div
-            style={{
-              width: `${Math.min(100, progress)}%`,
-              background: "linear-gradient(90deg, var(--accent), var(--cyan))",
-            }}
-            className="h-full rounded-full"
-          />
-        </div>
-        {skipped > 0 && (
-          <p className="text-(--text-muted) text-xs mt-2 leading-relaxed">
-            {skipped === 1 ? "1 destino foi pulado" : `${skipped} destinos foram pulados`} por não
-            aceitar mensagem desta conta (canal sem permissão de admin, grupo onde a conta está
-            silenciada ou banida, chat restrito). Eles não contam como falha nem entram no
-            total, e não voltam nos próximos ciclos.
-          </p>
-        )}
-      </div>
+      {loadError && <p role="status" className="text-sm text-(--amber)">{loadError}</p>}
+      <MtprotoCampaignProgress campaign={displayedCampaign} latestSent={latestSent} />
+      {reasons.size > 0 && <details className="border-b border-(--border-default) pb-5" open={campaign.status === "scheduled"}>
+        <summary className="min-h-11 cursor-pointer text-base font-semibold">O que impediu o envio · {reasons.size} motivos</summary>
+        <ul className="mt-3 grid gap-4 md:grid-cols-2">{[...reasons].sort((a, b) => b[1] - a[1]).map(([reason, count]) => <li key={reason} className="text-sm leading-relaxed text-(--text-secondary)"><strong className="mr-2 tabular-nums text-foreground">{count}</strong>{reason}</li>)}</ul>
+      </details>}
 
       {/* Mensagem */}
-      <div>
-        <h2 className="text-(--text-secondary) text-sm font-semibold mb-2">Mensagem</h2>
-        <pre className="p-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) text-(--text-secondary) text-sm whitespace-pre-wrap">
+      <details>
+        <summary className="min-h-11 cursor-pointer text-base font-semibold">Mensagem do disparo</summary>
+        <pre className="p-3 rounded-lg bg-white/[0.02] border border-(--border-subtle) text-(--text-secondary) text-sm whitespace-pre-wrap break-words">
           {campaign.message_text}
         </pre>
-      </div>
+      </details>
 
       {/* Alvos */}
       <div>
         <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
           <h2 className="text-(--text-secondary) text-sm font-semibold">
-            Alvos ({targets.length})
+            Destinos ({display.total.toLocaleString("pt-BR")})
           </h2>
-          <div className="flex items-center gap-1.5 flex-wrap" role="tablist" aria-label="Filtrar alvos">
+          <div className="flex items-center gap-1.5 flex-wrap" aria-label="Filtrar destinos">
             {chips.map((chip) => (
               <button
                 key={chip.id}
                 type="button"
-                role="tab"
-                aria-selected={filtro === chip.id}
-                onClick={() => setFiltro(chip.id)}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                aria-pressed={filtro === chip.id}
+                onClick={() => { setFiltro(chip.id); setPage(0); }}
+                className={`min-h-11 text-sm px-3 py-2 rounded-lg border transition-colors ${
                   filtro === chip.id
                     ? "border-(--accent) text-foreground bg-white/[0.06]"
                     : "border-(--border-subtle) text-(--text-muted) hover:text-foreground"
@@ -332,27 +269,31 @@ export function MtprotoCampaignDetail({
             ))}
           </div>
         </div>
-        <div className="space-y-1.5 max-h-[500px] overflow-y-auto">
+        <label htmlFor="campaign-search" className="sr-only">Buscar destino ou motivo</label>
+        <input id="campaign-search" className="input mb-4 w-full" placeholder="Buscar destino ou motivo…" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
+        <div className="divide-y divide-(--border-subtle) border-y border-(--border-default)">
           {visiveis.length === 0 ? (
             <div className="py-8 text-center text-(--text-ghost) text-xs">
-              {targets.length === 0 ? "Nenhum alvo ainda." : "Nenhum alvo neste filtro."}
+              {!loaded ? (loadError ? "Aguardando conexão para carregar destinos." : "Carregando destinos…") : "Nenhum destino encontrado neste filtro."}
             </div>
           ) : (
-            visiveis.map((t) => {
+            visiveis.slice(currentPage * 50, (currentPage + 1) * 50).map((t) => {
               const motivo = friendlyCampaignError(t.error_message);
               return (
                 <div
                   key={t.id}
-                  className="row-hover px-3 py-2.5 rounded-lg bg-white/[0.02] border border-(--border-subtle)"
+                  className="px-1 py-4"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-(--text-secondary) text-sm truncate">{t.target_identifier}</span>
+                    <span className="text-(--text-secondary) text-sm min-w-0 break-all">{t.target_identifier}</span>
                     <span className={`text-xs shrink-0 font-medium ${corStatus(t.status)}`}>
                       {targetStatusLabel(t.status)}
                     </span>
                   </div>
+                  {t.sent_at && <p className="mt-1 text-xs text-(--text-muted) tabular-nums">Enviado em {new Date(t.sent_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>}
+                  {t.status === "pending" && t.retry_after && <p className="mt-1 text-xs text-(--text-muted) tabular-nums">Nova tentativa a partir de {new Date(t.retry_after).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>}
                   {motivo && (
-                    <p className="text-(--text-muted) text-xs mt-1 leading-relaxed break-words">
+                    <p className="text-(--text-muted) text-sm mt-1 leading-relaxed break-words">
                       {motivo}
                     </p>
                   )}
@@ -361,6 +302,7 @@ export function MtprotoCampaignDetail({
             })
           )}
         </div>
+        <div className="mt-4 flex flex-wrap justify-between items-center gap-3 text-sm text-(--text-secondary)"><span>Página {currentPage + 1} de {lastPage + 1} · {visiveis.length} resultados</span><div className="flex gap-2"><button className="btn-ghost min-h-11 disabled:opacity-40" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Anterior</button><button className="btn-ghost min-h-11 disabled:opacity-40" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Próxima</button></div></div>
       </div>
     </div>
   );

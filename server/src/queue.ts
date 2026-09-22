@@ -467,46 +467,33 @@ export function startWorkers(): void {
   setInterval(() => tickMtprotoHealth(), 10 * 60 * 1000); // 10 min
   setTimeout(() => tickMtprotoHealth(), 45_000); // primeira rodada 45s após boot
 
-  // MTProto: dispara campanhas recorrentes que chegaram na hora.
-  // Roda a cada 5s; pega mtproto_campaigns com status='scheduled' e
-  // next_run_at <= now e enfileira campaign.run.
-  //
-  // O tick É a resolução real da recorrência: uma campanha com
-  // recurrence_seconds=5 não sai a cada 5s se o tick for de 30s. Por isso o
-  // intervalo aqui e o mínimo do check em recurrence_seconds (migration 082)
-  // andam juntos — mexeu em um, mexa no outro.
+  // Reconcilia a intenção no banco com a fila, inclusive running órfão.
+  // Não muda status antes do enqueue: Redis fora do ar não perde o agendamento.
   let recurrentMtprotoRunning = false;
-  setInterval(() => {
-    if (recurrentMtprotoRunning) return;
+  async function tickMtprotoCampaigns() {
+    if (recurrentMtprotoRunning || !config.mtprotoWorkerEnabled) return;
     recurrentMtprotoRunning = true;
-    (async () => {
-      try {
-        const { data: due } = await supabase
-          .from("mtproto_campaigns")
-          .select("id")
-          .eq("status", "scheduled")
-          .not("recurrence_seconds", "is", null)
-          .lte("next_run_at", new Date().toISOString())
-          .limit(20);
-        if (!due || due.length === 0) return;
-        const { enqueueMtproto } = await import("./queue-mtproto.js");
-        for (const c of due) {
-          // Marca como queued antes de enfileirar pra evitar tick duplicado
-          await supabase
-            .from("mtproto_campaigns")
-            .update({ status: "running" })
-            .eq("id", c.id)
-            .eq("status", "scheduled");
-          await enqueueMtproto({ kind: "campaign.run", campaignId: c.id });
-          console.log(`[mtproto-recurrent] dispatched campaign ${c.id}`);
-        }
-      } catch (err) {
-        console.error("[mtproto-recurrent] Error:", err);
-      } finally {
-        recurrentMtprotoRunning = false;
+    try {
+      const { recoverCampaigns } = await import("./services/mtproto/campaign-recovery.js");
+      const { enqueueMtproto } = await import("./queue-mtproto.js");
+      // Paginação estável: campanhas longas não escondem as posteriores ao limite.
+      for (let offset = 0; ; offset += 200) {
+        const { data, error } = await supabase.from("mtproto_campaigns")
+          .select("id,status,next_run_at,is_processing,processing_started_at")
+          .in("status", ["running", "scheduled"]).order("id")
+          .range(offset, offset + 199);
+        if (error) throw error;
+        await recoverCampaigns(data ?? [],
+          (id) => enqueueMtproto({ kind: "campaign.run", campaignId: id }),
+          (id, error) => console.error(`[mtproto-recovery] ${id}`, error));
+        if (!data || data.length < 200) break;
       }
-    })();
-  }, 5_000);
+    } catch (error) {
+      console.error("[mtproto-recovery]", error);
+    } finally { recurrentMtprotoRunning = false; }
+  }
+  setInterval(() => { void tickMtprotoCampaigns(); }, 5_000);
+  void tickMtprotoCampaigns();
 
   // Campanhas de postagem agendada: enfileira o que venceu.
   //

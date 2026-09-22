@@ -31,6 +31,13 @@ export async function enqueueMtproto(
     backoff: { type: "fixed", delay: 3000 },
     removeOnComplete: 100,
     removeOnFail: 100,
+    // Um único job por campanha, incluindo cliques repetidos e recuperação
+    // após restart. Remover ao terminar permite o próximo ciclo com o mesmo id.
+    ...(data.kind === "campaign.run" ? {
+      jobId: `campaign-${data.campaignId}`,
+      removeOnComplete: true,
+      removeOnFail: true,
+    } : {}),
     // Opcional: permite adiar o reenfileiramento (ex.: retomada pós
     // FLOOD_WAIT). Sem isso o resume reenfileiraria na hora e o worker
     // giraria em loop batendo no mesmo bloqueio.

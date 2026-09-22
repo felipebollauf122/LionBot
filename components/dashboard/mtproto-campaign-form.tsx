@@ -65,7 +65,7 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
   const [targetsRaw, setTargetsRaw] = useState("");
   const [delayMin, setDelayMin] = useState(15);
   const [delayMax, setDelayMax] = useState(45);
-  const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
+  const [recurrenceEnabled, setRecurrenceEnabled] = useState(true);
   const [recurrenceSeconds, setRecurrenceSeconds] = useState(24 * 60 * 60);
   const [isGlobal, setIsGlobal] = useState(false);
   // Recorrência é guardada em segundos; a UI só decompõe em h/m/s pra editar.
@@ -277,8 +277,8 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
               assina (assinante não publica em canal). Grupo onde a conta está silenciada,
               banida ou sem permissão de escrever aparece como <b>pulado</b> na campanha, com o
               motivo, e não conta como falha.
-              {" "}A base é <b>sincronizada automaticamente</b>: ao conectar a conta, antes de
-              cada disparo global e em loop a cada 24h.
+              {" "}A base é <b>sincronizada automaticamente</b> ao conectar a conta e a cada 24h,
+              em segundo plano, sem bloquear o disparo.
             </div>
             {isGlobal && (
               <div className="text-(--amber) text-xs mt-2 leading-relaxed">
@@ -508,7 +508,7 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
             className="accent-(--accent) mt-1"
           />
           <div>
-            <div className="text-foreground text-sm font-medium">Repetir automaticamente (loop)</div>
+            <div className="text-foreground text-sm font-medium">Repetir até eu pausar</div>
             <div className="text-(--text-muted) text-xs">
               Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete no intervalo abaixo (mínimo 5s).
               Os mesmos alvos recebem a mensagem em todo ciclo. Um ciclo só começa depois que o anterior termina — se o envio demorar mais que o intervalo, os ciclos saem em sequência, sem se sobrepor.

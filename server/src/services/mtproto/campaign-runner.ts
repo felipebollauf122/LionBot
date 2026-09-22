@@ -1,5 +1,6 @@
 import type { AccountPool } from "./pool.js";
 import { extractWaitSeconds } from "./flood.js";
+import { transientCampaignError } from "./campaign-recovery.js";
 import { classifyUnwritable, type UnwritableReason } from "./unwritable.js";
 
 export interface CampaignTargetRow {
@@ -44,6 +45,10 @@ export interface CampaignTargetRow {
  * do alvo; a contagem segue sozinha.
  */
 export interface RunnerDeps {
+  prepareTarget?: (target: CampaignTargetRow, accountId: string) => Promise<void>;
+  deferCampaign?: (until: string, reason: string) => Promise<void>;
+  deferAccount?: (accountId: string, until: string, reason: string) => Promise<void>;
+  hasPendingTargets?: () => Promise<boolean>;
   sendMessage: (
     accountId: string,
     target: CampaignTargetRow,
@@ -56,7 +61,7 @@ export interface RunnerDeps {
    * status='pending' mas seta retry_after, pra não perder o lead. Se a dep
    * não for fornecida, cai no markTargetFailed (comportamento antigo).
    */
-  markTargetRetryAfter?: (targetId: string, retryAfterIso: string) => Promise<void>;
+  markTargetRetryAfter?: (targetId: string, retryAfterIso: string, reason?: string) => Promise<void>;
   /**
    * Pula o alvo: destino que NUNCA vai aceitar a mensagem desta conta (canal
    * sem admin, conta silenciada/banida ali, chat restrito, fórum fechado...
@@ -119,6 +124,7 @@ function isFatalAccountError(err: unknown): boolean {
 }
 
 export class CampaignRunner {
+  private yielded = false;
   constructor(
     private pool: AccountPool,
     private deps: RunnerDeps,
@@ -126,6 +132,8 @@ export class CampaignRunner {
   ) {}
 
   async run(targets: CampaignTargetRow[]): Promise<void> {
+    const initialStatus = await this.deps.getCampaignStatus(this.cfg.campaignId);
+    if (initialStatus === null || initialStatus === "paused" || initialStatus === "failed" || initialStatus === "completed") return;
     await this.deps.setCampaignStatus(this.cfg.campaignId, "running");
 
     // Loop externo: drena os pending; ao acabar o snapshot, re-consulta o
@@ -136,6 +144,7 @@ export class CampaignRunner {
     let drained = false;
     while (!drained) {
       await this.processBatch(currentBatch);
+      if (this.yielded) return;
       // Tenta re-buscar se a campanha ainda está running.
       // status=null = campanha deletada pelo user → aborta sem completar.
       const liveStatus = await this.deps.getCampaignStatus(this.cfg.campaignId);
@@ -162,7 +171,19 @@ export class CampaignRunner {
       }
     }
 
+    if (this.deps.hasPendingTargets && await this.deps.hasPendingTargets()) {
+      await this.defer(60, "WAITING_RETRY");
+      return;
+    }
     await this.deps.setCampaignStatus(this.cfg.campaignId, "completed");
+  }
+
+  private async defer(seconds: number, reason: string, target?: CampaignTargetRow, accountId?: string): Promise<void> {
+    const until = new Date(Date.now() + seconds * 1000).toISOString();
+    if (accountId && this.deps.deferAccount) await this.deps.deferAccount(accountId, until, reason);
+    if (target && this.deps.markTargetRetryAfter) await this.deps.markTargetRetryAfter(target.id, until, reason);
+    this.yielded = true;
+    await this.deps.deferCampaign?.(until, reason);
   }
 
   /**
@@ -220,6 +241,10 @@ export class CampaignRunner {
         ? this.pool.getById(target.pinnedAccountId!)
         : this.pool.next();
       if (!account) {
+        if (this.deps.deferCampaign) {
+          await this.defer(300, "ACCOUNT_UNAVAILABLE", target);
+          return;
+        }
         if (isPinned) {
           // Conta dona desse target tá indisponível — pula este target e
           // segue a campanha. Outras contas ainda podem processar os
@@ -235,11 +260,30 @@ export class CampaignRunner {
         return;
       }
 
+      if (this.deps.prepareTarget) await this.deps.prepareTarget(target, account.id);
+      let delivered = false;
       try {
         await this.deps.sendMessage(account.id, target, this.cfg.messageText);
-        await this.deps.markTargetSent(target.id, account.id);
+        delivered = true;
       } catch (err) {
         const floodSeconds = extractWaitSeconds(err);
+        if (this.deps.deferCampaign) {
+          const text = err instanceof Error ? err.message : String(err);
+          if (floodSeconds !== null) {
+            await this.defer(Math.max(1, floodSeconds) + 5, `FLOOD_WAIT_${floodSeconds}`, target, account.id);
+            return;
+          }
+          if (/PEER_FLOOD/i.test(text)) {
+            // PEER_FLOOD não informa prazo. 24h é nosso intervalo conservador
+            // de reavaliação, não uma promessa de liberação pelo Telegram.
+            await this.defer(24 * 60 * 60, "PEER_FLOOD", target, account.id);
+            return;
+          }
+          if (transientCampaignError(err)) {
+            await this.defer(60, "CONNECTION_RETRY", target);
+            return;
+          }
+        }
         if (floodSeconds !== null) {
           this.pool.markFloodWait(account.id, floodSeconds);
           // Em targets pinned não dá pra trocar de conta (access_hash
@@ -275,6 +319,10 @@ export class CampaignRunner {
           await this.failTarget(err, target, account.id);
         }
       }
+
+      // Falha de persistência não é recusa do Telegram. Deixa o job falhar;
+      // a recuperação reusa o random_id e tenta registrar novamente.
+      if (delivered) await this.deps.markTargetSent(target.id, account.id);
 
       const min = this.cfg.delayMinSeconds * 1000;
       const max = this.cfg.delayMaxSeconds * 1000;

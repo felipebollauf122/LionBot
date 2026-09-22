@@ -560,7 +560,7 @@ export async function pauseCampaign(campaignId: string): Promise<void> {
   await supabase
     .from("mtproto_campaigns")
     .update({ status: "paused" })
-    .eq("id", campaignId);
+    .eq("id", campaignId).throwOnError();
   revalidatePath("/dashboard/automations", "layout");
   revalidatePath(`/dashboard/automations/campaigns/${campaignId}`);
 }

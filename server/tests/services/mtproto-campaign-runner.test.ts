@@ -57,6 +57,43 @@ const rpc = (code: string, status = 400) =>
   new Error(`${status}: ${code} (caused by messages.SendMessage)`);
 
 describe("CampaignRunner", () => {
+  it("aguarda conta indisponível sem falhar o destino nem pausar a intenção do usuário", async () => {
+    const deferCampaign = vi.fn(async () => {});
+    const deps = makeDeps({ deferCampaign, markTargetRetryAfter: vi.fn(async () => {}) });
+    await new CampaignRunner(pool(), deps, cfg).run(targets({ id: "t1", identifier: "u", type: "username", pinnedAccountId: "a" }));
+    expect(deferCampaign).toHaveBeenCalledWith(expect.any(String), "ACCOUNT_UNAVAILABLE");
+    expect(deps.markTargetFailed).not.toHaveBeenCalled();
+    expect(deps.setCampaignStatus).not.toHaveBeenCalledWith("c1", "completed");
+    expect(deps.setCampaignStatus).not.toHaveBeenCalledWith("c1", "paused");
+  });
+
+  it.each(["PEER_FLOOD", "TIMEOUT"])("%s preserva o destino para retomada e não insiste nos demais", async (code) => {
+    const deferCampaign = vi.fn(async () => {});
+    const deferAccount = vi.fn(async () => {});
+    const sendMessage = vi.fn(async () => { throw rpc(code); });
+    const deps = makeDeps({ deferCampaign, deferAccount, sendMessage, markTargetRetryAfter: vi.fn(async () => {}) });
+    await new CampaignRunner(pool("a"), deps, cfg).run(targets({ id: "t1", identifier: "u", type: "username" }, { id: "t2", identifier: "v", type: "username" }));
+    expect(sendMessage).toHaveBeenCalledOnce();
+    expect(deps.markTargetFailed).not.toHaveBeenCalled();
+    expect(deps.markTargetRetryAfter).toHaveBeenCalledWith("t1", expect.any(String), code === "PEER_FLOOD" ? "PEER_FLOOD" : "CONNECTION_RETRY");
+    expect(deferCampaign).toHaveBeenCalledOnce();
+    expect(deps.setCampaignStatus).not.toHaveBeenCalledWith("c1", "completed");
+    if (code === "PEER_FLOOD") expect(deferAccount).toHaveBeenCalledOnce();
+  });
+
+  it("não conclui nem reinicia o ciclo enquanto há destinos aguardando retry_after", async () => {
+    const deps = makeDeps({ hasPendingTargets: async () => true, deferCampaign: vi.fn(async () => {}) });
+    await new CampaignRunner(pool("a"), deps, cfg).run([]);
+    expect(deps.deferCampaign).toHaveBeenCalledOnce();
+    expect(deps.setCampaignStatus).not.toHaveBeenCalledWith("c1", "completed");
+  });
+
+  it("job antigo não reativa uma campanha pausada pelo usuário", async () => {
+    const deps = makeDeps({ getCampaignStatus: async () => "paused" });
+    await new CampaignRunner(pool("a"), deps, cfg).run(targets({ id: "t1", identifier: "u", type: "username" }));
+    expect(deps.setCampaignStatus).not.toHaveBeenCalled();
+    expect(deps.sends).toHaveLength(0);
+  });
   it("sends to all pending targets distributing across the pool", async () => {
     const deps = makeDeps();
     const runner = new CampaignRunner(pool("a", "b"), deps, { ...cfg, messageText: "oi" });

@@ -1,6 +1,7 @@
 "use client";
 
 import { AutomationLink } from "@/components/dashboard/automations/scoped-link";
+import { campaignProgress } from "@/lib/mtproto/campaign-progress";
 
 
 import { useState, useTransition } from "react";
@@ -18,6 +19,8 @@ interface Campaign {
   created_at: string;
   recurrence_seconds?: number | null;
   next_run_at?: string | null;
+  is_processing?: boolean;
+  processing_started_at?: string | null;
 }
 
 function formatNextRun(iso: string | null | undefined): string | null {
@@ -94,6 +97,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
         const nextRun = formatNextRun(c.next_run_at);
         const deleting = pendingId === c.id;
         const badge = campaignBadge(c.status);
+        const progress = campaignProgress(c);
 
         // Mostra só as duas maiores unidades com valor: 3661s vira "1h1m",
         // 90s vira "1m30s", 45s vira "45s".
@@ -110,10 +114,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
 
         const recStr = c.recurrence_seconds ? formatRecurrence(c.recurrence_seconds) : "";
 
-        const pct =
-          c.total_targets > 0
-            ? Math.min(100, Math.round((c.sent_count / c.total_targets) * 100))
-            : 0;
+        const pct = progress.percent;
         return (
           <div
             key={c.id}
@@ -125,14 +126,11 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
             >
               <div className="min-w-0 flex-1">
                 <div className="text-(--text-primary) text-sm font-semibold flex items-center gap-2">
-                  {isRecurrent && (
-                    <span title={`Recorrente a cada ${recStr}`}>🔁</span>
-                  )}
                   <span className="truncate">{c.name}</span>
-                  <span className={`badge ${badge.cls} shrink-0`}>{badge.label}</span>
+                  <span className={`badge ${badge.cls} shrink-0`}>{progress.label}</span>
                 </div>
                 <div className="text-(--text-muted) text-xs mt-1.5">
-                  {c.sent_count}/{c.total_targets} enviadas
+                  {c.sent_count} enviados · {progress.pending} na fila · {progress.total} destinos
                   {" · "}
                   <span className={c.failed_count > 0 ? "text-(--red)" : ""}>
                     {c.failed_count} falhas
@@ -154,7 +152,7 @@ export function MtprotoCampaignList({ campaigns }: { campaigns: Campaign[] }) {
                   )}
                 </div>
                 {c.total_targets > 0 && (
-                  <div className="mt-2 h-2 rounded-full bg-(--bg-input) overflow-hidden max-w-xs">
+                  <div title={`${pct}% dos destinos processados`} className="mt-2 h-2 rounded-full bg-(--bg-input) overflow-hidden max-w-xs">
                     <div
                       style={{
                         width: `${pct}%`,

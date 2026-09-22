@@ -71,6 +71,7 @@ export interface MtprotoDialog {
 
 export class MtprotoClient {
   private client: TelegramClient;
+  private aborted = false;
   private inboxHandler: ((event: NewMessageEvent) => Promise<void>) | null = null;
   // Cache phone → user resolvido (#54): evita ImportContacts repetido na
   // mesma sessão, que incha a agenda da conta e aumenta risco de ban.
@@ -92,9 +93,29 @@ export class MtprotoClient {
   }
 
   async connect(): Promise<void> {
+    if (this.aborted) throw new Error("CONNECTION_ABORTED");
     if (!this.client.connected) {
       await this.client.connect();
     }
+    if (this.aborted) {
+      void this.client.disconnect().catch(() => {});
+      throw new Error("CONNECTION_ABORTED");
+    }
+  }
+
+  /** Usado apenas pelo cliente privado de um disparo, nunca pelo inbox. */
+  abort(): void {
+    this.aborted = true;
+    void this.client.disconnect().catch(() => {});
+  }
+
+  private async sendWithId(peer: Api.TypeInputPeer, text: string, randomId: string, topMsgId?: number): Promise<void> {
+    if (this.aborted) throw new Error("CONNECTION_ABORTED");
+    const [message, entities] = this.client.parseMode?.parse(text) ?? [text, []];
+    await this.client.invoke(new Api.messages.SendMessage({
+      peer, message, entities, randomId: bigInt(randomId),
+      replyTo: topMsgId ? new Api.InputReplyToMessage({ replyToMsgId: topMsgId, topMsgId }) : undefined,
+    }));
   }
 
   /**
@@ -175,10 +196,15 @@ export class MtprotoClient {
     target: string,
     targetType: "username" | "phone",
     text: string,
+    randomId?: string,
   ): Promise<void> {
     await this.connect();
 
     if (targetType === "username") {
+      if (randomId) {
+        await this.sendWithId(await this.client.getInputEntity(target), text, randomId);
+        return;
+      }
       await this.client.sendMessage(target, { message: text });
       return;
     }
@@ -203,7 +229,8 @@ export class MtprotoClient {
       if (!user) throw new Error("PHONE_NOT_ON_TELEGRAM");
       this.phoneUserCache.set(target, user);
     }
-    await this.client.sendMessage(user as never, { message: text });
+    if (randomId) await this.sendWithId(await this.client.getInputEntity(user), text, randomId);
+    else await this.client.sendMessage(user as never, { message: text });
   }
 
   /**
@@ -222,6 +249,7 @@ export class MtprotoClient {
        * que em muitos fóruns está fechado (TOPIC_CLOSED); ver forum-fallback.ts.
        */
       topMsgId?: number;
+      randomId?: string;
     } = {},
   ): Promise<void> {
     await this.connect();
@@ -244,7 +272,8 @@ export class MtprotoClient {
       });
     }
 
-    await this.client.sendMessage(inputPeer as never, { message: text, topMsgId: opts.topMsgId });
+    if (opts.randomId) await this.sendWithId(inputPeer, text, opts.randomId, opts.topMsgId);
+    else await this.client.sendMessage(inputPeer as never, { message: text, topMsgId: opts.topMsgId });
   }
 
   /**

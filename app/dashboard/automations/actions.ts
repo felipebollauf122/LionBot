@@ -240,12 +240,12 @@ export async function createCampaign(input: {
     const tenantId = await resolveActingTenantId(input.actingTenantId);
     const supabase = await createClient();
 
-    // Piso de 5s: o tick de recorrencia em server/src/queue.ts roda a cada
-    // 5s, entao valor menor nao encurta o ciclo — so mentiria na UI. Mesmo
-    // piso do check da migration 082.
     let recurrenceSeconds: number | null = null;
-    if (input.recurrenceSeconds != null && input.recurrenceSeconds > 0) {
-      recurrenceSeconds = Math.max(5, Math.floor(input.recurrenceSeconds));
+    if (input.recurrenceSeconds != null) {
+      if (!Number.isFinite(input.recurrenceSeconds) || input.recurrenceSeconds < 1) {
+        return { ok: false, error: "Recorrência deve ser de pelo menos 1 segundo." };
+      }
+      recurrenceSeconds = Math.floor(input.recurrenceSeconds);
     }
 
     const isGlobal = Boolean(input.global);

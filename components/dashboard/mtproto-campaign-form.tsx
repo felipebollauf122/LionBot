@@ -171,8 +171,8 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
       setError("Cole uma lista de alvos OU selecione contatos/grupos abaixo OU ative o disparo global.");
       return;
     }
-    if (recurrenceEnabled && recurrenceSeconds < 5) {
-      setError("Recorrência: mínimo 5 segundos entre execuções.");
+    if (recurrenceEnabled && recurrenceSeconds < 1) {
+      setError("Recorrência: informe pelo menos 1 segundo entre execuções.");
       return;
     }
     startTransition(async () => {
@@ -510,7 +510,7 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
           <div>
             <div className="text-foreground text-sm font-medium">Repetir até eu pausar</div>
             <div className="text-(--text-muted) text-xs">
-              Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete no intervalo abaixo (mínimo 5s).
+              Quando ativo, a campanha vira recorrente: a primeira execução acontece <b>imediatamente</b> ao salvar/disparar, e depois repete no intervalo abaixo (mínimo 1s).
               Os mesmos alvos recebem a mensagem em todo ciclo. Um ciclo só começa depois que o anterior termina — se o envio demorar mais que o intervalo, os ciclos saem em sequência, sem se sobrepor.
             </div>
           </div>
@@ -518,8 +518,9 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
           {recurrenceEnabled && (
             <div className="pl-6 flex flex-wrap items-center gap-4">
               <div>
-                <label className="input-label">Horas</label>
+                <label className="input-label" htmlFor="recurrence-hours">Horas</label>
                 <input
+                  id="recurrence-hours"
                   type="number"
                   min={0}
                   value={recH}
@@ -528,8 +529,9 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
                 />
               </div>
               <div>
-                <label className="input-label">Minutos</label>
+                <label className="input-label" htmlFor="recurrence-minutes">Minutos</label>
                 <input
+                  id="recurrence-minutes"
                   type="number"
                   min={0}
                   max={59}
@@ -539,8 +541,9 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
                 />
               </div>
               <div>
-                <label className="input-label">Segundos</label>
+                <label className="input-label" htmlFor="recurrence-seconds">Segundos</label>
                 <input
+                  id="recurrence-seconds"
                   type="number"
                   min={0}
                   max={59}
@@ -551,8 +554,8 @@ function TenantCampaignForm({ actingTenantId }: { actingTenantId?: string }) {
               </div>
               <span className="text-(--text-muted) text-xs self-end mb-2">
                 Total: {recurrenceSeconds}s
-                {recurrenceSeconds > 0 && recurrenceSeconds < 5 && (
-                  <b className="text-(--red)"> — mínimo 5s</b>
+                {recurrenceSeconds < 1 && (
+                  <b className="text-(--red)"> — informe ao menos 1s</b>
                 )}
               </span>
             </div>

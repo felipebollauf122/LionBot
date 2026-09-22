@@ -492,7 +492,9 @@ export function startWorkers(): void {
       console.error("[mtproto-recovery]", error);
     } finally { recurrentMtprotoRunning = false; }
   }
-  setInterval(() => { void tickMtprotoCampaigns(); }, 5_000);
+  // Um tick por segundo mantém fiel o menor intervalo aceito pela campanha.
+  // A trava acima impede sobreposição se uma varredura demorar mais que isso.
+  setInterval(() => { void tickMtprotoCampaigns(); }, 1_000);
   void tickMtprotoCampaigns();
 
   // Campanhas de postagem agendada: enfileira o que venceu.

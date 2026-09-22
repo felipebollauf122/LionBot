@@ -10,7 +10,7 @@ type SP = { [key: string]: string | string[] | undefined };
 export default async function NewCampaignPage({ searchParams }: { searchParams: Promise<SP> }) {
   const context = await getAutomationPageContext(searchParams);
   return (
-    <div className="p-6 md:p-8 max-w-2xl mx-auto">
+    <div className="campaign-surface min-h-full p-6 md:p-8 max-w-2xl mx-auto">
       <AutomationLink href="/dashboard/automations/campaigns" className="text-(--text-muted) hover:text-foreground text-sm transition-colors">
         ← Voltar
       </AutomationLink>

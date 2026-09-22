@@ -596,6 +596,23 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
   const targetRows = await fetchPendingTargets();
 
   const campaignClients = new Map<string, MtprotoClient>();
+  const liveConfig = {
+    campaignId,
+    messageText: campaign.message_text,
+    delayMinSeconds: campaign.delay_min_seconds,
+    delayMaxSeconds: campaign.delay_max_seconds,
+    recurrenceSeconds: campaign.recurrence_seconds,
+  };
+  async function readLiveCampaign() {
+    assertLease();
+    const { data, error } = await supabase.from("mtproto_campaigns")
+      .select("status,message_text,delay_min_seconds,delay_max_seconds,recurrence_seconds,started_at")
+      .eq("id", campaignId).maybeSingle();
+    if (error) throw error;
+    if (data) Object.assign(liveConfig, { messageText: data.message_text, delayMinSeconds: data.delay_min_seconds,
+      delayMaxSeconds: data.delay_max_seconds, recurrenceSeconds: data.recurrence_seconds });
+    return data;
+  }
   const runner = new CampaignRunner(
     pool,
     {
@@ -724,18 +741,11 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
       // Contadores (sent/failed/skipped/total) não são escritos aqui: o trigger
       // da migration 083 recalcula a partir das linhas de mtproto_targets a
       // cada mudança. Era read-then-write em seis caminhos e divergia.
-      getCampaignStatus: async (id) => {
-        assertLease();
-        const { data, error } = await supabase
-          .from("mtproto_campaigns")
-          .select("status")
-          .eq("id", id)
-          .single();
-        if (error) throw error;
-        return (data?.status as string | undefined) ?? null;
-      },
+      getCampaignStatus: async () => (await readLiveCampaign())?.status ?? null,
       setCampaignStatus: async (id, status) => {
         assertLease();
+        const latest = await readLiveCampaign();
+        if (!latest || latest.status !== "running") return;
         const patch: Record<string, unknown> = { status };
         if (status === "running" && !campaign.started_at) {
           patch.started_at = new Date().toISOString();
@@ -745,10 +755,11 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
         }
         // Se a campanha é recorrente E completou: agenda próxima execução
         // e reseta a campanha de volta pra 'draft' (pronta pro próximo ciclo).
-        if (status === "completed" && campaign.recurrence_seconds) {
-          const nextRun = new Date(Date.now() + campaign.recurrence_seconds * 1000);
+        if (status === "completed" && latest.recurrence_seconds) {
+          const { nextCampaignRun } = await import("../services/mtproto/campaign-timing.js");
+          const nextRun = new Date(nextCampaignRun(latest.started_at, latest.recurrence_seconds));
           patch.status = "scheduled";
-          patch.last_run_at = new Date().toISOString();
+          patch.last_run_at = latest.started_at ?? new Date().toISOString();
           patch.next_run_at = nextRun.toISOString();
           patch.started_at = null;
           patch.completed_at = null;
@@ -817,14 +828,22 @@ async function runCampaignInner(campaignId: string, campaign: Record<string, unk
           liveClients.delete(accountId);
         }
       },
-      delay: (ms) => new Promise((r) => setTimeout(r, ms)),
+      delay: async (ms) => {
+        const start = Date.now();
+        const originalMin = liveConfig.delayMinSeconds;
+        const originalMax = liveConfig.delayMaxSeconds;
+        let duration = ms;
+        while (Date.now() - start < duration) {
+          await new Promise(r => setTimeout(r, Math.min(1000, duration - (Date.now() - start))));
+          const latest = await readLiveCampaign();
+          if (!latest || latest.status !== "running") return;
+          if (originalMin !== liveConfig.delayMinSeconds || originalMax !== liveConfig.delayMaxSeconds) {
+            duration = liveConfig.delayMinSeconds * 1000;
+          }
+        }
+      },
     },
-    {
-      campaignId,
-      messageText: campaign.message_text,
-      delayMinSeconds: campaign.delay_min_seconds,
-      delayMaxSeconds: campaign.delay_max_seconds,
-    },
+    liveConfig,
   );
 
   try { await runner.run(targetRows); }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "@/lib/supabase/server";
-import { createCampaign } from "@/app/dashboard/automations/actions";
+import { createCampaign, updateCampaign } from "@/app/dashboard/automations/actions";
 import { criarSupabaseFake, type RespostaFake } from "../helpers/fake-supabase";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -46,6 +46,28 @@ describe("createCampaign — recorrência em segundos", () => {
     const result = await createCampaign({ ...entradaBase, recurrenceSeconds: 0 });
 
     expect(result).toEqual({ ok: false, error: "Recorrência deve ser de pelo menos 1 segundo." });
+    expect(fake.chamadas).toHaveLength(0);
+  });
+});
+
+describe("editar disparo", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("atualiza os campos sem reiniciar status nem contadores", async () => {
+    const fake = criarSupabaseFake<Awaited<ReturnType<typeof createClient>>>(() => ({ data: [{ id: "c1" }] }));
+    vi.mocked(createClient).mockResolvedValue(fake.client);
+    expect(await updateCampaign("c1", { ...entradaBase, recurrenceSeconds: 2 })).toEqual({ ok: true });
+    expect(fake.chamadas[0].payload).toEqual({ name: "Campanha", message_text: "Mensagem", delay_min_seconds: 1, delay_max_seconds: 1, recurrence_seconds: 2 });
+    expect(fake.chamadas[0].filtros).toEqual({ id: "c1" });
+  });
+  it("não anuncia sucesso quando a RLS não permite editar a linha", async () => {
+    const fake = criarSupabaseFake<Awaited<ReturnType<typeof createClient>>>(() => ({ data: [] }));
+    vi.mocked(createClient).mockResolvedValue(fake.client);
+    expect(await updateCampaign("c1", { ...entradaBase, recurrenceSeconds: 2 })).toEqual({ ok: false, error: "Campanha não encontrada." });
+  });
+  it("recusa intervalos invertidos sem gravar", async () => {
+    const fake = criarSupabaseFake<Awaited<ReturnType<typeof createClient>>>(() => ({ data: [] }));
+    vi.mocked(createClient).mockResolvedValue(fake.client);
+    expect((await updateCampaign("c1", { ...entradaBase, delayMin: 4, recurrenceSeconds: 2 })).ok).toBe(false);
     expect(fake.chamadas).toHaveLength(0);
   });
 });

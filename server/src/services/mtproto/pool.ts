@@ -57,6 +57,12 @@ export class AccountPool {
     a.floodWaitUntil = new Date(Date.now() + seconds * 1000);
   }
 
+  waitSeconds(id?: string): number | null {
+    const waits = this.accounts.filter(a => (!id || a.id === id) && a.status === "flood_wait" && a.floodWaitUntil)
+      .map(a => Math.max(1, Math.ceil((a.floodWaitUntil!.getTime() - Date.now()) / 1000)));
+    return waits.length ? Math.min(...waits) : null;
+  }
+
   markBanned(id: string): void {
     const a = this.accounts.find((x) => x.id === id);
     if (!a) return;

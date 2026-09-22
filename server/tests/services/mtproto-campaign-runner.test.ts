@@ -57,6 +57,26 @@ const rpc = (code: string, status = 400) =>
   new Error(`${status}: ${code} (caused by messages.SendMessage)`);
 
 describe("CampaignRunner", () => {
+  it.each(["PEER_FLOOD", "TIMEOUT"])("%s usa o intervalo configurado, sem espera artificial", async code => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const deps = makeDeps({ sendMessage: async () => { throw rpc(code); }, deferCampaign: vi.fn(async () => {}), deferAccount: vi.fn(async () => {}), markTargetRetryAfter: vi.fn(async () => {}) });
+      await new CampaignRunner(pool("a"), deps, { ...cfg, recurrenceSeconds: 3 }).run(targets({ id: "t1", identifier: "u", type: "username" }));
+      expect(deps.deferCampaign).toHaveBeenCalledWith(new Date(now + 3000).toISOString(), code === "PEER_FLOOD" ? code : "CONNECTION_RETRY");
+    } finally { clock.mockRestore(); }
+  });
+  it("aguarda apenas entre envios, sem acrescentar espera ao fim do ciclo", async () => {
+    const delay = vi.fn(async () => {});
+    await new CampaignRunner(pool("a"), makeDeps({ delay }), { ...cfg, delayMinSeconds: 2, delayMaxSeconds: 2 }).run(targets({ id: "t1", identifier: "u", type: "username" }, { id: "t2", identifier: "v", type: "username" }));
+    expect(delay.mock.calls).toEqual([[2000]]);
+  });
+  it("usa a mensagem editada antes do próximo envio", async () => {
+    const live = { ...cfg };
+    const sendMessage = vi.fn<RunnerDeps["sendMessage"]>(async () => { live.messageText = "editada"; });
+    await new CampaignRunner(pool("a"), makeDeps({ sendMessage }), live).run(targets({ id: "t1", identifier: "u", type: "username" }, { id: "t2", identifier: "v", type: "username" }));
+    expect(sendMessage.mock.calls[1]?.[2]).toBe("editada");
+  });
   it("aguarda conta indisponível sem falhar o destino nem pausar a intenção do usuário", async () => {
     const deferCampaign = vi.fn(async () => {});
     const deps = makeDeps({ deferCampaign, markTargetRetryAfter: vi.fn(async () => {}) });

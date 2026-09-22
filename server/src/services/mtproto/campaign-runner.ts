@@ -113,6 +113,7 @@ export interface CampaignConfig {
   messageText: string;
   delayMinSeconds: number;
   delayMaxSeconds: number;
+  recurrenceSeconds?: number | null;
 }
 
 // (?<!INPUT_): INPUT_USER_DEACTIVATED é o CONTATO que desativou a conta dele —
@@ -125,6 +126,11 @@ function isFatalAccountError(err: unknown): boolean {
 
 export class CampaignRunner {
   private yielded = false;
+  private needsSpacing = false;
+
+  private retrySeconds(): number {
+    return Math.max(1, this.cfg.recurrenceSeconds ?? this.cfg.delayMinSeconds);
+  }
   constructor(
     private pool: AccountPool,
     private deps: RunnerDeps,
@@ -172,7 +178,7 @@ export class CampaignRunner {
     }
 
     if (this.deps.hasPendingTargets && await this.deps.hasPendingTargets()) {
-      await this.defer(60, "WAITING_RETRY");
+      await this.defer(this.retrySeconds(), "WAITING_RETRY");
       return;
     }
     await this.deps.setCampaignStatus(this.cfg.campaignId, "completed");
@@ -233,6 +239,13 @@ export class CampaignRunner {
         console.log(`[runner] campaign ${this.cfg.campaignId} stopped mid-loop: status=${liveStatus ?? "deleted"}`);
         return;
       }
+      if (this.needsSpacing) {
+        const min = this.cfg.delayMinSeconds * 1000;
+        const max = this.cfg.delayMaxSeconds * 1000;
+        await this.deps.delay(Math.max(0, min + Math.floor(Math.random() * Math.max(1, max - min + 1))));
+        const status = await this.deps.getCampaignStatus(this.cfg.campaignId);
+        if (status !== "running") return;
+      }
       // Se o target tem conta pré-atribuída (campanha global), usa SÓ
       // ela — não cai pra outra conta no fallback porque o access_hash
       // do dialog dela não vale pra outras contas.
@@ -242,7 +255,7 @@ export class CampaignRunner {
         : this.pool.next();
       if (!account) {
         if (this.deps.deferCampaign) {
-          await this.defer(300, "ACCOUNT_UNAVAILABLE", target);
+          await this.defer(this.pool.waitSeconds(target.pinnedAccountId) ?? this.retrySeconds(), "ACCOUNT_UNAVAILABLE", target);
           return;
         }
         if (isPinned) {
@@ -261,6 +274,7 @@ export class CampaignRunner {
       }
 
       if (this.deps.prepareTarget) await this.deps.prepareTarget(target, account.id);
+      this.needsSpacing = true;
       let delivered = false;
       try {
         await this.deps.sendMessage(account.id, target, this.cfg.messageText);
@@ -270,17 +284,16 @@ export class CampaignRunner {
         if (this.deps.deferCampaign) {
           const text = err instanceof Error ? err.message : String(err);
           if (floodSeconds !== null) {
-            await this.defer(Math.max(1, floodSeconds) + 5, `FLOOD_WAIT_${floodSeconds}`, target, account.id);
+            await this.defer(Math.max(1, floodSeconds), `FLOOD_WAIT_${floodSeconds}`, target, account.id);
             return;
           }
           if (/PEER_FLOOD/i.test(text)) {
-            // PEER_FLOOD não informa prazo. 24h é nosso intervalo conservador
-            // de reavaliação, não uma promessa de liberação pelo Telegram.
-            await this.defer(24 * 60 * 60, "PEER_FLOOD", target, account.id);
+            // Sem prazo informado pelo Telegram, usa o intervalo escolhido.
+            await this.defer(this.retrySeconds(), "PEER_FLOOD", target, account.id);
             return;
           }
           if (transientCampaignError(err)) {
-            await this.defer(60, "CONNECTION_RETRY", target);
+            await this.defer(this.retrySeconds(), "CONNECTION_RETRY", target);
             return;
           }
         }
@@ -291,7 +304,7 @@ export class CampaignRunner {
           // marca retry_after pra reprocessar depois do flood (#47).
           if (isPinned) {
             if (this.deps.markTargetRetryAfter) {
-              const retryAfter = new Date(Date.now() + (floodSeconds + 5) * 1000).toISOString();
+              const retryAfter = new Date(Date.now() + Math.max(1, floodSeconds) * 1000).toISOString();
               await this.deps.markTargetRetryAfter(target.id, retryAfter);
             } else {
               await this.deps.markTargetFailed(
@@ -324,12 +337,6 @@ export class CampaignRunner {
       // a recuperação reusa o random_id e tenta registrar novamente.
       if (delivered) await this.deps.markTargetSent(target.id, account.id);
 
-      const min = this.cfg.delayMinSeconds * 1000;
-      const max = this.cfg.delayMaxSeconds * 1000;
-      // Delay mínimo de 1s entre envios (#50) — protege contra config 0/0
-      // que dispararia mensagens em rajada e queimaria a conta por spam.
-      const wait = Math.max(1000, min + Math.floor(Math.random() * Math.max(1, max - min + 1)));
-      await this.deps.delay(wait);
     }
   }
 }

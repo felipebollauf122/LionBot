@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* Disparos: superfície opaca e texto legível em todos os temas. */
+.campaign-surface {
+  --bg-surface: #07060c;
+  --bg-elevated: #0e0c16;
+  --bg-input: #100e19;
+  --text-primary: #faf8ff;
+  --text-secondary: #d5cede;
+  --text-muted: #aaa1b8;
+  --text-ghost: #aaa1b8;
+  --gradient-card: linear-gradient(#0e0c16, #0e0c16);
+  background: #040308;
+  color: var(--text-primary);
+}
+
+.campaign-surface .input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.campaign-surface .input::placeholder { color: var(--text-muted); }
+.campaign-surface :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
 :root {
   /* Os SETE temas deste arquivo são escuros — não existe variante clara.
      Sem esta linha o navegador presume "light" e pinta todo controle NATIVO

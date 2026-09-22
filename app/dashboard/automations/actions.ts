@@ -483,6 +483,31 @@ export async function launchCampaign(
   });
 }
 
+export async function updateCampaign(campaignId: string, input: {
+  name: string; message: string; delayMin: number; delayMax: number; recurrenceSeconds: number | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  return comGuarda("updateCampaign", async () => {
+    if (!input.name.trim() || !input.message.trim()) return { ok: false as const, error: "Informe o nome e a mensagem." };
+    if (![input.delayMin, input.delayMax].every(v => Number.isSafeInteger(v) && v >= 0 && v <= 2147483647) || input.delayMax < input.delayMin) {
+      return { ok: false as const, error: "Informe intervalos inteiros válidos; o máximo deve ser maior ou igual ao mínimo." };
+    }
+    if (input.recurrenceSeconds !== null && (!Number.isSafeInteger(input.recurrenceSeconds) || input.recurrenceSeconds < 1 || input.recurrenceSeconds > 2147483647)) {
+      return { ok: false as const, error: "Recorrência deve ser de pelo menos 1 segundo." };
+    }
+    const supabase = await createClient();
+    // RLS limita a edição ao proprietário ou administrador. Não altera a fila em execução.
+    const { data, error } = await supabase.from("mtproto_campaigns").update({
+      name: input.name.trim(), message_text: input.message,
+      delay_min_seconds: input.delayMin, delay_max_seconds: input.delayMax,
+      recurrence_seconds: input.recurrenceSeconds,
+    }).eq("id", campaignId).select("id");
+    if (error) return { ok: false as const, error: error.message };
+    if (!data?.length) return { ok: false as const, error: "Campanha não encontrada." };
+    revalidatePath("/dashboard/automations", "layout");
+    return { ok: true as const };
+  });
+}
+
 async function postBotServer(path: string, body: unknown): Promise<Response> {
   const serverUrl = (process.env.NEXT_PUBLIC_BOT_SERVER_URL ?? "http://localhost:3001").replace(/\/+$/, "");
   return fetch(`${serverUrl}${path}`, {

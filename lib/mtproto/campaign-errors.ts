@@ -123,7 +123,7 @@ const RULES: Rule[] = [
   {
     test: /PEER_FLOOD/i,
     message:
-      "O Telegram limitou os envios desta conta por spam (PEER_FLOOD). Novas ocorrências entram em espera, com reavaliação após 24h; esse prazo não garante a liberação.",
+      "O Telegram limitou os envios desta conta por spam (PEER_FLOOD). A próxima tentativa segue o intervalo configurado; o Telegram ainda pode recusar o envio.",
   },
   {
     test: /PHONE_NUMBER_BANNED|USER_DEACTIVATED|AUTH_KEY_UNREGISTERED|SESSION_REVOKED/i,

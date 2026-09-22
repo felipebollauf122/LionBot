@@ -1,5 +1,23 @@
 # Disparo MTProto: alvos pulados e contadores derivados
 
+## Intervalos e edição durante o envio
+
+A versão de 22/09 permite editar nome, mensagem, intervalo entre mensagens e
+recorrência sem pausar. O worker lê a configuração antes de cada envio; uma
+mensagem que já está em trânsito mantém o texto anterior. O intervalo dos ciclos
+conta desde o início: se o ciclo ultrapassar o intervalo, o próximo fica elegível
+imediatamente, sem sobreposição. A fila verifica campanhas a cada segundo;
+rede, duração dos envios e ocupação dos workers também afetam o horário real.
+
+Aplicar `086_mtproto_campaign_configured_timing.sql` com o worker antigo parado
+e publicar o Next e o server atualizados. Essa migration remove esperas antigas
+inventadas pelo app e recalcula a próxima recorrência quando ela é editada.
+Prazos explícitos de FLOOD_WAIT são preservados. PEER_FLOOD e falhas transitórias
+são reavaliados no intervalo de recorrência escolhido (ou no intervalo mínimo
+entre mensagens, com pelo menos 1 segundo, quando não há recorrência).
+
+Validação isolada: `./server/scripts/test-mtproto-campaign-timing.ps1`.
+
 ## Deploy
 
 1. Preparar a versão atualizada do server e do Next. Pausar as campanhas e

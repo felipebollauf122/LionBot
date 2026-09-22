@@ -1,6 +1,6 @@
 # Recuperação e acompanhamento dos disparos
 
-O banco guarda a intenção do operador. A cada 5 segundos, o agendador recupera
+O banco guarda a intenção do operador. A cada segundo, o agendador recupera
 campanhas `running` sem heartbeat recente e campanhas `scheduled` cujo prazo
 venceu, mesmo sem recorrência. `paused`, `draft`, `completed` e `failed` não são
 reativados automaticamente. O worker confere o estado de novo antes de assumir.
@@ -16,10 +16,11 @@ deriva do destino e do ciclo, reduzindo duplicatas quando a resposta se perde.
 Isso não constitui garantia de entrega exatamente uma vez fora da janela de
 deduplicação do Telegram.
 
-`FLOOD_WAIT` respeita o prazo recebido. `PEER_FLOOD` persiste uma espera de 24 horas
-na conta e na campanha; esse é um intervalo de reavaliação do aplicativo, não uma
-garantia de liberação. Falhas de conexão aguardam 60 segundos. Conta indisponível
-é reavaliada em 5 minutos sem marcar seus destinos como falha. Sessões revogadas
+`FLOOD_WAIT` respeita o prazo recebido, sem acrescentar segundos extras.
+`PEER_FLOOD`, falhas de conexão e contas indisponíveis são reavaliados no
+intervalo de recorrência configurado (ou no intervalo mínimo entre mensagens,
+com piso de 1 segundo, quando não há recorrência). Uma conta com prazo explícito
+de bloqueio aguarda esse prazo. A próxima tentativa não garante liberação. Sessões revogadas
 continuam exigindo reconexão. Destinos permanentemente bloqueados são pulados.
 
 Novos disparos vêm com repetição habilitada; o operador pode desmarcá-la para um

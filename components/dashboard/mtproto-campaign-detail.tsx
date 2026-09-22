@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { automationHref } from "@/lib/automations/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { launchCampaign, pauseCampaign, deleteCampaign } from "@/app/dashboard/automations/actions";
+import { launchCampaign, pauseCampaign, deleteCampaign, updateCampaign } from "@/app/dashboard/automations/actions";
 import { friendlyCampaignError, targetStatusLabel } from "@/lib/mtproto/campaign-errors";
 import { MtprotoCampaignProgress } from "@/components/dashboard/mtproto-campaign-progress";
 import { campaignProgress } from "@/lib/mtproto/campaign-progress";
@@ -84,6 +84,9 @@ export function MtprotoCampaignDetail({
   const [erroAcao, setErroAcao] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const actionVersion = useRef(0);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [draft, setDraft] = useState({ name: "", message: "", delayMin: 0, delayMax: 0, recurrenceSeconds: null as number | null });
 
   const emAndamento = campaign.status === "running" || campaign.status === "scheduled";
 
@@ -171,8 +174,15 @@ export function MtprotoCampaignDetail({
       )}
       {/* Status + ações */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-sm text-(--text-secondary)">{campaign.recurrence_seconds ? `Repete até você pausar · ${campaign.recurrence_seconds}s entre ciclos` : "Um ciclo · retomada automática dos pendentes"}</p>
-        <div className="flex items-center gap-2">
+        <div className="space-y-1">
+          <p className="text-base font-medium">{campaign.recurrence_seconds ? `Repete a cada ${campaign.recurrence_seconds}s` : "Um ciclo"}</p>
+          <p className="text-sm text-(--text-secondary)">{campaign.delay_min_seconds === campaign.delay_max_seconds ? `${campaign.delay_min_seconds}s` : `${campaign.delay_min_seconds}–${campaign.delay_max_seconds}s`} entre mensagens · sem ciclos simultâneos</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={pending || editing} className="btn-ghost min-h-11 px-4 text-sm" onClick={() => {
+            setDraft({ name: campaign.name, message: campaign.message_text, delayMin: campaign.delay_min_seconds, delayMax: campaign.delay_max_seconds, recurrenceSeconds: campaign.recurrence_seconds ?? null });
+            setEditing(true); setSaved(false); setErroAcao(null);
+          }}>Editar disparo</button>
           {(["draft", "paused", "failed"].includes(campaign.status)) && (
             <button
               disabled={pending}
@@ -229,6 +239,34 @@ export function MtprotoCampaignDetail({
           </button>
         </div>
       </div>
+
+      {saved && <p role="status" className="text-sm text-(--cyan)">Alterações salvas. Os próximos envios usarão a nova configuração.</p>}
+      {editing && <form className="space-y-5 border-y border-(--border-default) py-6" onSubmit={e => {
+        e.preventDefault(); setErroAcao(null);
+        startTransition(async () => {
+          actionVersion.current += 1;
+          try {
+            const result = await updateCampaign(campaignId, draft);
+            actionVersion.current += 1;
+            if (!result.ok) { setErroAcao(result.error); return; }
+            setCampaign(c => ({ ...c, name: draft.name.trim(), message_text: draft.message, delay_min_seconds: draft.delayMin, delay_max_seconds: draft.delayMax, recurrence_seconds: draft.recurrenceSeconds }));
+            setEditing(false); setSaved(true); router.refresh();
+          } catch { setErroAcao("Não foi possível salvar. Suas alterações foram mantidas para tentar novamente."); }
+        });
+      }}>
+        <div><h2 className="text-lg font-semibold">Editar disparo</h2><p className="mt-1 text-sm text-(--text-secondary)">Você pode editar enquanto o envio continua. Mensagens já enviadas não são alteradas.</p></div>
+        <fieldset disabled={pending} className="space-y-4 disabled:opacity-60">
+          <div><label htmlFor="edit-name" className="input-label">Nome do disparo</label><input id="edit-name" className="input w-full" required value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} /></div>
+          <div><label htmlFor="edit-message" className="input-label">Mensagem</label><textarea id="edit-message" className="input w-full min-h-40" required rows={6} value={draft.message} onChange={e => setDraft(d => ({ ...d, message: e.target.value }))} /></div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div><label htmlFor="edit-min" className="input-label">Intervalo mínimo entre mensagens (s)</label><input id="edit-min" className="input w-full" type="number" min={0} step={1} required value={draft.delayMin} onChange={e => setDraft(d => ({ ...d, delayMin: e.target.valueAsNumber }))} /></div>
+            <div><label htmlFor="edit-max" className="input-label">Intervalo máximo entre mensagens (s)</label><input id="edit-max" className="input w-full" type="number" min={draft.delayMin} step={1} required value={draft.delayMax} onChange={e => setDraft(d => ({ ...d, delayMax: e.target.valueAsNumber }))} /></div>
+          </div>
+          <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={draft.recurrenceSeconds !== null} onChange={e => setDraft(d => ({ ...d, recurrenceSeconds: e.target.checked ? campaign.recurrence_seconds ?? 60 : null }))} />Repetir até eu pausar</label>
+          {draft.recurrenceSeconds !== null && <div><label htmlFor="edit-repeat" className="input-label">Repetir a cada (segundos)</label><input id="edit-repeat" className="input w-full sm:max-w-64" type="number" min={1} step={1} required value={draft.recurrenceSeconds} onChange={e => setDraft(d => ({ ...d, recurrenceSeconds: e.target.valueAsNumber }))} /><p className="mt-2 text-sm text-(--text-secondary)">Contado desde o início do ciclo. Se ele durar mais, o próximo começa assim que terminar.</p></div>}
+          <div className="flex flex-wrap gap-3"><button className="btn-primary min-h-11" type="submit">{pending ? "Salvando…" : "Salvar alterações"}</button><button className="btn-ghost min-h-11" type="button" onClick={() => { setEditing(false); setErroAcao(null); }}>Cancelar</button></div>
+        </fieldset>
+      </form>}
 
       {loadError && <p role="status" className="text-sm text-(--amber)">{loadError}</p>}
       <MtprotoCampaignProgress campaign={displayedCampaign} latestSent={latestSent} />
